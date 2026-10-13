@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { orgFromCookie, parseActivity, parseConversation, parseUsage } from "../src/plugins/_api/claude";
+import { orgFromCookie, parseActivity, parseChannelSessions, parseConversation, parseSessionState, parseUsage } from "../src/plugins/_api/claude";
 import { parseRoute } from "../src/plugins/_api/router";
 import { matches, parseCombo } from "../src/plugins/_api/hotkeys";
 import { level } from "../src/plugins/usageDisplay";
@@ -120,5 +120,19 @@ describe("feature helpers", () => {
         const once = toggleStar("c", "Chat", star, {});
         expect(once.starred).toBe(true);
         expect(toggleStar("c", "Chat", star, once.next).next).toEqual({});
+    });
+});
+
+describe("project sessions", () => {
+    test("a busy coordinator counts as working", () => {
+        expect(parseSessionState({ response_shape: { status: "active", worker_status: "running", status_bucket: "review_ready" } })).toBe("working");
+        expect(parseSessionState({ response_shape: { status: "active", worker_status: "idle", status_bucket: "review_ready" } })).toBe(null);
+        expect(parseSessionState({ response_shape: { status: "active", worker_status: "idle", status_bucket: "SESSION_STATUS_BUCKET_BLOCKED" } })).toBe("blocked");
+        expect(parseSessionState({ session_status: "requires_action" })).toBe("blocked");
+        expect(parseSessionState({ response_shape: { status: "archived", worker_status: "running" } })).toBe(null);
+    });
+    test("channel list maps projects to their own session", () => {
+        const map = parseChannelSessions({ data: [{ id: "chan_a", channel_session_id: "cse_1" }, { id: "chan_b" }, { id: "chan_c", channel_session_id: "bad id" }] });
+        expect([...map]).toEqual([["chan_a", "cse_1"]]);
     });
 });

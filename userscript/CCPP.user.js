@@ -642,6 +642,12 @@
     return await response.json();
   }
   var CHANNEL_RE = /^chan_[A-Za-z0-9]+$/;
+  var SESSION_RE = /^cse_[A-Za-z0-9]+$/;
+  function normalizeBucket(value) {
+    if (typeof value !== "string")
+      return "";
+    return value.replace(/^SESSION_STATUS_BUCKET_/, "").toLowerCase();
+  }
   function parseActivity(channelId, raw) {
     const data = raw && typeof raw === "object" && Array.isArray(raw.data) ? raw.data : [];
     const activity = { channelId, working: 0, blocked: 0 };
@@ -649,18 +655,70 @@
       for (const session of Array.isArray(message?.bound_sessions) ? message.bound_sessions : []) {
         if (session?.status === "archived")
           continue;
-        if (session?.status_bucket === "working")
+        const bucket = normalizeBucket(session?.status_bucket);
+        if (bucket === "working")
           activity.working++;
-        else if (session?.status_bucket === "blocked")
+        else if (bucket === "blocked")
           activity.blocked++;
       }
     }
     return activity;
   }
+  function parseSessionState(raw) {
+    const root = raw && typeof raw === "object" ? raw : {};
+    const session = root.response_shape && typeof root.response_shape === "object" ? root.response_shape : root;
+    const status = session.session_status ?? session.status;
+    if (status === "archived" || status === "deleted")
+      return null;
+    if (status === "requires_action" || session.worker_status === "requires_action")
+      return "blocked";
+    if (status === "pending" || status === "running" && session.worker_status !== "idle" || session.worker_status === "running")
+      return "working";
+    const bucket = normalizeBucket(session.status_bucket);
+    if (bucket === "working")
+      return "working";
+    if (bucket === "blocked" || bucket === "failed")
+      return "blocked";
+    return null;
+  }
+  var channelSessions = null;
+  var CHANNEL_LIST_TTL = 5 * 60000;
+  function parseChannelSessions(raw) {
+    const map = new Map;
+    const data = raw && typeof raw === "object" && Array.isArray(raw.data) ? raw.data : [];
+    for (const channel of data) {
+      const session = channel?.channel_session_id ?? channel?.overview_session_id;
+      if (typeof channel?.id === "string" && typeof session === "string" && SESSION_RE.test(session))
+        map.set(channel.id, session);
+    }
+    return map;
+  }
+  async function getChannelSessions(signal) {
+    if (channelSessions && Date.now() - channelSessions.at < CHANNEL_LIST_TTL)
+      return channelSessions.map;
+    const map = parseChannelSessions(await getCodeJson("/v1/code/channels?scope=joined&include_archived=false&limit=200", signal));
+    channelSessions = { at: Date.now(), map };
+    return map;
+  }
   async function getProjectActivity(channelId, signal) {
     if (!CHANNEL_RE.test(channelId))
       throw new Error("Bad project id");
-    return parseActivity(channelId, await getCodeJson(`/v1/code/channels/${channelId}/timeline?limit=200&bound_only=true`, signal));
+    const [timeline, sessions] = await Promise.all([
+      getCodeJson(`/v1/code/channels/${channelId}/timeline?limit=200&bound_only=true`, signal),
+      getChannelSessions(signal).catch(() => new Map)
+    ]);
+    const activity = parseActivity(channelId, timeline);
+    const own = sessions.get(channelId);
+    if (own) {
+      try {
+        const state = parseSessionState(await getCodeJson(`/v1/code/sessions/${own}`, signal));
+        if (state === "working")
+          activity.working++;
+        else if (state === "blocked")
+          activity.blocked++;
+      } catch {}
+    }
+    return activity;
   }
   var claude_default = definePlugin({
     name: "ClaudeApi",

@@ -177,6 +177,13 @@ export interface ProjectActivity {
 }
 
 const CHANNEL_RE = /^chan_[A-Za-z0-9]+$/;
+const SESSION_RE = /^cse_[A-Za-z0-9]+$/;
+
+/** "SESSION_STATUS_BUCKET_WORKING" and "working" both mean working. */
+function normalizeBucket(value: unknown): string {
+    if (typeof value !== "string") return "";
+    return value.replace(/^SESSION_STATUS_BUCKET_/, "").toLowerCase();
+}
 
 /** Counts a project's thread sessions by state, from the same timeline the project page reads. */
 export function parseActivity(channelId: string, raw: unknown): ProjectActivity {
@@ -185,16 +192,69 @@ export function parseActivity(channelId: string, raw: unknown): ProjectActivity 
     for (const message of data) {
         for (const session of Array.isArray(message?.bound_sessions) ? message.bound_sessions : []) {
             if (session?.status === "archived") continue;
-            if (session?.status_bucket === "working") activity.working++;
-            else if (session?.status_bucket === "blocked") activity.blocked++;
+            const bucket = normalizeBucket(session?.status_bucket);
+            if (bucket === "working") activity.working++;
+            else if (bucket === "blocked") activity.blocked++;
         }
     }
     return activity;
 }
 
+/**
+ * State of one session from `/v1/code/sessions/:id`, judged the way the sidebar does:
+ * a busy worker counts as working even before its bucket catches up.
+ */
+export function parseSessionState(raw: unknown): "working" | "blocked" | null {
+    const root = raw && typeof raw === "object" ? (raw as any) : {};
+    const session = root.response_shape && typeof root.response_shape === "object" ? root.response_shape : root;
+    const status = session.session_status ?? session.status;
+    if (status === "archived" || status === "deleted") return null;
+    if (status === "requires_action" || session.worker_status === "requires_action") return "blocked";
+    if (status === "pending" || (status === "running" && session.worker_status !== "idle") || session.worker_status === "running") return "working";
+    const bucket = normalizeBucket(session.status_bucket);
+    if (bucket === "working") return "working";
+    if (bucket === "blocked" || bucket === "failed") return "blocked";
+    return null;
+}
+
+/** Project id → its channel (coordinator) session id, from the projects list. Cached briefly. */
+let channelSessions: { at: number; map: Map<string, string> } | null = null;
+const CHANNEL_LIST_TTL = 5 * 60_000;
+
+export function parseChannelSessions(raw: unknown): Map<string, string> {
+    const map = new Map<string, string>();
+    const data = raw && typeof raw === "object" && Array.isArray((raw as { data?: unknown }).data) ? (raw as { data: any[] }).data : [];
+    for (const channel of data) {
+        const session = channel?.channel_session_id ?? channel?.overview_session_id;
+        if (typeof channel?.id === "string" && typeof session === "string" && SESSION_RE.test(session)) map.set(channel.id, session);
+    }
+    return map;
+}
+
+async function getChannelSessions(signal?: AbortSignal) {
+    if (channelSessions && Date.now() - channelSessions.at < CHANNEL_LIST_TTL) return channelSessions.map;
+    const map = parseChannelSessions(await getCodeJson("/v1/code/channels?scope=joined&include_archived=false&limit=200", signal));
+    channelSessions = { at: Date.now(), map };
+    return map;
+}
+
 export async function getProjectActivity(channelId: string, signal?: AbortSignal) {
     if (!CHANNEL_RE.test(channelId)) throw new Error("Bad project id");
-    return parseActivity(channelId, await getCodeJson(`/v1/code/channels/${channelId}/timeline?limit=200&bound_only=true`, signal));
+    const [timeline, sessions] = await Promise.all([
+        getCodeJson(`/v1/code/channels/${channelId}/timeline?limit=200&bound_only=true`, signal),
+        getChannelSessions(signal).catch(() => new Map<string, string>()),
+    ]);
+    const activity = parseActivity(channelId, timeline);
+    // The project's own (coordinator) session also lights the native dot while it works.
+    const own = sessions.get(channelId);
+    if (own) {
+        try {
+            const state = parseSessionState(await getCodeJson(`/v1/code/sessions/${own}`, signal));
+            if (state === "working") activity.working++;
+            else if (state === "blocked") activity.blocked++;
+        } catch {}
+    }
+    return activity;
 }
 
 export default definePlugin({
