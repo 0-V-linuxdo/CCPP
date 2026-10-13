@@ -172,8 +172,11 @@ export type ThreadBucket = "working" | "blocked" | "review_ready" | "completed" 
 
 export interface ProjectActivity {
     channelId: string;
+    /** Thread sessions working / waiting on you. */
     working: number;
     blocked: number;
+    /** The project's own (coordinator) Code session. */
+    own?: "working" | "blocked" | null;
 }
 
 const CHANNEL_RE = /^chan_[A-Za-z0-9]+$/;
@@ -245,13 +248,11 @@ export async function getProjectActivity(channelId: string, signal?: AbortSignal
         getChannelSessions(signal).catch(() => new Map<string, string>()),
     ]);
     const activity = parseActivity(channelId, timeline);
-    // The project's own (coordinator) session also lights the native dot while it works.
     const own = sessions.get(channelId);
+    activity.own = null;
     if (own) {
         try {
-            const state = parseSessionState(await getCodeJson(`/v1/code/sessions/${own}`, signal));
-            if (state === "working") activity.working++;
-            else if (state === "blocked") activity.blocked++;
+            activity.own = parseSessionState(await getCodeJson(`/v1/code/sessions/${own}`, signal));
         } catch {}
     }
     return activity;

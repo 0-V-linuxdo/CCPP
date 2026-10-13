@@ -6,7 +6,7 @@ import { matches, parseCombo } from "../src/plugins/_api/hotkeys";
 import { titleFrom } from "../src/plugins/_api/chatState";
 import { recordVisit, renameVisit } from "../src/plugins/recentChats";
 import { level } from "../src/plugins/usageDisplay";
-import { dotKind } from "../src/plugins/projectStatus";
+import { cornerKind, dotKind } from "../src/plugins/projectStatus";
 import { remember } from "../src/plugins/inputHistory";
 import { parsePresets } from "../src/plugins/promptPresets";
 import { withPrefix } from "../src/plugins/tabStatus";
@@ -53,6 +53,8 @@ describe("claude.ai API parsing", () => {
         expect(dotKind({ channelId: "c", working: 0, blocked: 2 }, true)).toBe("awaiting");
         expect(dotKind({ channelId: "c", working: 0, blocked: 2 }, false)).toBeNull();
         expect(dotKind({ channelId: "c", working: 1, blocked: 0 }, true)).toBe("clay");
+        expect(cornerKind({ channelId: "c", working: 0, blocked: 0, own: "working" }, true)).toBe("clay");
+        expect(cornerKind({ channelId: "c", working: 3, blocked: 0, own: null }, true)).toBeNull();
     });
 });
 
