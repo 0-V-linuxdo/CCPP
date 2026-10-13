@@ -10,21 +10,22 @@ import { chatPhase } from "@api/chatState";
 import { getText } from "@api/composer";
 import { SEL } from "@api/dom";
 import { onResponse, sameOrigin } from "@api/network";
+import { currentRoute } from "@api/router";
 
 export type FaviconState = "idle" | "streaming" | "done" | "ready" | "error";
-export type FaviconStyle = "emoji" | "badge" | "dot" | "tint" | "bg";
+export type FaviconStyle = "emoji" | "badge" | "dot" | "hole" | "bg";
 
 const settings = definePluginSettings({
     style: {
         type: "select",
         label: { zh: "图标样式", en: "Icon style" },
         description: { zh: "回复中蓝色、完成绿色、输入框有内容待发送黄色、出错红色。", en: "Blue while replying, green when done, amber when a draft is ready to send, red on error." },
-        default: "tint",
+        default: "hole",
         options: [
             { value: "emoji", label: { zh: "只用表情", en: "Emoji only" } },
             { value: "badge", label: { zh: "角标 + 符号", en: "Badge + glyph" } },
             { value: "dot", label: { zh: "彩色圆点", en: "Colour dot" } },
-            { value: "tint", label: { zh: "图标变色", en: "Mark tint" } },
+            { value: "hole", label: { zh: "图标变色", en: "Mark tint" } },
             { value: "bg", label: { zh: "背景变色", en: "Background tint" } },
         ],
     },
@@ -39,21 +40,42 @@ const COLOR: Record<Exclude<FaviconState, "idle">, string> = {
 const CLAY = "#D97757";
 const EMOJI: Record<Exclude<FaviconState, "idle">, string> = { streaming: "🔄", done: "✅", ready: "✍️", error: "❌" };
 
-/** A twelve-spoke spark in the spirit of Claude's mark, drawn from scratch. */
-function spark(color: string, cx = 32, cy = 32, outer = 26, inner = 5, width = 6.5) {
-    const spokes: string[] = [];
-    for (let i = 0; i < 12; i++) {
-        const angle = (i * Math.PI) / 6 + (i % 2 ? 0.08 : 0);
-        const length = i % 2 ? outer * 0.78 : outer;
-        const x1 = cx + Math.cos(angle) * inner;
-        const y1 = cy + Math.sin(angle) * inner;
-        const x2 = cx + Math.cos(angle) * length;
-        const y2 = cy + Math.sin(angle) * length;
-        spokes.push(`<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}"/>`);
-    }
-    return `<g stroke="${color}" stroke-width="${width}" stroke-linecap="round">${spokes.join("")}</g>`;
+/** claude.ai's own mark (from its SVG favicon): viewBox and inner markup. */
+export interface Mark {
+    viewBox: string;
+    inner: string;
 }
 
+/** A twelve-spoke spark, only used until claude.ai's own icon has been read. */
+function fallbackMark(): Mark {
+    const spokes: string[] = [];
+    for (let i = 0; i < 12; i++) {
+        const angle = (i * Math.PI) / 6;
+        const length = i % 2 ? 20 : 26;
+        const x = (r: number) => (32 + Math.cos(angle) * r).toFixed(1);
+        const y = (r: number) => (32 + Math.sin(angle) * r).toFixed(1);
+        spokes.push(`<line x1="${x(5)}" y1="${y(5)}" x2="${x(length)}" y2="${y(length)}" stroke="${CLAY}" stroke-width="6.5" stroke-linecap="round"/>`);
+    }
+    return { viewBox: "0 0 64 64", inner: spokes.join("") };
+}
+
+/** Pulls the drawing out of an SVG file; null when it isn't one. */
+export function parseMark(svgText: string): Mark | null {
+    const open = /<svg\b[^>]*>/i.exec(svgText);
+    const close = svgText.lastIndexOf("</svg>");
+    if (!open || close < 0) return null;
+    const viewBox = /viewBox="([^"]+)"/i.exec(open[0])?.[1] ?? (() => {
+        const w = /width="([\d.]+)"/.exec(open[0])?.[1];
+        const hgt = /height="([\d.]+)"/.exec(open[0])?.[1];
+        return w && hgt ? `0 0 ${w} ${hgt}` : null;
+    })();
+    const inner = svgText.slice(open.index + open[0].length, close).replace(/<script[\s\S]*?<\/script>/gi, "");
+    return viewBox && inner.trim() ? { viewBox, inner } : null;
+}
+
+/** Recolours every filled or stroked shape of the mark. */
+const recolor = (inner: string, color: string) => inner.replace(/\b(fill|stroke)="(?!none)[^"]*"/g, `$1="${color}"`);
+const place = (mark: Mark, inner: string, x = 0, y = 0, size = 64) => `<svg x="${x}" y="${y}" width="${size}" height="${size}" viewBox="${mark.viewBox}">${inner}</svg>`;
 const svgUrl = (inner: string) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">${inner}</svg>`)}`;
 
 function glyph(state: Exclude<FaviconState, "idle">) {
@@ -64,22 +86,22 @@ function glyph(state: Exclude<FaviconState, "idle">) {
     return `<path d="M47.3 47.3l8.4 8.4M55.7 47.3l-8.4 8.4" ${s}/>`;
 }
 
-/** The favicon for a state in a style; `official` is claude.ai's own icon, used when idle in emoji mode. */
-export function faviconFor(style: FaviconStyle, state: FaviconState, official: string) {
-    if (style === "emoji") {
-        if (state === "idle") return official;
-        return svgUrl(`<text x="32" y="54" font-size="54" text-anchor="middle">${EMOJI[state]}</text>`);
-    }
-    const color = state === "idle" ? null : COLOR[state];
-    if (style === "tint") return svgUrl(spark(color ?? CLAY));
-    if (style === "bg") return svgUrl(`<rect width="64" height="64" rx="14" fill="${color ?? CLAY}"/>${spark("#fff", 32, 32, 22, 4, 5.5)}`);
-    const base = spark(CLAY);
-    if (!color || state === "idle") return svgUrl(base);
+/**
+ * The favicon for a state in a style, drawn over claude.ai's own mark. `official` is claude.ai's icon URL,
+ * which idle shows as-is.
+ */
+export function faviconFor(style: FaviconStyle, state: FaviconState, official: string, mark: Mark | null = null) {
+    if (state === "idle") return official;
+    const color = COLOR[state];
+    if (style === "emoji") return svgUrl(`<text x="32" y="54" font-size="54" text-anchor="middle">${EMOJI[state]}</text>`);
+    const m = mark ?? fallbackMark();
+    if (style === "hole") return svgUrl(place(m, recolor(m.inner, color)));
+    if (style === "bg") return svgUrl(`<rect width="64" height="64" rx="14" fill="${color}"/>${place(m, recolor(m.inner, "#fff"), 9, 9, 46)}`);
     const badge =
         style === "dot"
             ? `<circle cx="52" cy="52" r="11" fill="#fff"/><circle cx="52" cy="52" r="8" fill="${color}"/>`
-            : `<circle cx="51.5" cy="51.5" r="12.5" fill="#fff"/><circle cx="51.5" cy="51.5" r="10" fill="${color}"/>${glyph(state as Exclude<FaviconState, "idle">)}`;
-    return svgUrl(base + badge);
+            : `<circle cx="51.5" cy="51.5" r="12.5" fill="#fff"/><circle cx="51.5" cy="51.5" r="10" fill="${color}"/>${glyph(state)}`;
+    return svgUrl(place(m, m.inner) + badge);
 }
 
 /** What the tab shows next: replies win, an error sticks until the next send, a finished reply stays until you type. */
@@ -121,6 +143,23 @@ export default definePlugin({
     start(scope) {
         const removed: HTMLLinkElement[] = [];
         let official = `${location.origin}/favicon.ico`;
+        let mark: Mark | null = null;
+        let markFrom = "";
+        const loadMark = (href: string) => {
+            if (!/\.svg(?:$|\?)/i.test(href) || href === markFrom) return;
+            markFrom = href;
+            fetch(href, { credentials: "omit" })
+                .then(r => (r.ok ? r.text() : ""))
+                .then(text => {
+                    const parsed = parseMark(text);
+                    if (!parsed || !scope.alive) return;
+                    mark = parsed;
+                    paint();
+                })
+                .catch(() => {});
+        };
+        // Only chat pages get a state icon; elsewhere claude.ai's own icon comes back.
+        const onChatSurface = () => ["chat", "new", "project"].includes(currentRoute().kind);
         let state: FaviconState = chatPhase() === "streaming" ? "streaming" : "idle";
         const draft = () => !!getText().trim();
 
@@ -135,15 +174,22 @@ export default definePlugin({
             if (!head) return;
             for (const node of [...head.querySelectorAll("link")]) {
                 if (!isIconLink(node)) continue;
-                if (node.href && !node.href.startsWith("data:")) official = node.href;
+                // Prefer the SVG icon: it is what tab strips show and what we draw over.
+                if (node.href && !node.href.startsWith("data:") && (/svg/i.test(node.type) || !/\.svg/i.test(official))) official = node.href;
                 removed.push(node);
                 node.remove();
             }
             if (head.firstChild !== link) head.prepend(link);
         };
+        const release = () => {
+            link.remove();
+            for (const node of removed.splice(0)) if (!node.isConnected) document.head?.appendChild(node);
+        };
         const paint = () => {
+            if (!onChatSurface()) return release();
             claim();
-            const href = faviconFor(settings.store.style as FaviconStyle, state, official);
+            loadMark(official);
+            const href = faviconFor(settings.store.style as FaviconStyle, state, official, mark);
             if (link.getAttribute("href") !== href) link.setAttribute("href", href);
         };
         const go = (event: Parameters<typeof nextState>[1]) => {
@@ -171,11 +217,9 @@ export default definePlugin({
                 if (/^event:\s*error\s*$/m.test(text) || /"type"\s*:\s*"error"/.test(text)) go("error");
             } catch {}
         });
-        if (document.head) scope.observe(document.head, { childList: true }, () => [...document.head.querySelectorAll("link")].some(isIconLink) && paint());
-        scope.defer(() => {
-            link.remove();
-            for (const node of removed.splice(0)) if (!node.isConnected) document.head?.appendChild(node);
-        });
+        // claude.ai may put its icon back; take the slot again.
+        if (document.head) scope.observe(document.head, { childList: true }, () => link.isConnected && [...document.head.querySelectorAll("link")].some(isIconLink) && paint());
+        scope.defer(release);
         paint();
     },
 });

@@ -15,7 +15,7 @@ import { toMarkdown } from "../src/plugins/exportChat";
 import { splitLinks } from "../src/plugins/betterLinks";
 import { isTelemetry } from "../src/plugins/noTelemetry";
 import { toggleStar } from "../src/plugins/messageStars/store";
-import { faviconFor, nextState } from "../src/plugins/chatFavicon";
+import { faviconFor, nextState, parseMark } from "../src/plugins/chatFavicon";
 
 const ID = "2e8860cc-f63c-4514-931c-14080b0aa61e";
 
@@ -178,12 +178,17 @@ describe("chat favicon", () => {
         expect(nextState("done", "route", false)).toBe("idle");
     });
     test("five styles, emoji mode keeps the official icon when idle", () => {
-        expect(faviconFor("emoji", "idle", "https://claude.ai/favicon.ico")).toBe("https://claude.ai/favicon.ico");
-        for (const style of ["emoji", "badge", "dot", "tint", "bg"] as const) {
+        expect(faviconFor("hole", "idle", "https://claude.ai/favicon.ico")).toBe("https://claude.ai/favicon.ico");
+        for (const style of ["emoji", "badge", "dot", "hole", "bg"] as const) {
             const icons = (["streaming", "done", "ready", "error"] as const).map(state => faviconFor(style, state, "x"));
             expect(new Set(icons).size).toBe(4);
             expect(icons.every(href => href.startsWith("data:image/svg+xml"))).toBe(true);
         }
-        expect(decodeURIComponent(faviconFor("tint", "error", "x"))).toContain("#EF4444");
+        const mark = parseMark('<svg width="248" height="248" viewBox="0 0 248 248" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1 1h9" fill="#D97757"/></svg>')!;
+        expect(mark.viewBox).toBe("0 0 248 248");
+        const tinted = decodeURIComponent(faviconFor("hole", "error", "x", mark));
+        expect(tinted).toContain('fill="#EF4444"');
+        expect(tinted).not.toContain("#D97757");
+        expect(decodeURIComponent(faviconFor("dot", "done", "x", mark))).toContain('fill="#D97757"');
     });
 });

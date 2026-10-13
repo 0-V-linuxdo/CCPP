@@ -66,7 +66,10 @@ let pendingTab: string | null = null;
 
 export const nativeOpen = () => !!mounted && !!document.querySelector(NATIVE_DIALOG);
 
-export function installNative(scope: Scope) {
+let navPosition: () => "above" | "below" = () => "below";
+
+export function installNative(scope: Scope, position: () => "above" | "below") {
+    navPosition = position;
     addStyle(scope, DOC_CSS, "settings-native");
     watch(scope, NATIVE_DIALOG, dialog => {
         let active: string | null = null;
@@ -130,6 +133,12 @@ export function installNative(scope: Scope) {
                     h("div", { class: c.header, "data-ccpp-nav-version": "", text: `v${version}` }),
                 );
                 scroller.appendChild(group);
+            }
+            // Above or below claude.ai's own sections, as chosen in Settings.
+            const wantFirst = navPosition() === "above";
+            if (wantFirst ? scroller.firstElementChild !== group : scroller.lastElementChild !== group) {
+                if (wantFirst) scroller.prepend(group);
+                else scroller.appendChild(group);
             }
             for (const button of group.querySelectorAll<HTMLElement>("button[data-tab]")) {
                 const on = button.dataset.tab === active;

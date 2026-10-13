@@ -46,7 +46,7 @@ const CATEGORY_LABELS: Record<Category | "favorites" | "recent" | "all", Text> =
 const CATEGORY_ORDER = Object.keys(CATEGORY_LABELS) as (keyof typeof CATEGORY_LABELS)[];
 
 const L = {
-    search: { zh: "搜索插件…", en: "Search plugins…" },
+    search: { zh: "搜索 {n} 个插件…", en: "Search {n} plugins…" },
     all: { zh: "全部", en: "All" },
     enabled: { zh: "已启用", en: "Enabled" },
     disabled: { zh: "已停用", en: "Disabled" },
@@ -184,7 +184,7 @@ export function renderPluginsTab(container: HTMLElement) {
     if (!view.category) view.category = defaultCategory();
     const plugins = listedPlugins();
 
-    const search = h("input", { class: "input", type: "search", placeholder: t(L.search), value: view.query, "aria-label": t(L.search) });
+    const search = h("input", { class: "input", type: "search", placeholder: t(L.search).replace("{n}", String(plugins.length)), value: view.query, "aria-label": t(L.search).replace("{n}", String(plugins.length)) });
     search.addEventListener("input", () => {
         view.query = search.value;
         renderList();

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.1
+// @version      20261013.0.3.2
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -1993,7 +1993,7 @@ select.input { padding-right: 6px; }
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "[20261013] v0.3.1";
+  var version = "[20261013] v0.3.2";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -2067,7 +2067,9 @@ select.input { padding-right: 6px; }
   var mounted = null;
   var pendingTab = null;
   var nativeOpen = () => !!mounted && !!document.querySelector(NATIVE_DIALOG);
-  function installNative(scope) {
+  var navPosition = () => "below";
+  function installNative(scope, position) {
+    navPosition = position;
     addStyle(scope, DOC_CSS, "settings-native");
     watch(scope, NATIVE_DIALOG, (dialog) => {
       let active = null;
@@ -2122,6 +2124,13 @@ select.input { padding-right: 6px; }
           }
           group = h("div", { "data-ccpp-nav-group": "", "data-tabs": list.map((tab) => tab.id).join(","), "data-lang": t({ zh: "zh", en: "en" }), style: { display: "contents" } }, h("div", { class: c.header, text: L2.group }), ul, h("div", { class: c.header, "data-ccpp-nav-version": "", text: `v${version}` }));
           scroller.appendChild(group);
+        }
+        const wantFirst = navPosition() === "above";
+        if (wantFirst ? scroller.firstElementChild !== group : scroller.lastElementChild !== group) {
+          if (wantFirst)
+            scroller.prepend(group);
+          else
+            scroller.appendChild(group);
         }
         for (const button of group.querySelectorAll("button[data-tab]")) {
           const on = button.dataset.tab === active;
@@ -2388,7 +2397,7 @@ select.input { padding-right: 6px; }
   };
   var CATEGORY_ORDER = Object.keys(CATEGORY_LABELS);
   var L3 = {
-    search: { zh: "搜索插件…", en: "Search plugins…" },
+    search: { zh: "搜索 {n} 个插件…", en: "Search {n} plugins…" },
     all: { zh: "全部", en: "All" },
     enabled: { zh: "已启用", en: "Enabled" },
     disabled: { zh: "已停用", en: "Disabled" },
@@ -2499,7 +2508,7 @@ select.input { padding-right: 6px; }
     if (!view.category)
       view.category = defaultCategory();
     const plugins = listedPlugins();
-    const search = h("input", { class: "input", type: "search", placeholder: t(L3.search), value: view.query, "aria-label": t(L3.search) });
+    const search = h("input", { class: "input", type: "search", placeholder: t(L3.search).replace("{n}", String(plugins.length)), value: view.query, "aria-label": t(L3.search).replace("{n}", String(plugins.length)) });
     search.addEventListener("input", () => {
       view.query = search.value;
       renderList();
@@ -2835,6 +2844,16 @@ select.input { padding-right: 6px; }
       description: { zh: "CC++ 的页面作为一组标签出现在 claude.ai 设置的侧栏里。关掉后用独立弹窗。", en: "CC++ pages appear as a group in claude.ai's settings sidebar. Off uses a standalone dialog." },
       default: true
     },
+    navPosition: {
+      type: "select",
+      label: { zh: "CC++ 分组位置", en: "CC++ group position" },
+      description: { zh: "在 claude.ai 设置侧栏里放在原生分区的上方还是下方。", en: "Above or below claude.ai's own sections in the settings sidebar." },
+      default: "below",
+      options: [
+        { value: "below", label: { zh: "下方", en: "Below" } },
+        { value: "above", label: { zh: "上方", en: "Above" } }
+      ]
+    },
     userMenuEntry: { type: "boolean", label: { zh: "头像菜单里的 CC++ 子菜单", en: "CC++ submenu in the account menu" }, description: { zh: "CC++ › 插件 › 列出全部插件，点开即该插件的设置。", en: "CC++ › Plugins › lists every plugin; click one for its settings." }, default: true },
     settingsFlyout: { type: "boolean", label: { zh: "头像菜单的「设置」展开成子菜单", en: "Account-menu Settings opens a submenu" }, description: { zh: "悬停展开：CC++ 页面和 claude.ai 各设置页；直接点击仍打开设置。", en: "Hover for CC++ pages and claude.ai's settings pages; a click still opens settings." }, default: true },
     hotkey: { type: "string", label: { zh: "打开设置的快捷键", en: "Shortcut to open settings" }, description: { zh: "例如 mod+shift+. （mod = ⌘ / Ctrl），留空关闭。", en: "e.g. mod+shift+. (mod = ⌘ / Ctrl). Empty disables it." }, default: "mod+shift+." },
@@ -2901,7 +2920,7 @@ select.input { padding-right: 6px; }
       view.showApi = settings.store.showApiPlugins;
       registerTab(scope, { id: "plugins", title: L5.plugins, icon: "puzzle", order: 0, render: renderPluginsTab });
       initLayer(scope);
-      installNative(scope);
+      installNative(scope, () => settings.store.navPosition === "above" ? "above" : "below");
       scope.defer(onPluginStateChange(redraw));
       scope.defer(onSettingsChange((_, key) => key === "enabled" && redraw()));
       scope.defer(prefs.subscribe(redraw));
@@ -4637,12 +4656,12 @@ ${t(L15.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
       type: "select",
       label: { zh: "图标样式", en: "Icon style" },
       description: { zh: "回复中蓝色、完成绿色、输入框有内容待发送黄色、出错红色。", en: "Blue while replying, green when done, amber when a draft is ready to send, red on error." },
-      default: "tint",
+      default: "hole",
       options: [
         { value: "emoji", label: { zh: "只用表情", en: "Emoji only" } },
         { value: "badge", label: { zh: "角标 + 符号", en: "Badge + glyph" } },
         { value: "dot", label: { zh: "彩色圆点", en: "Colour dot" } },
-        { value: "tint", label: { zh: "图标变色", en: "Mark tint" } },
+        { value: "hole", label: { zh: "图标变色", en: "Mark tint" } },
         { value: "bg", label: { zh: "背景变色", en: "Background tint" } }
       ]
     }
@@ -4655,19 +4674,32 @@ ${t(L15.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
   };
   var CLAY = "#D97757";
   var EMOJI = { streaming: "\uD83D\uDD04", done: "✅", ready: "✍️", error: "❌" };
-  function spark(color, cx = 32, cy = 32, outer = 26, inner = 5, width = 6.5) {
+  function fallbackMark() {
     const spokes = [];
     for (let i = 0;i < 12; i++) {
-      const angle = i * Math.PI / 6 + (i % 2 ? 0.08 : 0);
-      const length = i % 2 ? outer * 0.78 : outer;
-      const x1 = cx + Math.cos(angle) * inner;
-      const y1 = cy + Math.sin(angle) * inner;
-      const x2 = cx + Math.cos(angle) * length;
-      const y2 = cy + Math.sin(angle) * length;
-      spokes.push(`<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}"/>`);
+      const angle = i * Math.PI / 6;
+      const length = i % 2 ? 20 : 26;
+      const x = (r) => (32 + Math.cos(angle) * r).toFixed(1);
+      const y = (r) => (32 + Math.sin(angle) * r).toFixed(1);
+      spokes.push(`<line x1="${x(5)}" y1="${y(5)}" x2="${x(length)}" y2="${y(length)}" stroke="${CLAY}" stroke-width="6.5" stroke-linecap="round"/>`);
     }
-    return `<g stroke="${color}" stroke-width="${width}" stroke-linecap="round">${spokes.join("")}</g>`;
+    return { viewBox: "0 0 64 64", inner: spokes.join("") };
   }
+  function parseMark(svgText) {
+    const open = /<svg\b[^>]*>/i.exec(svgText);
+    const close = svgText.lastIndexOf("</svg>");
+    if (!open || close < 0)
+      return null;
+    const viewBox = /viewBox="([^"]+)"/i.exec(open[0])?.[1] ?? (() => {
+      const w = /width="([\d.]+)"/.exec(open[0])?.[1];
+      const hgt = /height="([\d.]+)"/.exec(open[0])?.[1];
+      return w && hgt ? `0 0 ${w} ${hgt}` : null;
+    })();
+    const inner = svgText.slice(open.index + open[0].length, close).replace(/<script[\s\S]*?<\/script>/gi, "");
+    return viewBox && inner.trim() ? { viewBox, inner } : null;
+  }
+  var recolor = (inner, color) => inner.replace(/\b(fill|stroke)="(?!none)[^"]*"/g, `$1="${color}"`);
+  var place3 = (mark, inner, x = 0, y = 0, size = 64) => `<svg x="${x}" y="${y}" width="${size}" height="${size}" viewBox="${mark.viewBox}">${inner}</svg>`;
   var svgUrl = (inner) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">${inner}</svg>`)}`;
   function glyph(state) {
     const s = `fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"`;
@@ -4679,22 +4711,19 @@ ${t(L15.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
       return `<path d="M51.5 56.5v-9.6M46.8 51.2l4.7-4.8 4.7 4.8" ${s}/>`;
     return `<path d="M47.3 47.3l8.4 8.4M55.7 47.3l-8.4 8.4" ${s}/>`;
   }
-  function faviconFor(style, state, official) {
-    if (style === "emoji") {
-      if (state === "idle")
-        return official;
+  function faviconFor(style, state, official, mark = null) {
+    if (state === "idle")
+      return official;
+    const color = COLOR[state];
+    if (style === "emoji")
       return svgUrl(`<text x="32" y="54" font-size="54" text-anchor="middle">${EMOJI[state]}</text>`);
-    }
-    const color = state === "idle" ? null : COLOR[state];
-    if (style === "tint")
-      return svgUrl(spark(color ?? CLAY));
+    const m = mark ?? fallbackMark();
+    if (style === "hole")
+      return svgUrl(place3(m, recolor(m.inner, color)));
     if (style === "bg")
-      return svgUrl(`<rect width="64" height="64" rx="14" fill="${color ?? CLAY}"/>${spark("#fff", 32, 32, 22, 4, 5.5)}`);
-    const base = spark(CLAY);
-    if (!color || state === "idle")
-      return svgUrl(base);
+      return svgUrl(`<rect width="64" height="64" rx="14" fill="${color}"/>${place3(m, recolor(m.inner, "#fff"), 9, 9, 46)}`);
     const badge = style === "dot" ? `<circle cx="52" cy="52" r="11" fill="#fff"/><circle cx="52" cy="52" r="8" fill="${color}"/>` : `<circle cx="51.5" cy="51.5" r="12.5" fill="#fff"/><circle cx="51.5" cy="51.5" r="10" fill="${color}"/>${glyph(state)}`;
-    return svgUrl(base + badge);
+    return svgUrl(place3(m, m.inner) + badge);
   }
   function nextState(current, event, hasDraft) {
     switch (event) {
@@ -4733,6 +4762,21 @@ ${t(L15.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
     start(scope) {
       const removed = [];
       let official = `${location.origin}/favicon.ico`;
+      let mark = null;
+      let markFrom = "";
+      const loadMark = (href) => {
+        if (!/\.svg(?:$|\?)/i.test(href) || href === markFrom)
+          return;
+        markFrom = href;
+        fetch(href, { credentials: "omit" }).then((r) => r.ok ? r.text() : "").then((text) => {
+          const parsed = parseMark(text);
+          if (!parsed || !scope.alive)
+            return;
+          mark = parsed;
+          paint();
+        }).catch(() => {});
+      };
+      const onChatSurface = () => ["chat", "new", "project"].includes(currentRoute().kind);
       let state = chatPhase() === "streaming" ? "streaming" : "idle";
       const draft = () => !!getText().trim();
       const link = document.createElement("link");
@@ -4746,7 +4790,7 @@ ${t(L15.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
         for (const node of [...head.querySelectorAll("link")]) {
           if (!isIconLink(node))
             continue;
-          if (node.href && !node.href.startsWith("data:"))
+          if (node.href && !node.href.startsWith("data:") && (/svg/i.test(node.type) || !/\.svg/i.test(official)))
             official = node.href;
           removed.push(node);
           node.remove();
@@ -4754,9 +4798,18 @@ ${t(L15.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
         if (head.firstChild !== link)
           head.prepend(link);
       };
+      const release = () => {
+        link.remove();
+        for (const node of removed.splice(0))
+          if (!node.isConnected)
+            document.head?.appendChild(node);
+      };
       const paint = () => {
+        if (!onChatSurface())
+          return release();
         claim();
-        const href = faviconFor(settings12.store.style, state, official);
+        loadMark(official);
+        const href = faviconFor(settings12.store.style, state, official, mark);
         if (link.getAttribute("href") !== href)
           link.setAttribute("href", href);
       };
@@ -4788,13 +4841,8 @@ ${t(L15.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
         } catch {}
       });
       if (document.head)
-        scope.observe(document.head, { childList: true }, () => [...document.head.querySelectorAll("link")].some(isIconLink) && paint());
-      scope.defer(() => {
-        link.remove();
-        for (const node of removed.splice(0))
-          if (!node.isConnected)
-            document.head?.appendChild(node);
-      });
+        scope.observe(document.head, { childList: true }, () => link.isConnected && [...document.head.querySelectorAll("link")].some(isIconLink) && paint());
+      scope.defer(release);
       paint();
     }
   });
@@ -5584,7 +5632,7 @@ ${m.text.trim()}`).join(`
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "[20261013] v0.3.1",
+      version: "[20261013] v0.3.2",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -5601,7 +5649,7 @@ ${m.text.trim()}`).join(`
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "[20261013] v0.3.1";
+    win[FLAG] = "[20261013] v0.3.2";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     startPhase("document-start");
@@ -5617,7 +5665,7 @@ ${m.text.trim()}`).join(`
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"[20261013] v0.3.1"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"[20261013] v0.3.2"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();
