@@ -4,7 +4,7 @@ import { allPlugins, getPlugin, registerPlugins, resetRegistry, startPhase } fro
 import { PLUGINS } from "../src/plugins";
 import { combinedCss, parseMeta, validThemeUrl } from "../src/plugins/_core/themes";
 
-const tick = () => new Promise(resolve => setTimeout(resolve, 120));
+const tick = () => new Promise(resolve => setTimeout(resolve, 250));
 
 /** A trimmed copy of claude.ai's settings dialog markup. */
 function fakeSettingsDialog() {
