@@ -1,0 +1,124 @@
+import { describe, expect, test } from "bun:test";
+
+import { orgFromCookie, parseActivity, parseConversation, parseUsage } from "../src/plugins/_api/claude";
+import { parseRoute } from "../src/plugins/_api/router";
+import { matches, parseCombo } from "../src/plugins/_api/hotkeys";
+import { level } from "../src/plugins/usageDisplay";
+import { dotKind } from "../src/plugins/projectStatus";
+import { remember } from "../src/plugins/inputHistory";
+import { parsePresets } from "../src/plugins/promptPresets";
+import { withPrefix } from "../src/plugins/tabStatus";
+import { pickPhrase, fillPhrase } from "../src/plugins/customGreeting";
+import { recordVisit } from "../src/plugins/recentChats";
+import { toMarkdown } from "../src/plugins/exportChat";
+import { splitLinks } from "../src/plugins/betterLinks";
+import { isTelemetry } from "../src/plugins/noTelemetry";
+import { toggleStar } from "../src/plugins/messageStars/store";
+
+const ID = "2e8860cc-f63c-4514-931c-14080b0aa61e";
+
+describe("claude.ai API parsing", () => {
+    test("usage windows", () => {
+        const usage = parseUsage({ five_hour: { utilization: 68, resets_at: "2026-10-13T15:50:00.702909+00:00" }, seven_day: { utilization: "17.0", resets_at: null }, seven_day_opus: null }, 1);
+        expect(usage.fiveHour).toEqual({ utilization: 68, resetsAt: Date.parse("2026-10-13T15:50:00.702909+00:00") });
+        expect(usage.sevenDay).toEqual({ utilization: 17, resetsAt: null });
+        expect(usage.extra).toEqual([]);
+        expect(parseUsage(null).fiveHour).toBeNull();
+    });
+
+    test("conversation follows the current branch", () => {
+        const chat = parseConversation({
+            uuid: ID,
+            name: "Test",
+            current_leaf_message_uuid: "c2",
+            chat_messages: [
+                { uuid: "a", sender: "human", text: "hi", parent_message_uuid: "root" },
+                { uuid: "b1", sender: "assistant", content: [{ type: "text", text: "old" }], parent_message_uuid: "a" },
+                { uuid: "b2", sender: "assistant", content: [{ type: "thinking", thinking: "x" }, { type: "text", text: "new" }], parent_message_uuid: "a" },
+                { uuid: "c2", sender: "human", text: "more", parent_message_uuid: "b2" },
+            ],
+        });
+        expect(chat.messages.map(m => `${m.role}:${m.text}`)).toEqual(["user:hi", "assistant:new", "user:more"]);
+    });
+
+    test("org id comes only from a valid cookie value", () => {
+        expect(orgFromCookie(`a=1; lastActiveOrg=${ID}; b=2`)).toBe(ID);
+        expect(orgFromCookie("lastActiveOrg=nope")).toBeNull();
+    });
+
+    test("project activity counts working and blocked threads", () => {
+        const raw = { data: [{ bound_sessions: [{ status: "active", status_bucket: "working" }] }, { bound_sessions: [{ status: "active", status_bucket: "blocked" }, { status: "archived", status_bucket: "working" }] }, {}] };
+        expect(parseActivity("chan_x", raw)).toEqual({ channelId: "chan_x", working: 1, blocked: 1 });
+        expect(dotKind({ channelId: "c", working: 0, blocked: 2 }, true)).toBe("awaiting");
+        expect(dotKind({ channelId: "c", working: 0, blocked: 2 }, false)).toBeNull();
+        expect(dotKind({ channelId: "c", working: 1, blocked: 0 }, true)).toBe("clay");
+    });
+});
+
+describe("routing and keys", () => {
+    test("routes", () => {
+        expect(parseRoute(`/chat/${ID}`)).toMatchObject({ kind: "chat", chatId: ID });
+        expect(parseRoute("/new").kind).toBe("new");
+        expect(parseRoute("/settings/usage").kind).toBe("settings");
+    });
+
+    test("combos", () => {
+        const combo = parseCombo("ctrl+`");
+        expect(matches(new KeyboardEvent("keydown", { key: "`", code: "Backquote", ctrlKey: true }), combo)).toBe(true);
+        expect(matches(new KeyboardEvent("keydown", { key: "`", code: "Backquote" }), combo)).toBe(false);
+    });
+});
+
+describe("feature helpers", () => {
+    test("usage colour levels", () => {
+        expect([level(10, 70, 90), level(75, 70, 90), level(95, 70, 90)]).toEqual(["ok", "warn", "bad"]);
+    });
+
+    test("input history dedupes newest first", () => {
+        expect(remember(["b", "a"], " a ", 3)).toEqual(["a", "b"]);
+        expect(remember(["c", "b", "a"], "d", 3)).toEqual(["d", "c", "b"]);
+    });
+
+    test("presets", () => {
+        expect(parsePresets("T1\nbody one\n\nT2")).toEqual([{ title: "T1", body: "body one" }, { title: "T2", body: "T2" }]);
+    });
+
+    test("tab prefix replaces earlier prefixes", () => {
+        expect(withPrefix("⏳ Chat - Claude", "✅", ["⏳", "✅"])).toBe("✅ Chat - Claude");
+        expect(withPrefix("✅ Chat", "", ["⏳", "✅"])).toBe("Chat");
+    });
+
+    test("greetings", () => {
+        expect(pickPhrase(["a", "b", "c"], "sequential", 2).index).toBe(0);
+        expect(pickPhrase(["a", "b"], "random", 0, () => 0).index).toBe(1);
+        expect(fillPhrase("{time}，{name}", "GG", 20, true)).toBe("晚上好，GG");
+    });
+
+    test("recent chats", () => {
+        expect(recordVisit([{ id: "a", title: "A", at: 1 }], { id: "a", title: "A2", at: 2 })).toEqual([{ id: "a", title: "A2", at: 2 }]);
+    });
+
+    test("markdown export", () => {
+        const md = toMarkdown({ uuid: ID, name: "T", model: null, createdAt: null, updatedAt: null, messages: [{ uuid: "1", parent: null, role: "user", text: "q", createdAt: null }, { uuid: "2", parent: "1", role: "assistant", text: "a", createdAt: null }] }, false);
+        expect(md).toContain("# T");
+        expect(md).toContain("## 🧑 You\n\nq");
+        expect(md).toContain("## 🤖 Claude\n\na");
+    });
+
+    test("bare links", () => {
+        expect(splitLinks("see example.com/docs. ok")).toEqual(["see ", { href: "https://example.com/docs", text: "example.com/docs" }, ". ok"]);
+        expect(splitLinks("mail me@example.com")).toEqual(["mail me@example.com"]);
+    });
+
+    test("telemetry matcher", () => {
+        expect(isTelemetry({ url: new URL("https://o1.ingest.sentry.io/api/1"), method: "POST" })).toBe(true);
+        expect(isTelemetry({ url: new URL("https://claude.ai/api/organizations/x/usage"), method: "GET" })).toBe(false);
+    });
+
+    test("stars toggle", () => {
+        const star = { key: "k", index: 2, role: "user" as const, text: "t", at: 1 };
+        const once = toggleStar("c", "Chat", star, {});
+        expect(once.starred).toBe(true);
+        expect(toggleStar("c", "Chat", star, once.next).next).toEqual({});
+    });
+});
