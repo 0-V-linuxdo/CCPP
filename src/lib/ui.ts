@@ -90,11 +90,20 @@ export function shadowBox(css: string, tag: keyof HTMLElementTagNameMap = "div")
  * A fixed, isolated layer: our CSS never leaks into claude.ai and claude.ai's never into us.
  * It follows claude.ai's light/dark mode and is removed when the scope ends.
  */
-export function createHost(scope: Scope, id: string, css: string, options: { fixed?: boolean } = {}): Host {
+/**
+ * Stacking: "page" layers (outlines, side widgets) sit with the page, under claude.ai's dialogs, menus
+ * and tooltips (z-50 portals) and hide while a modal is open; "top" layers (toasts, our popovers) stay above all.
+ */
+const LAYER_Z = { page: "40", top: "2147483600" } as const;
+
+export function createHost(scope: Scope, id: string, css: string, options: { fixed?: boolean; layer?: keyof typeof LAYER_Z } = {}): Host {
     const { host, root, box, sync } = shadowBox(css);
     host.id = `ccpp-${id}`;
     host.dataset.ccpp = id;
-    if (options.fixed !== false) Object.assign(host.style, { position: "fixed", inset: "0", zIndex: "2147483600", pointerEvents: "none" });
+    const layer = options.layer ?? "top";
+    host.dataset.ccppLayer = layer;
+    if (options.fixed !== false) Object.assign(host.style, { position: "fixed", inset: "0", zIndex: LAYER_Z[layer], pointerEvents: "none" });
+    if (layer === "page") ensurePageLayerCss();
     scope.observe(document.documentElement, { attributes: true, attributeFilter: ["data-mode", "class"] }, sync);
     const attach = () => {
         if (document.body && host.parentNode !== document.body) document.body.appendChild(host);
@@ -119,4 +128,14 @@ export function anchorPosition(anchor: Element, panel: HTMLElement, gap = 8) {
     const top = above >= 8 || rect.bottom + gap + height > vh ? Math.max(8, above) : rect.bottom + gap;
     panel.style.left = `${Math.round(left)}px`;
     panel.style.top = `${Math.round(top)}px`;
+}
+
+let pageLayerCss: HTMLStyleElement | null = null;
+/** Page layers step aside while claude.ai shows a modal dialog (settings, search, confirms). */
+function ensurePageLayerCss() {
+    if (pageLayerCss?.isConnected) return;
+    pageLayerCss = document.createElement("style");
+    pageLayerCss.id = "ccpp-page-layer";
+    pageLayerCss.textContent = `body:has([role="dialog"][aria-modal="true"], [role="alertdialog"], [role="dialog"][data-perf-overlay]) > [data-ccpp-layer="page"] { visibility: hidden !important; }`;
+    (document.head ?? document.documentElement).appendChild(pageLayerCss);
 }

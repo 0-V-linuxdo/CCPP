@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.9
+// @version      20261013.0.3.10
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -1473,12 +1473,17 @@ select.input { padding-right: 6px; }
     sync();
     return { host, root, box, sync };
   }
+  var LAYER_Z = { page: "40", top: "2147483600" };
   function createHost(scope, id, css, options = {}) {
     const { host, root, box, sync } = shadowBox(css);
     host.id = `ccpp-${id}`;
     host.dataset.ccpp = id;
+    const layer = options.layer ?? "top";
+    host.dataset.ccppLayer = layer;
     if (options.fixed !== false)
-      Object.assign(host.style, { position: "fixed", inset: "0", zIndex: "2147483600", pointerEvents: "none" });
+      Object.assign(host.style, { position: "fixed", inset: "0", zIndex: LAYER_Z[layer], pointerEvents: "none" });
+    if (layer === "page")
+      ensurePageLayerCss();
     scope.observe(document.documentElement, { attributes: true, attributeFilter: ["data-mode", "class"] }, sync);
     const attach = () => {
       if (document.body && host.parentNode !== document.body)
@@ -1502,6 +1507,15 @@ select.input { padding-right: 6px; }
     const top = above >= 8 || rect.bottom + gap + height > vh ? Math.max(8, above) : rect.bottom + gap;
     panel.style.left = `${Math.round(left)}px`;
     panel.style.top = `${Math.round(top)}px`;
+  }
+  var pageLayerCss = null;
+  function ensurePageLayerCss() {
+    if (pageLayerCss?.isConnected)
+      return;
+    pageLayerCss = document.createElement("style");
+    pageLayerCss.id = "ccpp-page-layer";
+    pageLayerCss.textContent = `body:has([role="dialog"][aria-modal="true"], [role="alertdialog"], [role="dialog"][data-perf-overlay]) > [data-ccpp-layer="page"] { visibility: hidden !important; }`;
+    (document.head ?? document.documentElement).appendChild(pageLayerCss);
   }
 
   // src/plugins/_api/notices/index.ts
@@ -2063,7 +2077,7 @@ select.input { padding-right: 6px; }
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.9";
+  var version = "0.3.10";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -3861,7 +3875,7 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
     dependencies: ["TranscriptApi", "RouterApi", "ChatStateApi"],
     settings: settings5,
     start(scope) {
-      const { box } = createHost(scope, "navigator", CSS4);
+      const { box } = createHost(scope, "navigator", CSS4, { layer: "page" });
       const navs = new Map;
       const createNav = (scroller) => {
         const ticks = h("div", { class: "ticks", role: "navigation", "aria-label": t(L10.title) });
@@ -5423,7 +5437,7 @@ ${targets.map((t) => `${t}:hover`).join(`,
         if (next !== list)
           visits.set(next);
       }, 3000);
-      const { box } = createHost(scope, "recent-chats", CSS7);
+      const { box } = createHost(scope, "recent-chats", CSS7, { layer: "page" });
       let selected = 0;
       let open = false;
       const close = () => {
@@ -5878,7 +5892,7 @@ ${m.text.trim()}`).join(`
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.9",
+      version: "0.3.10",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -5895,7 +5909,7 @@ ${m.text.trim()}`).join(`
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.9";
+    win[FLAG] = "0.3.10";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     startPhase("document-start");
@@ -5911,7 +5925,7 @@ ${m.text.trim()}`).join(`
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.9"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.10"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();

@@ -94,7 +94,7 @@ export default definePlugin({
             if (next !== list) visits.set(next);
         }, 3000);
 
-        const { box } = createHost(scope, "recent-chats", CSS);
+        const { box } = createHost(scope, "recent-chats", CSS, { layer: "page" });
         let selected = 0;
         let open = false;
 

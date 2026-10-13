@@ -193,7 +193,7 @@ export default definePlugin({
     dependencies: ["TranscriptApi", "RouterApi", "ChatStateApi"],
     settings,
     start(scope: Scope) {
-        const { box } = createHost(scope, "navigator", CSS);
+        const { box } = createHost(scope, "navigator", CSS, { layer: "page" });
         const navs = new Map<HTMLElement, Nav>();
 
         const createNav = (scroller: HTMLElement): Nav => {
