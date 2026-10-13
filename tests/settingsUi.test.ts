@@ -80,13 +80,19 @@ describe("settings UI", () => {
         expect(entry.previousElementSibling!.getAttribute("data-testid")).toBe("user-menu-settings");
         expect(entry.className).toBe("item sub");
         entry.dispatchEvent(new Event("pointerenter"));
-        const sub = menu.querySelector<HTMLElement>("[data-ccpp-submenu]")!;
+        const sub = [...menu.children].find(el => el.hasAttribute("data-ccpp-panel-level")) as HTMLElement;
         expect(sub).not.toBeNull();
         expect(sub.className).not.toContain("w-[17rem]");
         expect(sub.querySelectorAll('[role="menuitem"]').length).toBeGreaterThanOrEqual(4);
         sub.querySelector<HTMLElement>('[aria-haspopup="menu"]')!.dispatchEvent(new Event("pointerenter"));
         const list = sub.querySelector("[data-ccpp-panel-level]");
         expect(list?.querySelectorAll('[role="menuitem"]').length).toBeGreaterThan(5);
+        // claude.ai's Settings row expands too, listing CC++ pages and claude.ai's own sections.
+        const settingsRow = menu.querySelector<HTMLElement>('[data-testid="user-menu-settings"]')!;
+        settingsRow.dispatchEvent(new Event("pointerenter"));
+        const flyout = [...menu.children].find(el => el.hasAttribute("data-ccpp-panel-level")) as HTMLElement;
+        expect(flyout.textContent).toContain("CC++");
+        expect(flyout.querySelectorAll('[role="menuitem"]').length).toBeGreaterThan(12);
         menu.remove();
         expect(allPlugins().length).toBeGreaterThan(10);
     });

@@ -17,6 +17,11 @@ import { onRedraw, type SettingsTab, tabs, version } from "./state";
 import { PANEL_CSS } from "./styles";
 
 const NAV = '[data-perf-region="settings_nav"]';
+/** CC++ pages get their own hash, #settings/ccpp-<tab>, so reload and Back work like native pages. */
+const HASH = "#settings/ccpp-";
+/** claude.ai drops a settings hash it doesn't know, so read ours before it gets the chance. */
+const bootHash = typeof location === "object" ? location.hash : "";
+const hashTab = (hash: string) => (hash.startsWith(HASH) ? hash.slice(HASH.length) : null);
 const PANEL = '[data-perf-region="settings_panel"]';
 
 const L = {
@@ -158,6 +163,11 @@ export function installNative(scope: Scope) {
         function activate(id: string) {
             if (!tabs.has(id)) return;
             active = id;
+            if (location.hash !== HASH + id) {
+                try {
+                    history.pushState(history.state, "", HASH + id);
+                } catch {}
+            }
             shadow.sync();
             draw();
             shadow.box.querySelector(".page-body")?.scrollTo(0, 0);
@@ -185,7 +195,11 @@ export function installNative(scope: Scope) {
             if (target?.closest?.(`${NAV} li:not([data-ccpp-nav]), ${NAV} [role="option"]`)) deactivate();
         };
         dialog.addEventListener("click", onClick, true);
-        const onHash = () => deactivate();
+        const onHash = () => {
+            const id = hashTab(location.hash);
+            if (id && tabs.has(id)) activate(id);
+            else deactivate();
+        };
         window.addEventListener("hashchange", onHash);
         const offRedraw = onRedraw(() => active && draw());
 
@@ -209,12 +223,25 @@ export function installNative(scope: Scope) {
             panel()?.removeAttribute("data-ccpp-panel");
             dialog.querySelector("[data-ccpp-nav-group]")?.remove();
             if (mounted === self) mounted = null;
+            // The dialog closed on one of our pages; don't leave its hash behind.
+            if (hashTab(location.hash)) {
+                try {
+                    history.replaceState(history.state, "", location.pathname + location.search);
+                } catch {}
+            }
         };
     });
     scope.defer(() => {
         mounted = null;
         pendingTab = null;
     });
+    // Reopen a CC++ page after a reload, or when Back/Forward lands on one while the dialog is closed.
+    const fromHash = (hash: string) => {
+        const id = hashTab(hash);
+        if (id && tabs.has(id) && !nativeOpen()) void openNative(id);
+    };
+    scope.listen(window, "hashchange", () => fromHash(location.hash));
+    if (hashTab(bootHash)) setTimeout(() => fromHash(bootHash), 500);
 }
 
 /**

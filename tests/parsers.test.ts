@@ -15,6 +15,7 @@ import { toMarkdown } from "../src/plugins/exportChat";
 import { splitLinks } from "../src/plugins/betterLinks";
 import { isTelemetry } from "../src/plugins/noTelemetry";
 import { toggleStar } from "../src/plugins/messageStars/store";
+import { faviconFor, nextState } from "../src/plugins/chatFavicon";
 
 const ID = "2e8860cc-f63c-4514-931c-14080b0aa61e";
 
@@ -160,5 +161,29 @@ describe("recent chats", () => {
         list = recordVisit(list, { id: "a", title: "", at: 2 });
         expect(list[0]).toEqual({ id: "a", title: "Trip plan", at: 2 });
         expect(renameVisit(list, "a", "")).toBe(list);
+    });
+});
+
+describe("chat favicon", () => {
+    test("state follows replies, drafts and errors", () => {
+        expect(nextState("idle", "start", false)).toBe("streaming");
+        expect(nextState("streaming", "end", false)).toBe("done");
+        expect(nextState("done", "input", false)).toBe("done");
+        expect(nextState("done", "input", true)).toBe("ready");
+        expect(nextState("ready", "input", false)).toBe("idle");
+        expect(nextState("streaming", "error", false)).toBe("error");
+        expect(nextState("error", "end", false)).toBe("error");
+        expect(nextState("error", "input", true)).toBe("error");
+        expect(nextState("error", "start", false)).toBe("streaming");
+        expect(nextState("done", "route", false)).toBe("idle");
+    });
+    test("five styles, emoji mode keeps the official icon when idle", () => {
+        expect(faviconFor("emoji", "idle", "https://claude.ai/favicon.ico")).toBe("https://claude.ai/favicon.ico");
+        for (const style of ["emoji", "badge", "dot", "tint", "bg"] as const) {
+            const icons = (["streaming", "done", "ready", "error"] as const).map(state => faviconFor(style, state, "x"));
+            expect(new Set(icons).size).toBe(4);
+            expect(icons.every(href => href.startsWith("data:image/svg+xml"))).toBe(true);
+        }
+        expect(decodeURIComponent(faviconFor("tint", "error", "x"))).toContain("#EF4444");
     });
 });

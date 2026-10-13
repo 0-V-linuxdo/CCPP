@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.0
+// @version      20261013.0.3.1
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -778,8 +778,8 @@
     hidden: true,
     startAt: "document-start",
     start(scope) {
-      const history = pageWindow.history;
-      const originals = { pushState: history.pushState, replaceState: history.replaceState };
+      const history2 = pageWindow.history;
+      const originals = { pushState: history2.pushState, replaceState: history2.replaceState };
       for (const key of ["pushState", "replaceState"]) {
         const original = originals[key];
         const patched = function(...args) {
@@ -787,10 +787,10 @@
           queueMicrotask(check);
           return result;
         };
-        history[key] = patched;
+        history2[key] = patched;
         scope.defer(() => {
-          if (history[key] === patched)
-            history[key] = original;
+          if (history2[key] === patched)
+            history2[key] = original;
         });
       }
       scope.listen(pageWindow, "popstate", check);
@@ -1203,6 +1203,11 @@
       return null;
     }
   }
+  function onResponse(scope, match, handle) {
+    const hook = { match, handle };
+    responseHooks.add(hook);
+    scope.defer(() => responseHooks.delete(hook));
+  }
   function block(scope, match) {
     blockers.add(match);
     scope.defer(() => blockers.delete(match));
@@ -1214,6 +1219,7 @@
       return false;
     }
   });
+  var sameOrigin = (req) => req.url.origin === location.origin;
   var network_default = definePlugin({
     name: "NetworkApi",
     title: { zh: "网络观察", en: "Network API" },
@@ -1987,7 +1993,7 @@ select.input { padding-right: 6px; }
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "[20261013] v0.3.0";
+  var version = "[20261013] v0.3.1";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -2026,6 +2032,9 @@ select.input { padding-right: 6px; }
 
   // src/plugins/_core/settings/native.ts
   var NAV = '[data-perf-region="settings_nav"]';
+  var HASH = "#settings/ccpp-";
+  var bootHash = typeof location === "object" ? location.hash : "";
+  var hashTab = (hash) => hash.startsWith(HASH) ? hash.slice(HASH.length) : null;
   var PANEL = '[data-perf-region="settings_panel"]';
   var L2 = {
     group: "CC++",
@@ -2151,6 +2160,11 @@ select.input { padding-right: 6px; }
         if (!tabs.has(id))
           return;
         active = id;
+        if (location.hash !== HASH + id) {
+          try {
+            history.pushState(history.state, "", HASH + id);
+          } catch {}
+        }
         shadow.sync();
         draw();
         shadow.box.querySelector(".page-body")?.scrollTo(0, 0);
@@ -2178,7 +2192,13 @@ select.input { padding-right: 6px; }
           deactivate();
       };
       dialog.addEventListener("click", onClick, true);
-      const onHash = () => deactivate();
+      const onHash = () => {
+        const id = hashTab(location.hash);
+        if (id && tabs.has(id))
+          activate(id);
+        else
+          deactivate();
+      };
       window.addEventListener("hashchange", onHash);
       const offRedraw = onRedraw(() => active && draw());
       const self = { activate };
@@ -2201,12 +2221,25 @@ select.input { padding-right: 6px; }
         dialog.querySelector("[data-ccpp-nav-group]")?.remove();
         if (mounted === self)
           mounted = null;
+        if (hashTab(location.hash)) {
+          try {
+            history.replaceState(history.state, "", location.pathname + location.search);
+          } catch {}
+        }
       };
     });
     scope.defer(() => {
       mounted = null;
       pendingTab = null;
     });
+    const fromHash = (hash) => {
+      const id = hashTab(hash);
+      if (id && tabs.has(id) && !nativeOpen())
+        openNative(id);
+    };
+    scope.listen(window, "hashchange", () => fromHash(location.hash));
+    if (hashTab(bootHash))
+      setTimeout(() => fromHash(bootHash), 500);
   }
   function openNative(tab) {
     if (nativeOpen()) {
@@ -2565,15 +2598,32 @@ select.input { padding-right: 6px; }
 
   // src/plugins/_core/settings/userMenu.ts
   var SETTINGS_ITEM = '[data-testid="user-menu-settings"]';
+  var NATIVE_SECTIONS = [
+    { hash: "settings/general", label: { zh: "通用", en: "General" } },
+    { hash: "settings/account", label: { zh: "账户", en: "Account" } },
+    { hash: "settings/data-privacy-controls", label: { zh: "隐私", en: "Privacy" } },
+    { hash: "settings/billing", label: { zh: "账单", en: "Billing" } },
+    { hash: "settings/usage", label: { zh: "用量", en: "Usage" } },
+    { hash: "settings/capabilities", label: { zh: "功能", en: "Capabilities" } },
+    { hash: "settings/memory", label: { zh: "记忆", en: "Memory" } },
+    { hash: "settings/claude-code", label: { zh: "Claude Code", en: "Claude Code" } },
+    { hash: "customize/skills/yours", label: { zh: "技能", en: "Skills" } },
+    { hash: "customize/connectors/yours", label: { zh: "连接器", en: "Connectors" } },
+    { hash: "customize/plugins/yours", label: { zh: "插件（claude.ai）", en: "Plugins (claude.ai)" } }
+  ];
   var L4 = {
     plugins: { zh: "插件", en: "Plugins" },
-    all: { zh: "打开 CC++ 设置", en: "Open CC++ settings" }
+    openSettings: { zh: "打开 CC++ 设置", en: "Open CC++ settings" },
+    openNative: { zh: "打开设置", en: "Open settings" },
+    claude: { zh: "claude.ai", en: "claude.ai" }
   };
   function installUserMenu(scope, options) {
     watch(scope, SEL.menu, (menu) => {
+      if (menu.hasAttribute("data-ccpp-panel-level"))
+        return;
       let tries = 0;
-      let item = null;
       let frame = 0;
+      let cleanup = null;
       const tryInsert = () => {
         const settingsItem = menu.querySelector(SETTINGS_ITEM);
         if (!settingsItem) {
@@ -2581,37 +2631,33 @@ select.input { padding-right: 6px; }
             frame = requestAnimationFrame(tryInsert);
           return;
         }
-        item = build(menu, settingsItem, options);
-        settingsItem.after(item);
+        cleanup = enhance(menu, settingsItem, options);
       };
       tryInsert();
       return () => {
         cancelAnimationFrame(frame);
-        item?.remove();
-        menu.querySelector("[data-ccpp-submenu]")?.remove();
+        cleanup?.();
       };
     });
   }
   function closeMenu(menu) {
     menu.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
   }
-  function build(menu, settingsItem, options) {
+  function enhance(menu, settingsItem, options) {
     const sampleSub = menu.querySelector('[role="menuitem"][aria-haspopup="menu"]');
-    const itemClass = (sampleSub ?? settingsItem).className;
-    const subItemClass = sampleSub ? itemClass : `${itemClass} justify-between data-[popup-open]:bg-fill-ghost-hover`;
-    const iconClass = settingsItem.querySelector(":scope > span")?.className ?? "flex size-icon shrink-0 items-center justify-center";
+    const itemClass = settingsItem.className;
+    const subItemClass = sampleSub?.className ?? `${itemClass} justify-between data-[popup-open]:bg-fill-ghost-hover`;
+    const iconClass = settingsItem.firstElementChild?.className ?? "flex size-icon shrink-0 items-center justify-center";
     const separatorClass = menu.querySelector('[role="separator"]')?.className ?? "my-1 h-px bg-border";
     const panelClass = menu.className.replace(/\bw-\[[^\]]+\]/g, "");
     const scrollClass = menu.firstElementChild?.className ?? "";
+    const added = [];
+    const chevron = () => h("span", { class: "-mr-1 shrink-0 text-muted", "data-ccpp-chevron": "", style: { display: "inline-flex" } }, icon("chevronRight", 16));
     const row = (iconNode, label, opts = {}) => {
-      const el = h("div", { role: "menuitem", tabindex: "-1", "data-cds-icon-row": "", "data-ccpp-item": "", class: opts.sub ? subItemClass : itemClass, style: { cursor: "pointer" } }, h("span", { class: iconClass }, iconNode), h("span", { class: "min-w-0 flex-1 truncate", text: label }), opts.sub ? h("span", { class: "-mr-1 shrink-0 text-muted", style: { display: "inline-flex" } }, icon("chevronRight", 16)) : opts.trailing ?? null);
+      const el = h("div", { role: "menuitem", tabindex: "-1", "data-cds-icon-row": "", "data-ccpp-item": "", class: opts.sub ? subItemClass : itemClass, style: { cursor: "pointer" } }, h("span", { class: iconClass }, iconNode), h("span", { class: "min-w-0 flex-1 truncate", text: label }), opts.sub ? chevron() : opts.trailing ?? null);
       if (opts.sub)
         el.setAttribute("aria-haspopup", "menu");
-      el.addEventListener("pointerenter", () => {
-        for (const other of el.parentElement?.querySelectorAll("[data-highlighted]") ?? [])
-          other.removeAttribute("data-highlighted");
-        el.setAttribute("data-highlighted", "");
-      });
+      el.addEventListener("pointerenter", () => highlight(el));
       el.addEventListener("pointerleave", () => el.removeAttribute("data-highlighted"));
       if (opts.run) {
         const run = opts.run;
@@ -2626,6 +2672,13 @@ select.input { padding-right: 6px; }
       }
       return el;
     };
+    const caption = (text) => h("div", { class: "px-2.5 pt-2 pb-1 text-caption text-muted", style: { fontSize: "var(--cds-font-size-caption, 12px)", opacity: ".8" }, text });
+    const separator = () => h("div", { role: "separator", class: separatorClass });
+    const highlight = (el) => {
+      for (const other of el.parentElement?.querySelectorAll("[data-highlighted]") ?? [])
+        other.removeAttribute("data-highlighted");
+      el.setAttribute("data-highlighted", "");
+    };
     const panel = (anchor, container, width) => {
       const scroll = h("div", { class: scrollClass, style: { maxHeight: "min(70vh, 32rem)", overflowY: "auto" } });
       const el = h("div", { role: "menu", "data-ccpp-panel-level": "", class: panelClass, style: { position: "absolute", width, zIndex: "1" } }, scroll);
@@ -2633,37 +2686,66 @@ select.input { padding-right: 6px; }
       const a = anchor.getBoundingClientRect();
       const c = container.getBoundingClientRect();
       const gap = 4;
-      const room = window.innerWidth - c.right;
-      if (room > el.offsetWidth + gap + 8)
+      if (window.innerWidth - c.right > el.offsetWidth + gap + 8)
         el.style.left = `calc(100% + ${gap}px)`;
       else
         el.style.right = `calc(100% + ${gap}px)`;
       const top = a.top - c.top - 4;
       const maxTop = window.innerHeight - c.top - el.offsetHeight - 8;
       el.style.top = `${Math.max(-c.top + 8, Math.min(top, maxTop))}px`;
+      el.addEventListener("pointerover", (event) => event.stopPropagation());
       return { el, scroll };
     };
-    let sub = null;
-    let pluginPanel = null;
-    const closePlugins = () => {
-      pluginPanel?.remove();
-      pluginPanel = null;
-      pluginsRow?.removeAttribute("data-popup-open");
+    const level = (container) => {
+      let open = null;
+      const close = () => {
+        if (!open)
+          return;
+        open.close();
+        open.el.remove();
+        open.trigger.removeAttribute("data-popup-open");
+        open.trigger.setAttribute("aria-expanded", "false");
+        open = null;
+      };
+      const attach = (trigger, width, fill) => {
+        trigger.setAttribute("aria-haspopup", "menu");
+        trigger.setAttribute("aria-expanded", "false");
+        const show = () => {
+          if (open?.trigger === trigger)
+            return;
+          close();
+          const { el, scroll } = panel(trigger, container, width);
+          const child = level(el);
+          fill(scroll, child);
+          scroll.addEventListener("pointerover", (event) => {
+            const target = event.target.closest('[role="menuitem"]');
+            if (target && !target.hasAttribute("aria-haspopup"))
+              child.close();
+          });
+          trigger.setAttribute("data-popup-open", "");
+          trigger.setAttribute("aria-expanded", "true");
+          open = { trigger, el, close: child.close };
+        };
+        trigger.addEventListener("pointerenter", show);
+        if (trigger.hasAttribute("data-ccpp-item")) {
+          trigger.addEventListener("click", (event) => {
+            event.stopPropagation();
+            show();
+          });
+        }
+        trigger.addEventListener("keydown", (event) => {
+          if (event.key !== "ArrowRight")
+            return;
+          event.preventDefault();
+          event.stopPropagation();
+          show();
+          open?.el.querySelector('[role="menuitem"]')?.focus();
+        });
+      };
+      return { attach, close, isOpen: (trigger) => open?.trigger === trigger };
     };
-    const closeSub = () => {
-      closePlugins();
-      sub?.remove();
-      sub = null;
-      entry.removeAttribute("data-popup-open");
-      entry.setAttribute("aria-expanded", "false");
-    };
-    let pluginsRow = null;
-    const openPlugins = () => {
-      if (pluginPanel || !sub || !pluginsRow)
-        return;
-      pluginsRow.setAttribute("data-popup-open", "");
-      const { el, scroll } = panel(pluginsRow, sub, "16rem");
-      pluginPanel = el;
+    const top = level(menu);
+    const fillPlugins = (scroll) => {
       for (const plugin of options.plugins()) {
         const dot = h("span", {
           class: "shrink-0",
@@ -2672,63 +2754,55 @@ select.input { padding-right: 6px; }
         });
         scroll.appendChild(row(icon(plugin.icon ?? "puzzle", 16), t(plugin.title), { trailing: dot, run: () => options.openPlugin(plugin) }));
       }
-      el.addEventListener("pointerover", (event) => event.stopPropagation());
     };
-    const openSub = () => {
-      if (sub)
-        return;
-      entry.setAttribute("data-popup-open", "");
-      entry.setAttribute("aria-expanded", "true");
-      const { el, scroll } = panel(entry, menu, "14rem");
-      sub = el;
-      sub.dataset.ccppSubmenu = "";
+    const fillCcpp = (scroll, child) => {
       for (const tab of options.tabs()) {
         if (tab.id === "plugins") {
-          pluginsRow = row(icon(tab.icon, 16), t(L4.plugins), { sub: true });
-          pluginsRow.addEventListener("pointerenter", openPlugins);
-          pluginsRow.addEventListener("click", (event) => {
-            event.stopPropagation();
-            openPlugins();
-          });
-          scroll.appendChild(pluginsRow);
-        } else {
+          const plugins = row(icon(tab.icon, 16), t(L4.plugins), { sub: true });
+          child.attach(plugins, "16rem", fillPlugins);
+          scroll.appendChild(plugins);
+        } else
           scroll.appendChild(row(icon(tab.icon, 16), t(tab.title), { run: () => options.openTab(tab.id) }));
-        }
       }
-      scroll.appendChild(h("div", { role: "separator", class: separatorClass }));
-      scroll.appendChild(row(icon("settings", 16), t(L4.all), { run: () => options.openTab("plugins") }));
-      scroll.addEventListener("pointerover", (event) => {
-        const target = event.target.closest('[role="menuitem"]');
-        if (target && target !== pluginsRow)
-          closePlugins();
-      });
-      sub.addEventListener("pointerover", (event) => event.stopPropagation());
     };
-    const entry = row(icon("plug", 16), "CC++", { sub: true });
-    entry.setAttribute("aria-expanded", "false");
-    entry.addEventListener("pointerenter", openSub);
-    entry.addEventListener("click", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      if (sub)
-        closeSub();
-      else
-        openSub();
-    });
-    entry.addEventListener("keydown", (event) => {
-      if (event.key === "ArrowRight" || event.key === "Enter" || event.key === " ") {
-        event.preventDefault();
-        event.stopPropagation();
-        openSub();
-        sub?.querySelector('[role="menuitem"]')?.focus();
-      }
-    });
-    menu.addEventListener("pointerover", (event) => {
+    if (options.settingsFlyout) {
+      settingsItem.classList.add("justify-between");
+      const mark = chevron();
+      settingsItem.appendChild(mark);
+      added.push(mark);
+      top.attach(settingsItem, "15rem", (scroll, child) => {
+        scroll.appendChild(row(icon("settings", 16), t(L4.openNative), { run: () => location.hash = "settings/general" }));
+        scroll.appendChild(separator());
+        scroll.appendChild(caption("CC++"));
+        fillCcpp(scroll, child);
+        scroll.appendChild(separator());
+        scroll.appendChild(caption(t(L4.claude)));
+        for (const section of NATIVE_SECTIONS)
+          scroll.appendChild(row(null, t(section.label), { run: () => location.hash = section.hash }));
+      });
+    }
+    if (options.entry) {
+      const entry = row(icon("plug", 16), "CC++", { sub: true });
+      top.attach(entry, "14rem", (scroll, child) => {
+        fillCcpp(scroll, child);
+        scroll.appendChild(separator());
+        scroll.appendChild(row(icon("settings", 16), t(L4.openSettings), { run: () => options.openTab("plugins") }));
+      });
+      settingsItem.after(entry);
+      added.push(entry);
+    }
+    const onOver = (event) => {
       const target = event.target.closest('[role="menuitem"]');
-      if (target && target !== entry && !target.closest("[data-ccpp-submenu]"))
-        closeSub();
-    });
-    return entry;
+      if (target && target !== settingsItem && !target.hasAttribute("data-ccpp-item"))
+        top.close();
+    };
+    menu.addEventListener("pointerover", onOver);
+    return () => {
+      top.close();
+      menu.removeEventListener("pointerover", onOver);
+      for (const el of added)
+        el.remove();
+    };
   }
   // src/plugins/_core/settings/index.ts
   var L5 = {
@@ -2761,7 +2835,8 @@ select.input { padding-right: 6px; }
       description: { zh: "CC++ 的页面作为一组标签出现在 claude.ai 设置的侧栏里。关掉后用独立弹窗。", en: "CC++ pages appear as a group in claude.ai's settings sidebar. Off uses a standalone dialog." },
       default: true
     },
-    userMenuEntry: { type: "boolean", label: { zh: "头像菜单里的 CC++ 子菜单", en: "CC++ submenu in the account menu" }, default: true },
+    userMenuEntry: { type: "boolean", label: { zh: "头像菜单里的 CC++ 子菜单", en: "CC++ submenu in the account menu" }, description: { zh: "CC++ › 插件 › 列出全部插件，点开即该插件的设置。", en: "CC++ › Plugins › lists every plugin; click one for its settings." }, default: true },
+    settingsFlyout: { type: "boolean", label: { zh: "头像菜单的「设置」展开成子菜单", en: "Account-menu Settings opens a submenu" }, description: { zh: "悬停展开：CC++ 页面和 claude.ai 各设置页；直接点击仍打开设置。", en: "Hover for CC++ pages and claude.ai's settings pages; a click still opens settings." }, default: true },
     hotkey: { type: "string", label: { zh: "打开设置的快捷键", en: "Shortcut to open settings" }, description: { zh: "例如 mod+shift+. （mod = ⌘ / Ctrl），留空关闭。", en: "e.g. mod+shift+. (mod = ⌘ / Ctrl). Empty disables it." }, default: "mod+shift+." },
     composerEntry: { type: "boolean", label: { zh: "在输入框旁显示 CC++ 按钮", en: "CC++ button next to the model picker" }, default: false },
     showApiPlugins: { type: "boolean", label: { zh: "显示 API / 核心插件", en: "Show API and core plugins" }, description: { zh: "它们由其它插件按需自动开启。", en: "They are switched on automatically when another plugin needs them." }, default: false }
@@ -2792,8 +2867,10 @@ select.input { padding-right: 6px; }
   function installEntries(parent) {
     entries?.dispose();
     const scope = entries = parent.child();
-    if (settings.store.userMenuEntry) {
+    if (settings.store.userMenuEntry || settings.store.settingsFlyout) {
       installUserMenu(scope, {
+        entry: settings.store.userMenuEntry,
+        settingsFlyout: settings.store.settingsFlyout,
         tabs: sortedTabs,
         plugins: () => listedPlugins().sort((a, b) => t(a.title).localeCompare(t(b.title))),
         openTab: (tab) => openSettings({ tab }),
@@ -2835,7 +2912,7 @@ select.input { padding-right: 6px; }
         setLang(settings.store.language);
       if (key === "showApiPlugins")
         view.showApi = settings.store.showApiPlugins;
-      if (key === "hotkey" || key === "composerEntry" || key === "userMenuEntry")
+      if (key === "hotkey" || key === "composerEntry" || key === "userMenuEntry" || key === "settingsFlyout")
         installEntries(scope);
       redraw();
     }
@@ -4204,14 +4281,14 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
   var settings8 = definePluginSettings({
     max: { type: "number", label: { zh: "最多保存几条", en: "Prompts to keep" }, default: 100, min: 10, max: 1000, step: 10 },
     button: { type: "boolean", label: { zh: "在输入框旁显示历史按钮", en: "History button next to the model picker" }, default: false },
-    clear: { type: "action", label: { zh: "清空历史", en: "Clear history" }, button: { zh: "清空", en: "Clear" }, confirm: { zh: "清空全部输入历史？", en: "Clear all prompt history?" }, run: () => history.set([]) }
+    clear: { type: "action", label: { zh: "清空历史", en: "Clear history" }, button: { zh: "清空", en: "Clear" }, confirm: { zh: "清空全部输入历史？", en: "Clear all prompt history?" }, run: () => history2.set([]) }
   });
   var L13 = {
     title: { zh: "输入历史", en: "Prompt history" },
     empty: { zh: "还没有历史。发送过的提问会出现在这里。", en: "No history yet. Prompts you send show up here." },
     hint: { zh: "在空输入框里按 ↑ / ↓ 翻阅，Esc 恢复草稿", en: "↑ / ↓ in the input to browse, Esc restores your draft" }
   };
-  var history = persisted("input-history", [], (v) => Array.isArray(v) && v.every((x) => typeof x === "string"));
+  var history2 = persisted("input-history", [], (v) => Array.isArray(v) && v.every((x) => typeof x === "string"));
   function remember(list, text, max) {
     const clean = text.trim();
     if (!clean)
@@ -4247,7 +4324,7 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
       let draft = "";
       let applied = "";
       onSubmit(scope, (text) => {
-        history.set(remember(history.get(), text, settings8.store.max));
+        history2.set(remember(history2.get(), text, settings8.store.max));
         cursor = -1;
         draft = "";
       });
@@ -4262,7 +4339,7 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
         const editor = event.target?.closest?.(SEL.editor);
         if (!editor)
           return;
-        const list = history.get();
+        const list = history2.get();
         const current = getText(editor);
         if (cursor >= 0 && current !== applied)
           cursor = -1;
@@ -4303,7 +4380,7 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
         addSlotItem(scope, "composer", "input-history", () => slotButton(t(L13.title), (event) => popover.open(event.currentTarget, (panel, close) => {
           panel.appendChild(h("div", { class: "top" }, icon("history", 16), h("b", { text: t(L13.title) })));
           panel.appendChild(h("div", { class: "msg", text: t(L13.hint), style: { fontSize: "12px" } }));
-          const list = history.get();
+          const list = history2.get();
           if (!list.length)
             panel.appendChild(h("div", { class: "msg", text: t(L13.empty) }));
           for (const text of list.slice(0, 50)) {
@@ -4554,8 +4631,176 @@ ${t(L15.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
     }
   });
 
-  // src/plugins/widerChat/index.ts
+  // src/plugins/chatFavicon/index.ts
   var settings12 = definePluginSettings({
+    style: {
+      type: "select",
+      label: { zh: "图标样式", en: "Icon style" },
+      description: { zh: "回复中蓝色、完成绿色、输入框有内容待发送黄色、出错红色。", en: "Blue while replying, green when done, amber when a draft is ready to send, red on error." },
+      default: "tint",
+      options: [
+        { value: "emoji", label: { zh: "只用表情", en: "Emoji only" } },
+        { value: "badge", label: { zh: "角标 + 符号", en: "Badge + glyph" } },
+        { value: "dot", label: { zh: "彩色圆点", en: "Colour dot" } },
+        { value: "tint", label: { zh: "图标变色", en: "Mark tint" } },
+        { value: "bg", label: { zh: "背景变色", en: "Background tint" } }
+      ]
+    }
+  });
+  var COLOR = {
+    streaming: "#3B82F6",
+    done: "#22C55E",
+    ready: "#F59E0B",
+    error: "#EF4444"
+  };
+  var CLAY = "#D97757";
+  var EMOJI = { streaming: "\uD83D\uDD04", done: "✅", ready: "✍️", error: "❌" };
+  function spark(color, cx = 32, cy = 32, outer = 26, inner = 5, width = 6.5) {
+    const spokes = [];
+    for (let i = 0;i < 12; i++) {
+      const angle = i * Math.PI / 6 + (i % 2 ? 0.08 : 0);
+      const length = i % 2 ? outer * 0.78 : outer;
+      const x1 = cx + Math.cos(angle) * inner;
+      const y1 = cy + Math.sin(angle) * inner;
+      const x2 = cx + Math.cos(angle) * length;
+      const y2 = cy + Math.sin(angle) * length;
+      spokes.push(`<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}"/>`);
+    }
+    return `<g stroke="${color}" stroke-width="${width}" stroke-linecap="round">${spokes.join("")}</g>`;
+  }
+  var svgUrl = (inner) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">${inner}</svg>`)}`;
+  function glyph(state) {
+    const s = `fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"`;
+    if (state === "streaming")
+      return `<path d="M51.5 45.5a6 6 0 1 1-5.2 3" ${s}/>`;
+    if (state === "done")
+      return `<path d="M46.8 51.8l3.4 3.4 6.4-7.4" ${s}/>`;
+    if (state === "ready")
+      return `<path d="M51.5 56.5v-9.6M46.8 51.2l4.7-4.8 4.7 4.8" ${s}/>`;
+    return `<path d="M47.3 47.3l8.4 8.4M55.7 47.3l-8.4 8.4" ${s}/>`;
+  }
+  function faviconFor(style, state, official) {
+    if (style === "emoji") {
+      if (state === "idle")
+        return official;
+      return svgUrl(`<text x="32" y="54" font-size="54" text-anchor="middle">${EMOJI[state]}</text>`);
+    }
+    const color = state === "idle" ? null : COLOR[state];
+    if (style === "tint")
+      return svgUrl(spark(color ?? CLAY));
+    if (style === "bg")
+      return svgUrl(`<rect width="64" height="64" rx="14" fill="${color ?? CLAY}"/>${spark("#fff", 32, 32, 22, 4, 5.5)}`);
+    const base = spark(CLAY);
+    if (!color || state === "idle")
+      return svgUrl(base);
+    const badge = style === "dot" ? `<circle cx="52" cy="52" r="11" fill="#fff"/><circle cx="52" cy="52" r="8" fill="${color}"/>` : `<circle cx="51.5" cy="51.5" r="12.5" fill="#fff"/><circle cx="51.5" cy="51.5" r="10" fill="${color}"/>${glyph(state)}`;
+    return svgUrl(base + badge);
+  }
+  function nextState(current, event, hasDraft) {
+    switch (event) {
+      case "start":
+        return "streaming";
+      case "error":
+        return "error";
+      case "end":
+        return current === "error" ? "error" : "done";
+      case "route":
+        return hasDraft ? "ready" : "idle";
+      case "input":
+        if (current === "streaming" || current === "error")
+          return current;
+        if (hasDraft)
+          return "ready";
+        return current === "done" ? "done" : "idle";
+    }
+  }
+  var ICON_ID = "ccpp-favicon";
+  var isIconLink = (node) => node instanceof HTMLLinkElement && /\bicon\b/i.test(node.rel) && node.id !== ICON_ID;
+  var isCompletion = (path) => /\/chat_conversations\/[^/]+\/(?:completion|retry_completion)$/.test(path);
+  var chatFavicon_default = definePlugin({
+    name: "ChatFavicon",
+    title: { zh: "标签页图标状态", en: "Chat state favicon" },
+    description: {
+      zh: "标签页图标随对话状态变化：回复中、已完成、草稿待发送、出错，5 种样式可选。",
+      en: "The tab icon follows the chat: replying, done, draft ready, error. Five styles."
+    },
+    category: "notifications",
+    icon: "tab",
+    enabledByDefault: true,
+    updatedAt: "2026-10-13",
+    dependencies: ["ChatStateApi", "ComposerApi", "NetworkApi", "RouterApi"],
+    settings: settings12,
+    start(scope) {
+      const removed = [];
+      let official = `${location.origin}/favicon.ico`;
+      let state = chatPhase() === "streaming" ? "streaming" : "idle";
+      const draft = () => !!getText().trim();
+      const link = document.createElement("link");
+      link.id = ICON_ID;
+      link.rel = "icon";
+      link.setAttribute("sizes", "any");
+      const claim = () => {
+        const head = document.head;
+        if (!head)
+          return;
+        for (const node of [...head.querySelectorAll("link")]) {
+          if (!isIconLink(node))
+            continue;
+          if (node.href && !node.href.startsWith("data:"))
+            official = node.href;
+          removed.push(node);
+          node.remove();
+        }
+        if (head.firstChild !== link)
+          head.prepend(link);
+      };
+      const paint = () => {
+        claim();
+        const href = faviconFor(settings12.store.style, state, official);
+        if (link.getAttribute("href") !== href)
+          link.setAttribute("href", href);
+      };
+      const go = (event) => {
+        const next = nextState(state, event, draft());
+        if (next === state)
+          return;
+        state = next;
+        paint();
+      };
+      scope.on("reply:start", () => go("start"));
+      scope.on("reply:end", () => go("end"));
+      scope.on("route", () => {
+        state = "idle";
+        go("route");
+        paint();
+      });
+      scope.listen(document, "input", (event) => {
+        if (event.target?.closest?.(SEL.editor))
+          go("input");
+      }, { capture: true });
+      onResponse(scope, (req) => sameOrigin(req) && req.method === "POST" && isCompletion(req.url.pathname), async (response) => {
+        if (!response.ok)
+          return go("error");
+        try {
+          const text = await response.text();
+          if (/^event:\s*error\s*$/m.test(text) || /"type"\s*:\s*"error"/.test(text))
+            go("error");
+        } catch {}
+      });
+      if (document.head)
+        scope.observe(document.head, { childList: true }, () => [...document.head.querySelectorAll("link")].some(isIconLink) && paint());
+      scope.defer(() => {
+        link.remove();
+        for (const node of removed.splice(0))
+          if (!node.isConnected)
+            document.head?.appendChild(node);
+      });
+      paint();
+    }
+  });
+
+  // src/plugins/widerChat/index.ts
+  var settings13 = definePluginSettings({
     width: { type: "number", label: { zh: "对话最大宽度", en: "Maximum chat width" }, default: 64, min: 40, max: 160, step: 2, unit: "rem" },
     composer: { type: "boolean", label: { zh: "输入框同步加宽", en: "Widen the chat input too" }, default: true }
   });
@@ -4573,15 +4818,15 @@ ${composer ? `[data-composer-card-holder], [data-cds="ChatComposer"] { max-width
     icon: "width",
     enabledByDefault: false,
     dependencies: ["StylesApi"],
-    settings: settings12,
+    settings: settings13,
     start(scope) {
-      const set = addStyle(scope, widerCss(settings12.store.width, settings12.store.composer), "wider-chat");
-      this.onSettingsChange = () => set(widerCss(settings12.store.width, settings12.store.composer));
+      const set = addStyle(scope, widerCss(settings13.store.width, settings13.store.composer), "wider-chat");
+      this.onSettingsChange = () => set(widerCss(settings13.store.width, settings13.store.composer));
     }
   });
 
   // src/plugins/composerLook/index.ts
-  var settings13 = definePluginSettings({
+  var settings14 = definePluginSettings({
     opacity: { type: "number", label: { zh: "输入框背景不透明度", en: "Input background opacity" }, description: { zh: "100 为完全不透明。", en: "100 is fully opaque." }, default: 85, min: 20, max: 100, step: 5, unit: "%" },
     blur: { type: "number", label: { zh: "背景模糊", en: "Background blur" }, default: 12, min: 0, max: 40, unit: "px" },
     radius: { type: "number", label: { zh: "圆角", en: "Corner radius" }, description: { zh: "0 表示保持官方样式。", en: "0 keeps claude.ai's own radius." }, default: 0, min: 0, max: 40, unit: "px" }
@@ -4602,16 +4847,16 @@ ${composer ? `[data-composer-card-holder], [data-cds="ChatComposer"] { max-width
     icon: "blend",
     enabledByDefault: false,
     dependencies: ["StylesApi"],
-    settings: settings13,
+    settings: settings14,
     start(scope) {
-      const css = () => composerCss(settings13.store.opacity, settings13.store.blur, settings13.store.radius);
+      const css = () => composerCss(settings14.store.opacity, settings14.store.blur, settings14.store.radius);
       const set = addStyle(scope, css(), "composer-look");
       this.onSettingsChange = () => set(css());
     }
   });
 
   // src/plugins/customGreeting/index.ts
-  var settings14 = definePluginSettings({
+  var settings15 = definePluginSettings({
     phrases: {
       type: "text",
       label: { zh: "问候语（每行一条）", en: "Greetings (one per line)" },
@@ -4669,13 +4914,13 @@ ${composer ? `[data-composer-card-holder], [data-cds="ChatComposer"] { max-width
     icon: "message",
     enabledByDefault: false,
     dependencies: ["DomApi", "RouterApi"],
-    settings: settings14,
+    settings: settings15,
     start(scope) {
-      const phrases = () => settings14.store.phrases.split(`
+      const phrases = () => settings15.store.phrases.split(`
 `).map((s) => s.trim()).filter(Boolean);
       let text = "";
       const next = () => {
-        const pick = pickPhrase(phrases(), settings14.store.order, position.get());
+        const pick = pickPhrase(phrases(), settings15.store.order, position.get());
         if (pick.index >= 0)
           position.set(pick.index);
         text = fillPhrase(pick.text, displayName(), new Date().getHours(), /[一-龥]/.test(pick.text));
@@ -4685,7 +4930,7 @@ ${composer ? `[data-composer-card-holder], [data-cds="ChatComposer"] { max-width
           if (text && el.textContent !== text)
             el.textContent = text;
         }
-        const placeholder = settings14.store.placeholder.trim();
+        const placeholder = settings15.store.placeholder.trim();
         if (placeholder) {
           for (const p of document.querySelectorAll(`${SEL.editor} p[data-placeholder]`)) {
             if (p.dataset.placeholder !== placeholder)
@@ -4695,7 +4940,7 @@ ${composer ? `[data-composer-card-holder], [data-cds="ChatComposer"] { max-width
       };
       next();
       onRoute(scope, (route) => {
-        if (route.kind === "new" && settings14.store.rotate === "visit")
+        if (route.kind === "new" && settings15.store.rotate === "visit")
           next();
         paint();
       }, false);
@@ -4704,35 +4949,35 @@ ${composer ? `[data-composer-card-holder], [data-cds="ChatComposer"] { max-width
         const observer = new MutationObserver(paint);
         observer.observe(el, { childList: true, characterData: true, subtree: true });
         const onClick = () => {
-          if (settings14.store.rotate !== "click")
+          if (settings15.store.rotate !== "click")
             return;
           next();
           paint();
         };
-        el.style.cursor = settings14.store.rotate === "click" ? "pointer" : "";
+        el.style.cursor = settings15.store.rotate === "click" ? "pointer" : "";
         el.addEventListener("click", onClick);
         return () => {
           observer.disconnect();
           el.removeEventListener("click", onClick);
         };
       });
-      if (settings14.store.placeholder.trim())
+      if (settings15.store.placeholder.trim())
         watch(scope, `${SEL.editor} p[data-placeholder]`, (p) => {
           paint();
           const observer = new MutationObserver(paint);
           observer.observe(p, { attributes: true, attributeFilter: ["data-placeholder"] });
           return () => observer.disconnect();
         });
-      if (settings14.store.rotate === "timer")
+      if (settings15.store.rotate === "timer")
         scope.interval(() => {
           next();
           paint();
-        }, settings14.store.intervalSec * 1000);
+        }, settings15.store.intervalSec * 1000);
     }
   });
 
   // src/plugins/cleaner/index.ts
-  var settings15 = definePluginSettings({
+  var settings16 = definePluginSettings({
     upgrade: { type: "boolean", label: { zh: "隐藏升级 / 购买入口", en: "Hide upgrade and buy prompts" }, default: true },
     plan: { type: "boolean", label: { zh: "隐藏头像旁的套餐名", en: "Hide the plan name next to your name" }, default: false },
     codeNudge: { type: "boolean", label: { zh: "隐藏输入框里的 Claude Code 推广提示", en: "Hide the Claude Code nudge in the input" }, default: true },
@@ -4757,10 +5002,10 @@ ${composer ? `[data-composer-card-holder], [data-cds="ChatComposer"] { max-width
     icon: "brush",
     enabledByDefault: true,
     dependencies: ["StylesApi", "DomApi"],
-    settings: settings15,
+    settings: settings16,
     start(scope) {
-      addStyle(scope, cleanerCss(settings15.store), "cleaner");
-      if (settings15.store.upgrade) {
+      addStyle(scope, cleanerCss(settings16.store), "cleaner");
+      if (settings16.store.upgrade) {
         onDomChange(scope, () => {
           for (const el of document.querySelectorAll("a, button")) {
             if (el.dataset.ccppCleaned !== undefined || el.closest("[data-ccpp]"))
@@ -4789,7 +5034,7 @@ ${composer ? `[data-composer-card-holder], [data-cds="ChatComposer"] { max-width
   });
 
   // src/plugins/noDictation/index.ts
-  var settings16 = definePluginSettings({
+  var settings17 = definePluginSettings({
     dictation: { type: "boolean", label: { zh: "隐藏听写按钮", en: "Hide dictation" }, default: true },
     voice: { type: "boolean", label: { zh: "隐藏语音模式按钮", en: "Hide voice mode" }, default: true }
   });
@@ -4809,14 +5054,14 @@ ${composer ? `[data-composer-card-holder], [data-cds="ChatComposer"] { max-width
     icon: "micOff",
     enabledByDefault: false,
     dependencies: ["StylesApi"],
-    settings: settings16,
+    settings: settings17,
     start(scope) {
-      addStyle(scope, noDictationCss(settings16.store.dictation, settings16.store.voice), "no-dictation");
+      addStyle(scope, noDictationCss(settings17.store.dictation, settings17.store.voice), "no-dictation");
     }
   });
 
   // src/plugins/streamerMode/index.ts
-  var settings17 = definePluginSettings({
+  var settings18 = definePluginSettings({
     identity: { type: "boolean", label: { zh: "模糊你的名字、头像与套餐", en: "Blur your name, avatar and plan" }, default: true },
     sidebar: { type: "boolean", label: { zh: "模糊侧栏的对话 / 项目标题", en: "Blur chat and project titles in the sidebar" }, default: true },
     title: { type: "boolean", label: { zh: "模糊当前对话标题", en: "Blur the current chat title" }, default: false },
@@ -4846,15 +5091,15 @@ ${targets.map((t) => `${t}:hover`).join(`,
     icon: "eyeOff",
     enabledByDefault: false,
     dependencies: ["StylesApi"],
-    settings: settings17,
+    settings: settings18,
     start(scope) {
-      const set = addStyle(scope, streamerCss(settings17.store), "streamer");
-      this.onSettingsChange = () => set(streamerCss(settings17.store));
+      const set = addStyle(scope, streamerCss(settings18.store), "streamer");
+      this.onSettingsChange = () => set(streamerCss(settings18.store));
     }
   });
 
   // src/plugins/recentChats/index.ts
-  var settings18 = definePluginSettings({
+  var settings19 = definePluginSettings({
     hotkey: { type: "string", label: { zh: "快捷键", en: "Shortcut" }, default: "ctrl+`" },
     count: { type: "number", label: { zh: "显示几个最近对话", en: "Chats to show" }, default: 9, min: 3, max: 24 }
   });
@@ -4901,7 +5146,7 @@ ${targets.map((t) => `${t}:hover`).join(`,
     icon: "grid",
     enabledByDefault: true,
     dependencies: ["RouterApi", "HotkeysApi", "ChatStateApi"],
-    settings: settings18,
+    settings: settings19,
     start(scope) {
       onRoute(scope, (route) => {
         if (!route.chatId)
@@ -4941,7 +5186,7 @@ ${targets.map((t) => `${t}:hover`).join(`,
       };
       const render = () => {
         clear(box);
-        const list = visits.get().slice(0, settings18.store.count);
+        const list = visits.get().slice(0, settings19.store.count);
         const cards = h("div", { class: "cards" });
         list.forEach((visit, i) => {
           const card = h("button", { type: "button", class: `card${i === selected ? " sel" : ""}${visit.id === currentRoute().chatId ? " cur" : ""}` }, i < 9 ? h("span", { class: "n", text: String(i + 1) }) : null, h("span", { class: "t", text: visit.title || visit.id.slice(0, 8) }), h("span", { class: "s", text: agoText(visit.at) }));
@@ -4959,12 +5204,12 @@ ${targets.map((t) => `${t}:hover`).join(`,
         selected = visits.get()[0]?.id === currentRoute().chatId ? 1 : 0;
         render();
       };
-      if (settings18.store.hotkey.trim())
-        bindKey(scope, settings18.store.hotkey, toggle, { inInputs: true });
+      if (settings19.store.hotkey.trim())
+        bindKey(scope, settings19.store.hotkey, toggle, { inInputs: true });
       scope.listen(window, "keydown", (event) => {
         if (!open)
           return;
-        const list = visits.get().slice(0, settings18.store.count);
+        const list = visits.get().slice(0, settings19.store.count);
         const cols = Math.max(1, Math.floor((box.querySelector(".cards")?.clientWidth ?? 720) / 250));
         const moves = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: cols, ArrowUp: -cols, Tab: event.shiftKey ? -1 : 1 };
         if (event.key in moves)
@@ -4986,7 +5231,7 @@ ${targets.map((t) => `${t}:hover`).join(`,
   });
 
   // src/plugins/exportChat/index.ts
-  var settings19 = definePluginSettings({
+  var settings20 = definePluginSettings({
     timestamps: { type: "boolean", label: { zh: "Markdown 里包含时间", en: "Include times in Markdown" }, default: true }
   });
   var L17 = {
@@ -5035,7 +5280,7 @@ ${m.text.trim()}`).join(`
     icon: "download",
     enabledByDefault: true,
     dependencies: ["TranscriptApi", "SlotsApi", "NoticesApi", "RouterApi"],
-    settings: settings19,
+    settings: settings20,
     start(scope) {
       const popover = createPopover(scope, "export", "", 240);
       const run = async (format) => {
@@ -5050,7 +5295,7 @@ ${m.text.trim()}`).join(`
           else if (format === "txt")
             download(`${name}.txt`, toText(chat));
           else {
-            const md = toMarkdown(chat, settings19.store.timestamps);
+            const md = toMarkdown(chat, settings20.store.timestamps);
             if (format === "md")
               download(`${name}.md`, md, "text/markdown");
             else {
@@ -5079,7 +5324,7 @@ ${m.text.trim()}`).join(`
   });
 
   // src/plugins/messageTimestamps/index.ts
-  var settings20 = definePluginSettings({
+  var settings21 = definePluginSettings({
     always: { type: "boolean", label: { zh: "始终显示时间（不用悬停）", en: "Always show the time (no hover needed)" }, default: true },
     absolute: { type: "boolean", label: { zh: "显示具体时间而不是「x 分钟前」", en: "Show the exact time instead of “x minutes ago”" }, default: true }
   });
@@ -5091,11 +5336,11 @@ ${m.text.trim()}`).join(`
     icon: "clock",
     enabledByDefault: false,
     dependencies: ["DomApi", "StylesApi"],
-    settings: settings20,
+    settings: settings21,
     start(scope) {
-      if (settings20.store.always)
+      if (settings21.store.always)
         addStyle(scope, `${SEL.messageActions} ${SEL.messageTime} { opacity: 1 !important; visibility: visible !important; }`, "timestamps");
-      if (!settings20.store.absolute)
+      if (!settings21.store.absolute)
         return;
       watch(scope, `${SEL.messageActions} ${SEL.messageTime}`, (el) => {
         const paint = () => {
@@ -5116,7 +5361,7 @@ ${m.text.trim()}`).join(`
   });
 
   // src/plugins/collapseCode/index.ts
-  var settings21 = definePluginSettings({
+  var settings22 = definePluginSettings({
     lines: { type: "number", label: { zh: "超过多少行折叠（行）", en: "Collapse code longer than (lines)" }, default: 30, min: 8, max: 200, step: 2 }
   });
   var L18 = { expand: { zh: "展开全部代码（{n} 行）", en: "Show all {n} lines" }, collapse: { zh: "收起代码", en: "Collapse code" } };
@@ -5133,10 +5378,10 @@ ${m.text.trim()}`).join(`
     icon: "collapse",
     enabledByDefault: false,
     dependencies: ["DomApi", "StylesApi"],
-    settings: settings21,
+    settings: settings22,
     start(scope) {
       addStyle(scope, CSS8, "collapse-code");
-      const max = settings21.store.lines;
+      const max = settings22.store.lines;
       watch(scope, `${SEL.assistantMessage}[data-is-streaming="false"] pre`, (pre) => {
         const lines = (pre.textContent ?? "").split(`
 `).length;
@@ -5252,7 +5497,7 @@ ${m.text.trim()}`).join(`
   });
 
   // src/plugins/consoleJanitor/index.ts
-  var settings22 = definePluginSettings({
+  var settings23 = definePluginSettings({
     levels: {
       type: "select",
       label: { zh: "静音哪些输出", en: "Silence" },
@@ -5271,10 +5516,10 @@ ${m.text.trim()}`).join(`
     icon: "terminal",
     enabledByDefault: false,
     startAt: "document-start",
-    settings: settings22,
+    settings: settings23,
     start(scope) {
       const target = pageWindow.console;
-      const levels = settings22.store.levels === "warn" ? ["log", "info", "debug", "warn"] : ["log", "info", "debug"];
+      const levels = settings23.store.levels === "warn" ? ["log", "info", "debug", "warn"] : ["log", "info", "debug"];
       for (const level of levels) {
         const original = target[level];
         const quiet = function(...args) {
@@ -5316,6 +5561,7 @@ ${m.text.trim()}`).join(`
     promptPresets_default,
     replyNotification_default,
     tabStatus_default,
+    chatFavicon_default,
     widerChat_default,
     composerLook_default,
     customGreeting_default,
@@ -5338,7 +5584,7 @@ ${m.text.trim()}`).join(`
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "[20261013] v0.3.0",
+      version: "[20261013] v0.3.1",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -5355,7 +5601,7 @@ ${m.text.trim()}`).join(`
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "[20261013] v0.3.0";
+    win[FLAG] = "[20261013] v0.3.1";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     startPhase("document-start");
@@ -5371,7 +5617,7 @@ ${m.text.trim()}`).join(`
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"[20261013] v0.3.0"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"[20261013] v0.3.1"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();

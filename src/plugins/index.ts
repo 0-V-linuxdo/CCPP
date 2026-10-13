@@ -30,6 +30,7 @@ import inputHistory from "@plugins/inputHistory";
 import promptPresets from "@plugins/promptPresets";
 import replyNotification from "@plugins/replyNotification";
 import tabStatus from "@plugins/tabStatus";
+import chatFavicon from "@plugins/chatFavicon";
 import widerChat from "@plugins/widerChat";
 import composerLook from "@plugins/composerLook";
 import customGreeting from "@plugins/customGreeting";
@@ -49,5 +50,5 @@ import consoleJanitor from "@plugins/consoleJanitor";
 export const PLUGINS: Plugin[] = [
     domApi, stylesApi, routerApi, networkApi, claudeApi, chatStateApi, noticesApi, slotsApi, composerApi, transcriptApi, hotkeysApi, menuApi,
     settings, themes, quickCss, backup,
-    usageDisplay, chatNavigator, messageStars, projectStatus, inputHistory, promptPresets, replyNotification, tabStatus, widerChat, composerLook, customGreeting, cleaner, noShareLink, noDictation, streamerMode, recentChats, exportChat, messageTimestamps, collapseCode, betterLinks, noTelemetry, consoleJanitor,
+    usageDisplay, chatNavigator, messageStars, projectStatus, inputHistory, promptPresets, replyNotification, tabStatus, chatFavicon, widerChat, composerLook, customGreeting, cleaner, noShareLink, noDictation, streamerMode, recentChats, exportChat, messageTimestamps, collapseCode, betterLinks, noTelemetry, consoleJanitor,
 ];
