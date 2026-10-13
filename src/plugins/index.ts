@@ -45,10 +45,11 @@ import collapseCode from "@plugins/collapseCode";
 import betterLinks from "@plugins/betterLinks";
 import noTelemetry from "@plugins/noTelemetry";
 import consoleJanitor from "@plugins/consoleJanitor";
+import sidebarDefaultCode from "@plugins/sidebarDefaultCode";
 
 /** Every plugin in the build. Order does not matter; the kernel sorts by dependencies. */
 export const PLUGINS: Plugin[] = [
     domApi, stylesApi, routerApi, networkApi, claudeApi, chatStateApi, noticesApi, slotsApi, composerApi, transcriptApi, hotkeysApi, menuApi,
     settings, themes, quickCss, backup,
-    usageDisplay, chatNavigator, messageStars, projectStatus, inputHistory, promptPresets, replyNotification, tabStatus, chatFavicon, widerChat, composerLook, customGreeting, cleaner, noShareLink, noDictation, streamerMode, recentChats, exportChat, messageTimestamps, collapseCode, betterLinks, noTelemetry, consoleJanitor,
+    usageDisplay, chatNavigator, messageStars, projectStatus, inputHistory, promptPresets, replyNotification, tabStatus, chatFavicon, widerChat, composerLook, customGreeting, cleaner, noShareLink, noDictation, streamerMode, recentChats, exportChat, messageTimestamps, collapseCode, betterLinks, noTelemetry, consoleJanitor, sidebarDefaultCode,
 ];

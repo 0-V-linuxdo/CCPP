@@ -12,6 +12,8 @@ export const SEL = {
     sidebar: '[data-testid="sidebar"]',
     sidebarRecents: '[data-testid="sidebar-recents"]',
     sidebarChatLink: 'a[href^="/chat/"]',
+    /** The Code side of the Chat / Code switch at the top of the sidebar (locale-independent). */
+    modeCode: '[role="radiogroup"] [role="radio"][data-mode="code"]',
     userMenuButton: '[data-testid="user-menu-button"]',
     userMenuName: '[data-testid="user-menu-button"] .df-user-menu-trailing',
     avatar: '[data-cds="Avatar"]',

@@ -839,6 +839,7 @@
     sidebar: '[data-testid="sidebar"]',
     sidebarRecents: '[data-testid="sidebar-recents"]',
     sidebarChatLink: 'a[href^="/chat/"]',
+    modeCode: '[role="radiogroup"] [role="radio"][data-mode="code"]',
     userMenuButton: '[data-testid="user-menu-button"]',
     userMenuName: '[data-testid="user-menu-button"] .df-user-menu-trailing',
     avatar: '[data-cds="Avatar"]',
@@ -5718,6 +5719,43 @@ ${m.text.trim()}`).join(`
     }
   });
 
+  // src/plugins/sidebarDefaultCode/index.ts
+  var GIVE_UP_MS = 15000;
+  var decided = false;
+  var hasDraft = () => !!document.querySelector(SEL.editor)?.textContent?.trim();
+  var sidebarDefaultCode_default = definePlugin({
+    name: "SidebarDefaultCode",
+    title: { zh: "侧栏默认 Code", en: "Sidebar defaults to Code" },
+    description: {
+      zh: "打开 claude.ai 首页时，侧栏顶部的 Chat / Code 切换自动停在 Code（Claude Code）。只在页面加载时切一次，之后手动切回 Chat 不受影响；打开具体对话链接时不切。",
+      en: "When claude.ai opens on the home page, the Chat / Code switch at the top of the sidebar starts on Code (Claude Code). It switches once per page load, never after you pick Chat yourself, and never when you open a specific chat."
+    },
+    category: "chats",
+    icon: "terminal",
+    enabledByDefault: true,
+    updatedAt: "2026-10-13",
+    dependencies: ["DomApi", "RouterApi"],
+    start(scope) {
+      if (decided)
+        return;
+      const run = scope.child();
+      run.timeout(() => {
+        decided = true;
+        run.dispose();
+      }, GIVE_UP_MS);
+      watch(run, SEL.modeCode, (code) => {
+        if (decided)
+          return;
+        decided = true;
+        queueMicrotask(() => run.dispose());
+        if (currentRoute().kind !== "new" || hasDraft())
+          return;
+        if (code.getAttribute("aria-checked") !== "true")
+          code.click();
+      });
+    }
+  });
+
   // src/plugins/index.ts
   var PLUGINS = [
     dom_default,
@@ -5758,7 +5796,8 @@ ${m.text.trim()}`).join(`
     collapseCode_default,
     betterLinks_default,
     noTelemetry_default,
-    consoleJanitor_default
+    consoleJanitor_default,
+    sidebarDefaultCode_default
   ];
 
   // src/index.ts
