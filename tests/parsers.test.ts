@@ -16,6 +16,8 @@ import { splitLinks } from "../src/plugins/betterLinks";
 import { isTelemetry } from "../src/plugins/noTelemetry";
 import { toggleStar } from "../src/plugins/messageStars/store";
 import { faviconFor, nextState, parseMark } from "../src/plugins/chatFavicon";
+import { alignWithApi } from "../src/plugins/chatNavigator";
+import { parseChannelMessages } from "../src/plugins/_api/claude";
 
 const ID = "2e8860cc-f63c-4514-931c-14080b0aa61e";
 
@@ -190,5 +192,28 @@ describe("chat favicon", () => {
         expect(tinted).toContain('fill="#EF4444"');
         expect(tinted).not.toContain("#D97757");
         expect(decodeURIComponent(faviconFor("dot", "done", "x", mark))).toContain('fill="#D97757"');
+    });
+});
+
+describe("project outline", () => {
+    test("channel messages drop status cards and sort oldest first", () => {
+        const list = parseChannelMessages({ data: [
+            { id: "b", body: "reply", created_at: "2026-10-13T12:00:02Z" },
+            { id: "s", body: '{"kind":"status","text":"x"}', created_at: "2026-10-13T12:00:03Z" },
+            { id: "a", body: "question", author_account_id: "u", created_at: "2026-10-13T12:00:01Z" },
+        ] });
+        expect(list.map(m => `${m.role}:${m.text}`)).toEqual(["user:question", "assistant:reply"]);
+    });
+    test("unrendered rows get labels from the project messages", () => {
+        const api = ["q1 hello there", "a1 answer text", "q2 second question", "a2 second answer"].map((text, i) => ({ role: (i % 2 ? "assistant" : "user") as "user" | "assistant", text }));
+        const rows = [
+            { index: 0, role: "user" as const, text: "" },
+            { index: 1, role: "assistant" as const, text: "" },
+            { index: 2, role: "user" as const, text: "You said: q2 second question" },
+            { index: 3, role: "assistant" as const, text: "" },
+        ];
+        expect(alignWithApi(rows, api).map(r => r.text)).toEqual(["q1 hello there", "a1 answer text", "You said: q2 second question", "a2 second answer"]);
+        // No rendered row: the newest message lines up with the last row.
+        expect(alignWithApi(rows.slice(0, 2).map(r => ({ ...r, text: "" })), api).map(r => r.text)).toEqual(["q2 second question", "a2 second answer"]);
     });
 });

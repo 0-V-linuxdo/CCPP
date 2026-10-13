@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.2
+// @version      20261013.0.3.3
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -653,6 +653,41 @@
     if (!response.ok)
       throw new ApiError(response.status, `${response.status} ${path.replace(/(chan|cse|cmsg)_[A-Za-z0-9]+/g, "$1_…")}`);
     return await response.json();
+  }
+  function parseChannelMessages(raw) {
+    const list = raw?.data;
+    if (!Array.isArray(list))
+      return [];
+    const out = [];
+    for (const m of list) {
+      if (!m || typeof m !== "object" || typeof m.body !== "string")
+        continue;
+      const body = m.body.trim();
+      if (!body)
+        continue;
+      if (body.startsWith("{")) {
+        try {
+          if (JSON.parse(body) && typeof JSON.parse(body) === "object")
+            continue;
+        } catch {}
+      }
+      out.push({ id: String(m.id ?? ""), role: m.author_account_id ? "user" : "assistant", text: body, at: Date.parse(m.created_at) || 0 });
+    }
+    return out.sort((a, b) => a.at - b.at);
+  }
+  var channelCache = new Map;
+  function getChannelMessages(channelId, threadId, force = false) {
+    if (!/^chan_[A-Za-z0-9]+$/.test(channelId) || threadId && !/^cmsg_[A-Za-z0-9]+$/.test(threadId))
+      return Promise.reject(new Error("Bad id"));
+    const key = `${channelId}|${threadId ?? ""}`;
+    const cached = channelCache.get(key);
+    if (!force && cached && Date.now() - cached.at < 15000)
+      return cached.value;
+    const path = threadId ? `/v1/code/channels/${channelId}/threads/${threadId}?limit=200&include_draft=true` : `/v1/code/channels/${channelId}/timeline?limit=200&include_draft=true`;
+    const value = getCodeJson(path).then(parseChannelMessages);
+    value.catch(() => channelCache.delete(key));
+    channelCache.set(key, { at: Date.now(), value });
+    return value;
   }
   var CHANNEL_RE = /^chan_[A-Za-z0-9]+$/;
   var SESSION_RE = /^cse_[A-Za-z0-9]+$/;
@@ -1993,7 +2028,7 @@ select.input { padding-right: 6px; }
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "[20261013] v0.3.2";
+  var version = "[20261013] v0.3.3";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -3681,7 +3716,7 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
 .rail { position: fixed; display: flex; align-items: center; pointer-events: none; }
 .ticks { display: flex; flex-direction: column; align-items: flex-end; max-height: 100%; overflow: hidden; pointer-events: auto; scrollbar-width: none; }
 .ticks::-webkit-scrollbar { display: none; }
-.tick { display: flex; align-items: center; justify-content: flex-end; flex: none; width: 40px; height: 12px; padding: 0 4px; border: 0; background: transparent; }
+.tick { display: flex; align-items: center; justify-content: flex-end; flex: none; width: 32px; height: 12px; padding: 0 2px 0 0; border: 0; background: transparent; }
 .dense .tick { height: 7px; }
 .tick::after { content: ""; display: block; height: 1px; width: 6px; border-radius: 999px; background: color-mix(in srgb, var(--fg3) 60%, transparent); transition: width .15s ease, background-color .15s ease; }
 .tick.assistant::after { width: 12px; }
@@ -3707,12 +3742,57 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
 @media (prefers-reduced-motion: reduce) { .menu, .tick::after { transition: none; } }
 `;
   var seen2 = new Map;
+  var flat = (text) => text.replace(/\s+/g, " ").trim();
+  function alignWithApi(items, api) {
+    if (!api.length || !items.length)
+      return items;
+    const keys = api.map((m) => flat(m.text).slice(0, 24));
+    const anchors = [];
+    let from = 0;
+    for (const item of items) {
+      if (!item.text)
+        continue;
+      const text = flat(item.text);
+      for (let j = from;j < api.length; j++) {
+        if (keys[j].length >= 4 && text.includes(keys[j])) {
+          anchors.push([item.index, j]);
+          from = j + 1;
+          break;
+        }
+      }
+    }
+    const offsetFor = (index) => {
+      if (!anchors.length)
+        return api.length - items.length;
+      let best = anchors[0];
+      for (const anchor of anchors)
+        if (Math.abs(anchor[0] - index) < Math.abs(best[0] - index))
+          best = anchor;
+      return best[1] - best[0];
+    };
+    return items.map((item) => {
+      const message = api[item.index + offsetFor(item.index)];
+      if (!message)
+        return item;
+      return { index: item.index, role: message.role, text: item.text || message.text };
+    });
+  }
+  var paneOf = (scroller) => scroller.closest('[data-perf-region="side_pane"]') ? "side" : "main";
+  function keyFor(scroller) {
+    if (paneOf(scroller) === "main")
+      return currentRoute().chatId ?? `${location.pathname}|main`;
+    return `${location.pathname}?thread=${new URLSearchParams(location.search).get("thread") ?? ""}|side`;
+  }
+  function transcripts() {
+    const all = getScrollers();
+    return all.filter((el) => !all.some((other) => other !== el && other.contains(el)));
+  }
   var chatNavigator_default = definePlugin({
     name: "ChatNavigator",
     title: { zh: "对话目录", en: "Chat navigator" },
     description: {
-      zh: "把对话右侧做成 Notion 式目录：细刻度标出每条提问和回复，悬停展开全部消息（包括长对话里还没渲染的），点击跳转；正在输出的回复显示为虚线。普通对话和 Claude Code 项目页（项目聊天、线程侧栏）都能用。",
-      en: "A Notion-style outline on the right of the chat: thin ticks for every prompt and reply, hover to list them all (also ones not rendered yet), click to jump; a reply still streaming shows as a dashed tick. Works in chats and on Claude Code project pages (project chat and thread pane)."
+      zh: "把对话右侧做成 Notion 式目录：细刻度标出每条提问和回复，悬停展开全部消息（包括长对话里还没渲染的），点击跳转；正在输出的回复显示为虚线。普通对话和 Claude Code 项目页都能用，项目页的主对话和线程侧栏各有一套，贴着各自的右边缘。",
+      en: "A Notion-style outline on the right of the chat: thin ticks for every prompt and reply, hover to list them all (also ones not rendered yet), click to jump; a reply still streaming shows as a dashed tick. On Claude Code project pages the project chat and the thread pane each get their own, flush with their right edge."
     },
     category: "messages",
     icon: "list",
@@ -3722,230 +3802,202 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
     settings: settings5,
     start(scope) {
       const { box } = createHost(scope, "navigator", CSS4);
-      const ticks = h("div", { class: "ticks", role: "navigation", "aria-label": t(L10.title) });
-      const meta = h("div", { class: "meta" });
-      const list = h("ul", { class: "list", role: "menu", "aria-label": t(L10.title) });
-      const menu = h("div", { class: "menu" }, meta, list);
-      const rail = h("div", { class: "rail" }, menu, ticks);
-      box.append(rail);
-      let items = [];
-      let chatId = null;
-      let scroller = null;
-      let current = null;
-      let aim = -1;
-      let loadToken = 0;
-      let hideTimer;
-      const shown = () => settings5.store.showAssistant ? items : items.filter((i) => i.role === "user");
-      const feedKey = () => chatId ?? `${location.pathname}${location.search}|${scroller?.closest('[data-perf-region="side_pane"]') ? "side" : "main"}`;
-      const harvest = () => {
-        const key = feedKey();
-        let memo = seen2.get(key);
-        if (!memo)
-          seen2.set(key, memo = new Map);
-        for (const row of getRows(scroller)) {
-          const text = rowText(row.el);
-          if (text || !memo.has(row.index))
-            memo.set(row.index, { index: row.index, role: row.role, text });
-        }
-        return memo;
-      };
-      const fromDom = () => {
-        const memo = harvest();
-        const total = Math.max(totalMessages(scroller) ?? 0, memo.size ? Math.max(...memo.keys()) + 1 : 0);
-        return Array.from({ length: total }, (_, index) => memo.get(index) ?? { index, role: index % 2 === 0 ? "user" : "assistant", text: "" });
-      };
-      const load = async (force = false) => {
-        const token = ++loadToken;
-        if (!chatId) {
-          items = fromDom();
-          draw();
-          return;
-        }
-        try {
-          const conversation = await loadConversation(chatId, force);
-          if (token !== loadToken || !conversation)
+      const navs = new Map;
+      const createNav = (scroller) => {
+        const ticks = h("div", { class: "ticks", role: "navigation", "aria-label": t(L10.title) });
+        const meta = h("div", { class: "meta" });
+        const list = h("ul", { class: "list", role: "menu", "aria-label": t(L10.title) });
+        const menu = h("div", { class: "menu" }, meta, list);
+        const rail = h("div", { class: "rail" }, menu, ticks);
+        box.append(rail);
+        const chatId = paneOf(scroller) === "main" ? currentRoute().chatId : null;
+        const channelId = /^\/code\/project\/(chan_[A-Za-z0-9]+)/.exec(location.pathname)?.[1] ?? null;
+        const threadId = paneOf(scroller) === "side" ? new URLSearchParams(location.search).get("thread") : null;
+        let api = [];
+        let apiLoading = false;
+        const loadApi = (force = false) => {
+          if (!channelId || apiLoading)
             return;
-          items = conversation.messages.map((m, index) => ({ index, role: m.role, text: m.text }));
-        } catch (error) {
-          logger9.warn("Falling back to the page for the outline:", error);
-          if (token !== loadToken)
-            return;
-          items = fromDom();
-        }
-        const total = totalMessages(scroller);
-        if (total && total > items.length)
-          items = [...items, ...fromDom().slice(items.length)];
-        draw();
-      };
-      const visible = () => !!scroller?.isConnected && shown().length >= settings5.store.minMessages;
-      const place = () => {
-        if (!visible()) {
-          rail.style.display = "none";
-          setOpen(false);
-          return;
-        }
-        rail.style.display = "";
-        const rect = scroller.getBoundingClientRect();
-        const height = Math.max(120, rect.height - 48);
-        rail.style.right = `${Math.max(4, window.innerWidth - rect.right + 10)}px`;
-        rail.style.top = `${rect.top + rect.height / 2 - height / 2}px`;
-        rail.style.height = `${height}px`;
-        rail.style.setProperty("--menu-h", `${Math.min(window.innerHeight * 0.7, height)}px`);
-        rail.classList.toggle("dense", shown().length * 12 > height);
-      };
-      const isLive = (item) => chatPhase() === "streaming" && item.role === "assistant" && item.index === items.length - 1;
-      const label = (item) => {
-        if (item.text.trim())
-          return { text: snippet(item.text, 120), dim: false };
-        if (isLive(item))
-          return { text: t(L10.streaming), dim: true };
-        return { text: chatId ? t(L10.empty) : t(L10.unloaded), dim: true };
-      };
-      const activePos = () => {
-        const entries = shown();
-        if (current === null)
-          return -1;
-        let pos = -1;
-        entries.forEach((item, i) => item.index <= current && (pos = i));
-        return pos;
-      };
-      const draw = () => {
-        clear(ticks);
-        const entries = shown();
-        const stars = getMarks("stars");
-        const active = activePos();
-        entries.forEach((item, i) => {
-          const tick = h("button", {
-            type: "button",
-            class: `tick ${item.role}${i === active ? " current" : ""}${stars.has(item.index) ? " marked" : ""}${isLive(item) ? " live" : ""}`,
-            "aria-label": t(L10.goTo).replace("{n}", String(i + 1)).replace("{total}", String(entries.length))
-          });
-          tick.addEventListener("click", () => go(i));
-          ticks.appendChild(tick);
-        });
-        ticks.children[active]?.scrollIntoView({ block: "nearest" });
-        if (rail.classList.contains("open"))
-          drawMenu();
-        place();
-      };
-      const drawMenu = () => {
-        const entries = shown();
-        const stars = getMarks("stars");
-        const active = activePos();
-        meta.textContent = `${Math.max(active, 0) + 1} / ${entries.length}`;
-        clear(list);
-        entries.forEach((item, i) => {
-          const { text, dim } = label(item);
-          const row = h("button", { type: "button", role: "menuitem", class: `item${i === active ? " active" : ""}${i === aim ? " aim" : ""}` }, h("span", { class: "emoji", text: item.role === "user" ? "❓" : "\uD83E\uDD16" }), h("span", { class: `label${dim ? " dim" : ""}`, text }), stars.has(item.index) ? h("span", { class: "star", text: "★" }) : null);
-          row.addEventListener("click", () => go(i));
-          list.appendChild(h("li", {}, row));
-        });
-        list.children[aim >= 0 ? aim : active]?.scrollIntoView({ block: "nearest" });
-      };
-      const go = (pos) => {
-        const item = shown()[pos];
-        if (!item)
-          return;
-        current = item.index;
-        aim = pos;
-        draw();
-        jumpTo(item.index, { flash: settings5.store.jumpEffect === "border", scroller });
-      };
-      const setOpen = (open) => {
-        clearTimeout(hideTimer);
-        if (open === rail.classList.contains("open"))
-          return;
-        rail.classList.toggle("open", open);
-        if (open)
-          drawMenu();
-        else
-          aim = -1;
-      };
-      for (const el of [ticks, menu]) {
-        el.addEventListener("mouseenter", () => setOpen(true));
-        el.addEventListener("mouseleave", () => {
-          clearTimeout(hideTimer);
-          hideTimer = setTimeout(() => setOpen(false), 200);
-        });
-      }
-      scope.defer(() => clearTimeout(hideTimer));
-      const syncCurrent = () => {
-        const next = currentIndex(scroller);
-        if (next === current)
-          return;
-        current = next;
-        const active = activePos();
-        [...ticks.children].forEach((tick, i) => tick.classList.toggle("current", i === active));
-        ticks.children[active]?.scrollIntoView({ block: "nearest" });
-        if (rail.classList.contains("open"))
-          drawMenu();
-      };
-      const syncScroller = () => {
-        const next = getScroller();
-        if (next === scroller)
-          return false;
-        scroller = next;
-        current = null;
-        items = [];
-        load();
-        return true;
-      };
-      let scrollQueued = false;
-      scope.listen(document, "scroll", () => {
-        if (scrollQueued)
-          return;
-        scrollQueued = true;
-        requestAnimationFrame(() => {
-          scrollQueued = false;
-          if (!syncScroller())
-            syncCurrent();
+          apiLoading = true;
+          getChannelMessages(channelId, threadId, force).then((messages) => {
+            api = messages;
+            items = fromDom();
+            draw();
+          }).catch((error) => logger9.debug("Project messages unavailable:", error)).finally(() => apiLoading = false);
+        };
+        let items = [];
+        let current = null;
+        let aim = -1;
+        let loadToken = 0;
+        let hideTimer;
+        const shown = () => settings5.store.showAssistant ? items : items.filter((i) => i.role === "user");
+        const key = keyFor(scroller);
+        const feedKey = () => key;
+        const harvest = () => {
+          const key = feedKey();
+          let memo = seen2.get(key);
+          if (!memo)
+            seen2.set(key, memo = new Map);
+          for (const row of getRows(scroller)) {
+            const text = rowText(row.el);
+            if (text || !memo.has(row.index))
+              memo.set(row.index, { index: row.index, role: row.role, text });
+          }
+          return memo;
+        };
+        const fromDom = () => {
+          const memo = harvest();
+          const total = Math.max(totalMessages(scroller) ?? 0, memo.size ? Math.max(...memo.keys()) + 1 : 0);
+          const rows = Array.from({ length: total }, (_, index) => memo.get(index) ?? { index, role: index % 2 === 0 ? "user" : "assistant", text: "" });
+          return channelId ? alignWithApi(rows, api) : rows;
+        };
+        const load = async (force = false) => {
+          const token = ++loadToken;
           if (!chatId) {
-            const before = items.filter((i) => i.text).length;
-            const next = fromDom();
-            if (next.length !== items.length || next.filter((i) => i.text).length !== before) {
-              items = next;
-              draw();
-            }
+            items = fromDom();
+            draw();
+            loadApi(force);
+            return;
           }
-        });
-      }, { capture: true, passive: true });
-      scope.listen(window, "resize", place);
-      onRoute(scope, (route) => {
-        chatId = route.chatId;
-        scroller = getScroller();
-        current = null;
-        items = [];
-        draw();
-        scope.timeout(() => {
-          scroller = getScroller();
-          load();
-        }, 300);
-      });
-      scope.on("reply:end", () => scope.timeout(() => load(true), 800));
-      onMarksChange(scope, draw);
-      scope.interval(() => {
-        if (syncScroller())
-          return;
-        place();
-        const total = totalMessages(scroller);
-        if (total && total !== items.length)
-          load(total > items.length);
-        syncCurrent();
-      }, 1200);
-      if (settings5.store.keys) {
-        scope.listen(document, "keydown", (event) => {
-          if (!visible() || event.altKey || event.isComposing)
+          try {
+            const conversation = await loadConversation(chatId, force);
+            if (token !== loadToken || !conversation)
+              return;
+            items = conversation.messages.map((m, index) => ({ index, role: m.role, text: m.text }));
+          } catch (error) {
+            logger9.warn("Falling back to the page for the outline:", error);
+            if (token !== loadToken)
+              return;
+            items = fromDom();
+          }
+          const total = totalMessages(scroller);
+          if (total && total > items.length)
+            items = [...items, ...fromDom().slice(items.length)];
+          draw();
+        };
+        const visible = () => scroller.isConnected && scroller.clientHeight > 0 && shown().length >= settings5.store.minMessages;
+        const place = () => {
+          if (!visible()) {
+            rail.style.display = "none";
+            setOpen(false);
             return;
-          if (isEditable(event.target) || isEditable(document.activeElement))
-            return;
+          }
+          rail.style.display = "";
+          const rect = scroller.getBoundingClientRect();
+          const height = Math.max(120, rect.height - 48);
+          const scrollbar = Math.max(0, scroller.offsetWidth - scroller.clientWidth);
+          rail.style.right = `${Math.max(0, window.innerWidth - rect.right + scrollbar)}px`;
+          rail.style.top = `${rect.top + rect.height / 2 - height / 2}px`;
+          rail.style.height = `${height}px`;
+          rail.style.setProperty("--menu-h", `${Math.min(window.innerHeight * 0.7, height)}px`);
+          rail.classList.toggle("dense", shown().length * 12 > height);
+        };
+        const isLive = (item) => chatPhase() === "streaming" && item.role === "assistant" && item.index === items.length - 1;
+        const label = (item) => {
+          if (item.text.trim())
+            return { text: snippet(item.text, 120), dim: false };
+          if (isLive(item))
+            return { text: t(L10.streaming), dim: true };
+          return { text: chatId ? t(L10.empty) : t(L10.unloaded), dim: true };
+        };
+        const activePos = () => {
           const entries = shown();
-          if (event.key === "Escape") {
-            if (rail.classList.contains("open")) {
-              event.preventDefault();
-              setOpen(false);
-            }
+          if (current === null)
+            return -1;
+          let pos = -1;
+          entries.forEach((item, i) => item.index <= current && (pos = i));
+          return pos;
+        };
+        const draw = () => {
+          clear(ticks);
+          const entries = shown();
+          const stars = getMarks("stars");
+          const active = activePos();
+          entries.forEach((item, i) => {
+            const tick = h("button", {
+              type: "button",
+              class: `tick ${item.role}${i === active ? " current" : ""}${stars.has(item.index) ? " marked" : ""}${isLive(item) ? " live" : ""}`,
+              "aria-label": t(L10.goTo).replace("{n}", String(i + 1)).replace("{total}", String(entries.length))
+            });
+            tick.addEventListener("click", () => go(i));
+            ticks.appendChild(tick);
+          });
+          ticks.children[active]?.scrollIntoView({ block: "nearest" });
+          if (rail.classList.contains("open"))
+            drawMenu();
+          place();
+        };
+        const drawMenu = () => {
+          const entries = shown();
+          const stars = getMarks("stars");
+          const active = activePos();
+          meta.textContent = `${Math.max(active, 0) + 1} / ${entries.length}`;
+          clear(list);
+          entries.forEach((item, i) => {
+            const { text, dim } = label(item);
+            const row = h("button", { type: "button", role: "menuitem", class: `item${i === active ? " active" : ""}${i === aim ? " aim" : ""}` }, h("span", { class: "emoji", text: item.role === "user" ? "❓" : "\uD83E\uDD16" }), h("span", { class: `label${dim ? " dim" : ""}`, text }), stars.has(item.index) ? h("span", { class: "star", text: "★" }) : null);
+            row.addEventListener("click", () => go(i));
+            list.appendChild(h("li", {}, row));
+          });
+          list.children[aim >= 0 ? aim : active]?.scrollIntoView({ block: "nearest" });
+        };
+        const go = (pos) => {
+          const item = shown()[pos];
+          if (!item)
             return;
+          current = item.index;
+          aim = pos;
+          draw();
+          jumpTo(item.index, { flash: settings5.store.jumpEffect === "border", scroller });
+        };
+        const setOpen = (open) => {
+          clearTimeout(hideTimer);
+          if (open === rail.classList.contains("open"))
+            return;
+          rail.classList.toggle("open", open);
+          if (open)
+            drawMenu();
+          else
+            aim = -1;
+        };
+        for (const el of [ticks, menu]) {
+          el.addEventListener("mouseenter", () => setOpen(true));
+          el.addEventListener("mouseleave", () => {
+            clearTimeout(hideTimer);
+            hideTimer = setTimeout(() => setOpen(false), 200);
+          });
+        }
+        const syncCurrent = () => {
+          const next = currentIndex(scroller);
+          if (next === current)
+            return;
+          current = next;
+          const active = activePos();
+          [...ticks.children].forEach((tick, i) => tick.classList.toggle("current", i === active));
+          ticks.children[active]?.scrollIntoView({ block: "nearest" });
+          if (rail.classList.contains("open"))
+            drawMenu();
+        };
+        const onScroll = () => {
+          syncCurrent();
+          if (chatId)
+            return;
+          const before = items.filter((i) => i.text).length;
+          const next = fromDom();
+          if (next.length !== items.length || next.filter((i) => i.text).length !== before) {
+            items = next;
+            draw();
           }
+        };
+        const tick = () => {
+          place();
+          const total = totalMessages(scroller);
+          if (total && total !== items.length)
+            load(total > items.length);
+          syncCurrent();
+        };
+        const step = (event) => {
+          const entries = shown();
           let target = null;
           const at = activePos();
           if (event.key === "Home" || (event.metaKey || event.ctrlKey) && event.key === "ArrowUp")
@@ -3960,6 +4012,89 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
             return;
           event.preventDefault();
           go(target);
+        };
+        const close = () => {
+          if (!rail.classList.contains("open"))
+            return false;
+          setOpen(false);
+          return true;
+        };
+        const dispose = () => {
+          clearTimeout(hideTimer);
+          loadToken++;
+          rail.remove();
+        };
+        load();
+        return { key: feedKey(), scroller, rail, load, draw, place, tick, onScroll, visible, step, close, dispose };
+      };
+      const sync = () => {
+        const live = transcripts();
+        for (const [el, nav] of navs) {
+          if (live.includes(el) && keyFor(el) === nav.key)
+            continue;
+          nav.dispose();
+          navs.delete(el);
+        }
+        for (const el of live)
+          if (!navs.has(el))
+            navs.set(el, createNav(el));
+      };
+      const reset = () => {
+        for (const nav of navs.values())
+          nav.dispose();
+        navs.clear();
+        sync();
+      };
+      scope.defer(() => {
+        for (const nav of navs.values())
+          nav.dispose();
+        navs.clear();
+      });
+      let scrollQueued = false;
+      const dirty = new Set;
+      scope.listen(document, "scroll", (event) => {
+        const target = event.target;
+        if (target instanceof HTMLElement)
+          dirty.add(target);
+        if (scrollQueued)
+          return;
+        scrollQueued = true;
+        requestAnimationFrame(() => {
+          scrollQueued = false;
+          sync();
+          for (const [el, nav] of navs)
+            if ([...dirty].some((d) => d === el || el.contains(d) || d.contains(el)))
+              nav.onScroll();
+          dirty.clear();
+        });
+      }, { capture: true, passive: true });
+      scope.listen(window, "resize", () => navs.forEach((nav) => nav.place()));
+      onRoute(scope, () => {
+        reset();
+        scope.timeout(reset, 300);
+      });
+      scope.on("reply:end", () => scope.timeout(() => navs.forEach((nav) => nav.load(true)), 800));
+      onMarksChange(scope, () => navs.forEach((nav) => nav.draw()));
+      scope.interval(() => {
+        sync();
+        navs.forEach((nav) => nav.tick());
+      }, 1200);
+      if (settings5.store.keys) {
+        scope.listen(document, "keydown", (event) => {
+          if (event.altKey || event.isComposing)
+            return;
+          if (isEditable(event.target) || isEditable(document.activeElement))
+            return;
+          const focus = getScroller();
+          const nav = (focus && [...navs.values()].find((n) => n.scroller === focus || n.scroller.contains(focus) || focus.contains(n.scroller))) ?? [...navs.values()][0];
+          if (!nav?.visible())
+            return;
+          if (event.key === "Escape") {
+            if (nav.close())
+              event.preventDefault();
+            return;
+          }
+          nav.step(event);
         });
       }
     }
@@ -5632,7 +5767,7 @@ ${m.text.trim()}`).join(`
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "[20261013] v0.3.2",
+      version: "[20261013] v0.3.3",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -5649,7 +5784,7 @@ ${m.text.trim()}`).join(`
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "[20261013] v0.3.2";
+    win[FLAG] = "[20261013] v0.3.3";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     startPhase("document-start");
@@ -5665,7 +5800,7 @@ ${m.text.trim()}`).join(`
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"[20261013] v0.3.2"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"[20261013] v0.3.3"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();

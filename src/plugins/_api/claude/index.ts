@@ -168,6 +168,50 @@ async function getCodeJson<T>(path: string, signal?: AbortSignal): Promise<T> {
     return (await response.json()) as T;
 }
 
+export interface ChannelMessage {
+    id: string;
+    role: "user" | "assistant";
+    text: string;
+    at: number;
+}
+
+/**
+ * Plain messages of a project chat or thread, oldest first. Status cards, activity lines and other
+ * JSON bodies are app chrome, not messages, and are dropped.
+ */
+export function parseChannelMessages(raw: unknown): ChannelMessage[] {
+    const list = (raw as { data?: unknown })?.data;
+    if (!Array.isArray(list)) return [];
+    const out: ChannelMessage[] = [];
+    for (const m of list) {
+        if (!m || typeof m !== "object" || typeof m.body !== "string") continue;
+        const body = m.body.trim();
+        if (!body) continue;
+        if (body.startsWith("{")) {
+            try {
+                if (JSON.parse(body) && typeof JSON.parse(body) === "object") continue;
+            } catch {}
+        }
+        out.push({ id: String(m.id ?? ""), role: m.author_account_id ? "user" : "assistant", text: body, at: Date.parse(m.created_at) || 0 });
+    }
+    return out.sort((a, b) => a.at - b.at);
+}
+
+const channelCache = new Map<string, { at: number; value: Promise<ChannelMessage[]> }>();
+
+/** A project's chat (threadId null) or one thread, cached briefly. */
+export function getChannelMessages(channelId: string, threadId: string | null, force = false): Promise<ChannelMessage[]> {
+    if (!/^chan_[A-Za-z0-9]+$/.test(channelId) || (threadId && !/^cmsg_[A-Za-z0-9]+$/.test(threadId))) return Promise.reject(new Error("Bad id"));
+    const key = `${channelId}|${threadId ?? ""}`;
+    const cached = channelCache.get(key);
+    if (!force && cached && Date.now() - cached.at < 15000) return cached.value;
+    const path = threadId ? `/v1/code/channels/${channelId}/threads/${threadId}?limit=200&include_draft=true` : `/v1/code/channels/${channelId}/timeline?limit=200&include_draft=true`;
+    const value = getCodeJson(path).then(parseChannelMessages);
+    value.catch(() => channelCache.delete(key));
+    channelCache.set(key, { at: Date.now(), value });
+    return value;
+}
+
 export type ThreadBucket = "working" | "blocked" | "review_ready" | "completed" | "failed";
 
 export interface ProjectActivity {
