@@ -99,7 +99,25 @@ function scrollRowIntoView(scroller: HTMLElement, row: HTMLElement, behavior: Sc
 export async function jumpTo(index: number, options: { behavior?: ScrollBehavior; flash?: boolean; scroller?: HTMLElement | null } = {}): Promise<HTMLElement | null> {
     const scroller = options.scroller ?? getScroller();
     if (!scroller) return null;
+    // A newer jump, or the reader scrolling by hand, ends this one: never fight the reader.
+    const token = (jumpTokens.get(scroller) ?? 0) + 1;
+    jumpTokens.set(scroller, token);
+    let cancelled = false;
+    const cancel = () => (cancelled = true);
+    const events = ["wheel", "touchstart", "pointerdown", "keydown"] as const;
+    for (const type of events) scroller.addEventListener(type, cancel, { passive: true, capture: true });
+    try {
+        return await stepTo(scroller, index, options, () => cancelled || jumpTokens.get(scroller) !== token);
+    } finally {
+        for (const type of events) scroller.removeEventListener(type, cancel, { capture: true });
+    }
+}
+
+const jumpTokens = new WeakMap<HTMLElement, number>();
+
+async function stepTo(scroller: HTMLElement, index: number, options: { behavior?: ScrollBehavior; flash?: boolean }, stopped: () => boolean): Promise<HTMLElement | null> {
     for (let attempt = 0; attempt < 24; attempt++) {
+        if (stopped()) return null;
         const rows = getRows(scroller);
         const row = rows.find(r => r.index === index);
         if (row) {

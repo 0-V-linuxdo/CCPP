@@ -38,7 +38,6 @@ const settings = definePluginSettings({
 const L = {
     title: { zh: "对话目录", en: "Outline" },
     streaming: { zh: "正在回复…", en: "Replying…" },
-    unloaded: { zh: "（滚动到这里后显示）", en: "(shown once scrolled into view)" },
     empty: { zh: "（空消息）", en: "(empty)" },
     goTo: { zh: "跳到第 {n} 条，共 {total} 条", en: "Go to message {n} of {total}" },
 };
@@ -230,7 +229,10 @@ export default definePlugin({
             let loadToken = 0;
             let hideTimer: ReturnType<typeof setTimeout> | undefined;
 
-            const shown = () => (settings.store.showAssistant ? items : items.filter(i => i.role === "user"));
+            // Without the conversation API (project pages), a row whose text is still unknown is left
+            // out rather than shown as a placeholder; it appears once its message is known.
+            const known = (i: Item) => !!chatId || !!i.text.trim() || isLive(i);
+            const shown = () => items.filter(i => known(i) && (settings.store.showAssistant || i.role === "user"));
             const key = keyFor(scroller);
             const feedKey = () => key;
 
@@ -302,7 +304,7 @@ export default definePlugin({
             const label = (item: Item) => {
                 if (item.text.trim()) return { text: snippet(item.text, 120), dim: false };
                 if (isLive(item)) return { text: t(L.streaming), dim: true };
-                return { text: chatId ? t(L.empty) : t(L.unloaded), dim: true };
+                return { text: t(L.empty), dim: true };
             };
 
             /** The shown item the reader is at: the last one at or above the current row. */

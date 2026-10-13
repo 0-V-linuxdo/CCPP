@@ -14,3 +14,26 @@ Notes for AI agents working on CC++.
 - Updating the CC++ userscript in Helium is the agent's job, done through the Helium DevTools MCP.
   Never ask the user to click Install or Update in Violentmonkey.
 - After a release, tell whoever verifies in Helium the new version and what changed.
+- Helium's DevTools MCP is shared by every agent: the selected page can change between two calls.
+  Open your own tab with `new_page`, re-select it right before each `evaluate_script`, check
+  `location.href` inside the script, and close the tab when done.
+
+### Updating the userscript through MCP
+
+1. `new_page` (or `navigate_page`) to the Violentmonkey options page:
+   `chrome-extension://jinjaccalgkegednnccohejagnlnfdag/options/index.html`.
+   Extension pages are missing from `list_pages`, but right after navigating they are the selected page.
+2. Run there (find the script id via `GetData`, `scripts[].meta.name === "CC++"`; it was 1293):
+   ```js
+   async () => {
+     const B = globalThis.browser || chrome;
+     B.runtime.sendMessage({ cmd: "CheckUpdate", data: 1293 }); // don't await: it never resolves
+     await new Promise(r => setTimeout(r, 5000));
+     const d = await B.runtime.sendMessage({ cmd: "GetData", data: {} });
+     const s = d.scripts.find(x => x.props.id === 1293);
+     return { ver: s.meta.version, lastUpdated: new Date(s.props.lastUpdated).toISOString() };
+   }
+   ```
+3. Reload the claude.ai tab under test and check `window.__ccpp` for the version.
+   raw.githubusercontent.com can lag a few minutes behind a push; retry if the version hasn't moved.
+4. Send the Violentmonkey tab back to `about:blank` (or close it) afterwards.

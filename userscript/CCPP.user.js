@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.8
+// @version      20261013.0.3.9
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -1733,7 +1733,25 @@ select.input { padding-right: 6px; }
     const scroller = options.scroller ?? getScroller();
     if (!scroller)
       return null;
+    const token = (jumpTokens.get(scroller) ?? 0) + 1;
+    jumpTokens.set(scroller, token);
+    let cancelled = false;
+    const cancel = () => cancelled = true;
+    const events = ["wheel", "touchstart", "pointerdown", "keydown"];
+    for (const type of events)
+      scroller.addEventListener(type, cancel, { passive: true, capture: true });
+    try {
+      return await stepTo(scroller, index, options, () => cancelled || jumpTokens.get(scroller) !== token);
+    } finally {
+      for (const type of events)
+        scroller.removeEventListener(type, cancel, { capture: true });
+    }
+  }
+  var jumpTokens = new WeakMap;
+  async function stepTo(scroller, index, options, stopped) {
     for (let attempt = 0;attempt < 24; attempt++) {
+      if (stopped())
+        return null;
       const rows = getRows(scroller);
       const row = rows.find((r) => r.index === index);
       if (row) {
@@ -2045,7 +2063,7 @@ select.input { padding-right: 6px; }
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.8";
+  var version = "0.3.9";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -3729,7 +3747,6 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
   var L10 = {
     title: { zh: "对话目录", en: "Outline" },
     streaming: { zh: "正在回复…", en: "Replying…" },
-    unloaded: { zh: "（滚动到这里后显示）", en: "(shown once scrolled into view)" },
     empty: { zh: "（空消息）", en: "(empty)" },
     goTo: { zh: "跳到第 {n} 条，共 {total} 条", en: "Go to message {n} of {total}" }
   };
@@ -3873,7 +3890,8 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
         let aim = -1;
         let loadToken = 0;
         let hideTimer;
-        const shown = () => settings5.store.showAssistant ? items : items.filter((i) => i.role === "user");
+        const known = (i) => !!chatId || !!i.text.trim() || isLive(i);
+        const shown = () => items.filter((i) => known(i) && (settings5.store.showAssistant || i.role === "user"));
         const key = keyFor(scroller);
         const feedKey = () => key;
         const harvest = () => {
@@ -3943,7 +3961,7 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
             return { text: snippet(item.text, 120), dim: false };
           if (isLive(item))
             return { text: t(L10.streaming), dim: true };
-          return { text: chatId ? t(L10.empty) : t(L10.unloaded), dim: true };
+          return { text: t(L10.empty), dim: true };
         };
         const activePos = () => {
           const entries = shown();
@@ -5860,7 +5878,7 @@ ${m.text.trim()}`).join(`
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.8",
+      version: "0.3.9",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -5877,7 +5895,7 @@ ${m.text.trim()}`).join(`
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.8";
+    win[FLAG] = "0.3.9";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     startPhase("document-start");
@@ -5893,7 +5911,7 @@ ${m.text.trim()}`).join(`
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.8"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.9"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();
