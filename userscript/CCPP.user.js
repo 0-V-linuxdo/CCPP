@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.4
+// @version      20261013.0.3.5
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -882,7 +882,13 @@
     }
   }
   function flushWatcher(watcher) {
-    const found = new Set(document.querySelectorAll(watcher.selector));
+    let found;
+    try {
+      found = new Set(document.querySelectorAll(watcher.selector));
+    } catch (error) {
+      logger5.error(`Watcher selector ${watcher.selector} failed:`, error);
+      return;
+    }
     for (const [el, cleanup] of watcher.live) {
       if (found.has(el) && el.isConnected)
         continue;
@@ -927,7 +933,7 @@
         fn();
     };
     const observer = new MutationObserver(() => timer ??= setTimeout(run, FLUSH_MS));
-    observer.observe(document.documentElement, { childList: true, subtree: true });
+    observer.observe(document, { childList: true, subtree: true });
     scope.defer(() => {
       observer.disconnect();
       if (timer)
@@ -944,10 +950,13 @@
     hidden: true,
     startAt: "document-start",
     start(scope) {
-      observer = new MutationObserver(schedule);
-      observer.observe(document.documentElement, { childList: true, subtree: true });
+      const mine = new MutationObserver(schedule);
+      observer = mine;
+      mine.observe(document, { childList: true, subtree: true });
       scope.defer(() => {
-        observer?.disconnect();
+        mine.disconnect();
+        if (observer !== mine)
+          return;
         observer = null;
         if (pending)
           clearTimeout(pending);
@@ -2029,7 +2038,7 @@ select.input { padding-right: 6px; }
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "[20261013] v0.3.4";
+  var version = "[20261013] v0.3.5";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -2666,21 +2675,21 @@ select.input { padding-right: 6px; }
     watch(scope, SEL.menu, (menu) => {
       if (menu.hasAttribute("data-ccpp-panel-level"))
         return;
-      let tries = 0;
-      let frame = 0;
       let cleanup = null;
       const tryInsert = () => {
+        if (cleanup)
+          return true;
         const settingsItem = menu.querySelector(SETTINGS_ITEM);
-        if (!settingsItem) {
-          if (++tries < 20)
-            frame = requestAnimationFrame(tryInsert);
-          return;
-        }
+        if (!settingsItem)
+          return false;
         cleanup = enhance(menu, settingsItem, options);
+        return true;
       };
-      tryInsert();
+      const observer = new MutationObserver(() => tryInsert() && observer.disconnect());
+      if (!tryInsert())
+        observer.observe(menu, { childList: true, subtree: true });
       return () => {
-        cancelAnimationFrame(frame);
+        observer.disconnect();
         cleanup?.();
       };
     });
@@ -5806,7 +5815,7 @@ ${m.text.trim()}`).join(`
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "[20261013] v0.3.4",
+      version: "[20261013] v0.3.5",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -5823,7 +5832,7 @@ ${m.text.trim()}`).join(`
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "[20261013] v0.3.4";
+    win[FLAG] = "[20261013] v0.3.5";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     startPhase("document-start");
@@ -5839,7 +5848,7 @@ ${m.text.trim()}`).join(`
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"[20261013] v0.3.4"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"[20261013] v0.3.5"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();

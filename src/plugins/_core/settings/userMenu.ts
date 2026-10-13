@@ -56,20 +56,20 @@ export interface UserMenuOptions {
 export function installUserMenu(scope: Scope, options: UserMenuOptions) {
     watch(scope, SEL.menu, menu => {
         if (menu.hasAttribute("data-ccpp-panel-level")) return;
-        let tries = 0;
-        let frame = 0;
         let cleanup: (() => void) | null = null;
+        // The menu's rows can render after the popup itself (on first open the menu code is still
+        // loading), so wait for the Settings row for as long as the menu is open.
         const tryInsert = () => {
+            if (cleanup) return true;
             const settingsItem = menu.querySelector<HTMLElement>(SETTINGS_ITEM);
-            if (!settingsItem) {
-                if (++tries < 20) frame = requestAnimationFrame(tryInsert);
-                return;
-            }
+            if (!settingsItem) return false;
             cleanup = enhance(menu, settingsItem, options);
+            return true;
         };
-        tryInsert();
+        const observer = new MutationObserver(() => tryInsert() && observer.disconnect());
+        if (!tryInsert()) observer.observe(menu, { childList: true, subtree: true });
         return () => {
-            cancelAnimationFrame(frame);
+            observer.disconnect();
             cleanup?.();
         };
     });

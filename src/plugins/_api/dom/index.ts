@@ -35,7 +35,14 @@ function runCleanup(cleanup: Cleanup) {
 }
 
 function flushWatcher(watcher: Watcher) {
-    const found = new Set(document.querySelectorAll(watcher.selector));
+    let found: Set<Element>;
+    try {
+        found = new Set(document.querySelectorAll(watcher.selector));
+    } catch (error) {
+        // One bad selector must not stop every other watcher in this flush.
+        logger.error(`Watcher selector ${watcher.selector} failed:`, error);
+        return;
+    }
     for (const [el, cleanup] of watcher.live) {
         if (found.has(el) && el.isConnected) continue;
         watcher.live.delete(el);
@@ -84,7 +91,7 @@ export function onDomChange(scope: Scope, fn: () => void) {
         if (scope.alive) fn();
     };
     const observer = new MutationObserver(() => (timer ??= setTimeout(run, FLUSH_MS)));
-    observer.observe(document.documentElement, { childList: true, subtree: true });
+    observer.observe(document, { childList: true, subtree: true });
     scope.defer(() => {
         observer.disconnect();
         if (timer) clearTimeout(timer);
@@ -103,7 +110,7 @@ export function waitFor<T extends Element = HTMLElement>(selector: string, timeo
             clearTimeout(timer);
             resolve(el);
         });
-        obs.observe(document.documentElement, { childList: true, subtree: true });
+        obs.observe(document, { childList: true, subtree: true });
         const timer = setTimeout(() => {
             obs.disconnect();
             resolve(null);
@@ -120,10 +127,13 @@ export default definePlugin({
     hidden: true,
     startAt: "document-start",
     start(scope) {
-        observer = new MutationObserver(schedule);
-        observer.observe(document.documentElement, { childList: true, subtree: true });
+        // Disconnect only our own observer: a restart can start the next one before this scope ends.
+        const mine = new MutationObserver(schedule);
+        observer = mine;
+        mine.observe(document, { childList: true, subtree: true });
         scope.defer(() => {
-            observer?.disconnect();
+            mine.disconnect();
+            if (observer !== mine) return;
             observer = null;
             if (pending) clearTimeout(pending);
             pending = null;
