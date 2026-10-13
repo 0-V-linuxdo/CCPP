@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.1.0
+// @version      20261013.0.2.0
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -1880,7 +1880,7 @@ kbd { font: 11px ui-monospace, monospace; padding: 1px 5px; border-radius: 4px; 
 `;
 
   // src/plugins/_core/settings/index.ts
-  var version = "[20261013] v0.1.0";
+  var version = "[20261013] v0.2.0";
   var tabs = new Map;
   function registerTab(scope, tab) {
     tabs.set(tab.id, tab);
@@ -4388,7 +4388,7 @@ ${m.text.trim()}`).join(`
   var logger11 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "[20261013] v0.1.0",
+      version: "[20261013] v0.2.0",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -4405,7 +4405,7 @@ ${m.text.trim()}`).join(`
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "[20261013] v0.1.0";
+    win[FLAG] = "[20261013] v0.2.0";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     startPhase("document-start");
@@ -4421,7 +4421,7 @@ ${m.text.trim()}`).join(`
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger11.info(`CC++ ${"[20261013] v0.1.0"} started with ${PLUGINS.length} plugins`);
+    logger11.info(`CC++ ${"[20261013] v0.2.0"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();
