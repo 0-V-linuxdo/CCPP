@@ -70,9 +70,9 @@ export interface Host {
  * A fixed, isolated layer: our CSS never leaks into claude.ai and claude.ai's never into us.
  * It follows claude.ai's light/dark mode and is removed when the scope ends.
  */
-export function createHost(scope: Scope, id: string, css: string, options: { fixed?: boolean } = {}): Host {
-    const host = h("div", { id: `ccpp-${id}`, "data-ccpp": id });
-    if (options.fixed !== false) Object.assign(host.style, { position: "fixed", inset: "0", zIndex: "2147483600", pointerEvents: "none" });
+/** A shadow root carrying BASE_CSS whose wrapper follows claude.ai's theme and font. Not attached anywhere. */
+export function shadowBox(css: string, tag: keyof HTMLElementTagNameMap = "div") {
+    const host = document.createElement(tag);
     const root = host.attachShadow({ mode: "open" });
     root.appendChild(h("style", { text: BASE_CSS + css }));
     const box = h("div", { class: "ccpp" });
@@ -83,6 +83,18 @@ export function createHost(scope: Scope, id: string, css: string, options: { fix
         if (document.body) box.style.fontFamily = getComputedStyle(document.body).fontFamily;
     };
     sync();
+    return { host, root, box, sync };
+}
+
+/**
+ * A fixed, isolated layer: our CSS never leaks into claude.ai and claude.ai's never into us.
+ * It follows claude.ai's light/dark mode and is removed when the scope ends.
+ */
+export function createHost(scope: Scope, id: string, css: string, options: { fixed?: boolean } = {}): Host {
+    const { host, root, box, sync } = shadowBox(css);
+    host.id = `ccpp-${id}`;
+    host.dataset.ccpp = id;
+    if (options.fixed !== false) Object.assign(host.style, { position: "fixed", inset: "0", zIndex: "2147483600", pointerEvents: "none" });
     scope.observe(document.documentElement, { attributes: true, attributeFilter: ["data-mode", "class"] }, sync);
     const attach = () => {
         if (document.body && host.parentNode !== document.body) document.body.appendChild(host);

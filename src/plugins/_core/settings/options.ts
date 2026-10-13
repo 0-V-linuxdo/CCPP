@@ -8,6 +8,8 @@ import { t } from "@kernel/i18n";
 import { coerce, getRaw, type Option, type PluginSettings, setRaw, type Value } from "@kernel/settings";
 import { h } from "@lib/dom";
 
+import { confirmDialog } from "./layer";
+
 /** One form row for a plugin option, wired to the settings store. */
 export function renderOption(settings: PluginSettings, key: string, option: Option, rerender: () => void): HTMLElement | null {
     const owner = settings.owner();
@@ -19,8 +21,8 @@ export function renderOption(settings: PluginSettings, key: string, option: Opti
         setRaw(owner, key, next);
         if (Object.values(settings.def).some(def => def.visible)) rerender();
     };
-    const label = h("div", { class: "opt-label", text: t(option.label) });
-    const desc = option.description ? h("div", { class: "opt-desc", text: t(option.description) }) : null;
+    const text = h("div", { class: "row-text" }, h("div", { class: "row-title", text: t(option.label) }), option.description ? h("div", { class: "row-desc", text: t(option.description) }) : null);
+    const row = (control: HTMLElement, wide = false) => h("div", { class: `row${wide ? " wide" : ""}`, "data-key": key }, text, wide ? control : h("div", { class: "row-control" }, control));
 
     switch (option.type) {
         case "boolean": {
@@ -30,43 +32,43 @@ export function renderOption(settings: PluginSettings, key: string, option: Opti
                 sw.setAttribute("aria-checked", String(next));
                 set(next);
             });
-            return h("div", { class: "opt" }, label, sw, desc);
+            return row(sw);
         }
         case "number": {
             const output = h("output", { text: `${value}${option.unit ?? ""}` });
-            const input = h("input", { type: "range", min: option.min, max: option.max, step: option.step ?? 1, value: String(value) });
+            const input = h("input", { type: "range", min: option.min, max: option.max, step: option.step ?? 1, value: String(value), "aria-label": t(option.label) });
             input.addEventListener("input", () => (output.textContent = `${input.value}${option.unit ?? ""}`));
             input.addEventListener("change", () => set(Number(input.value)));
-            return h("div", { class: "opt" }, label, h("div", { class: "range" }, input, output), desc);
+            return row(h("div", { class: "range" }, input, output));
         }
         case "select": {
-            const select = h("select", { class: "input" }, ...option.options.map(o => h("option", { value: o.value, text: t(o.label), selected: o.value === value })));
+            const select = h("select", { class: "input", "aria-label": t(option.label) }, ...option.options.map(o => h("option", { value: o.value, text: t(o.label), selected: o.value === value })));
             select.addEventListener("change", () => set(select.value));
-            return h("div", { class: "opt" }, label, select, desc);
+            return row(select);
         }
         case "color": {
-            const input = h("input", { type: "color", value: String(value) });
+            const input = h("input", { type: "color", value: String(value), "aria-label": t(option.label) });
             input.addEventListener("change", () => set(input.value));
-            return h("div", { class: "opt" }, label, input, desc);
+            return row(input);
         }
         case "string": {
-            const input = h("input", { class: "input", value: String(value ?? ""), placeholder: option.placeholder ? t(option.placeholder) : "", maxLength: option.maxLength ?? 2000 });
+            const input = h("input", { class: "input", value: String(value ?? ""), placeholder: option.placeholder ? t(option.placeholder) : "", maxLength: option.maxLength ?? 2000, "aria-label": t(option.label) });
             input.addEventListener("change", () => set(input.value));
-            return h("div", { class: "opt wide" }, label, input, desc);
+            return row(input, true);
         }
         case "text": {
-            const area = h("textarea", { class: "input", rows: option.rows ?? 5, placeholder: option.placeholder ? t(option.placeholder) : "" });
+            const area = h("textarea", { class: "input", rows: option.rows ?? 5, placeholder: option.placeholder ? t(option.placeholder) : "", "aria-label": t(option.label) });
             area.value = String(value ?? "");
             area.addEventListener("change", () => set(area.value));
-            return h("div", { class: "opt wide" }, label, area, desc);
+            return row(area, true);
         }
         case "action": {
             const button = h("button", { type: "button", class: "btn", text: t(option.button) });
-            button.addEventListener("click", () => {
-                if (option.confirm && !confirm(t(option.confirm))) return;
+            button.addEventListener("click", async () => {
+                if (option.confirm && !(await confirmDialog({ title: t(option.label), body: t(option.confirm), danger: true }))) return;
                 option.run();
             });
-            return h("div", { class: "opt" }, label, button, desc);
+            return row(button);
         }
     }
 }

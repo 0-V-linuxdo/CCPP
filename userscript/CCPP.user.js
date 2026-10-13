@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.2.0
+// @version      20261013.0.3.0
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -14,6 +14,8 @@
 // @grant        unsafeWindow
 // @grant        GM_registerMenuCommand
 // @grant        GM_unregisterMenuCommand
+// @grant        GM_xmlhttpRequest
+// @connect      *
 // @noframes
 // @license      MIT
 // ==/UserScript==
@@ -1225,7 +1227,7 @@
     startAt: "document-start",
     start(scope) {
       const original = pageWindow.fetch;
-      const wrapped = function fetch(input, init) {
+      const wrapped = function fetch2(input, init) {
         const req = describe(input, init);
         if (req && blockers.size && isBlocked(req))
           return Promise.resolve(new Response(null, { status: 204 }));
@@ -1315,7 +1317,15 @@
     blend: [c(9, 9, 7), c(15, 15, 7)],
     tab: [p("M3 5h18v14H3z"), p("M3 9h18")],
     collapse: [p("m7 20 5-5 5 5"), p("m7 4 5 5 5-5")],
-    puzzle: [p("M19.44 12.06a2 2 0 1 0-2.83-2.83L14 6.6V4a2 2 0 0 0-2-2H8v2.5a2 2 0 1 1-4 0V2H2v6h2.5a2 2 0 1 1 0 4H2v8h8v-2.5a2 2 0 1 1 4 0V20h4a2 2 0 0 0 2-2v-4l-.56-1.94Z")]
+    puzzle: [p("M19.44 12.06a2 2 0 1 0-2.83-2.83L14 6.6V4a2 2 0 0 0-2-2H8v2.5a2 2 0 1 1-4 0V2H2v6h2.5a2 2 0 1 1 0 4H2v8h8v-2.5a2 2 0 1 1 4 0V20h4a2 2 0 0 0 2-2v-4l-.56-1.94Z")],
+    sliders: [p("M4 21v-7"), p("M4 10V3"), p("M12 21v-9"), p("M12 8V3"), p("M20 21v-5"), p("M20 12V3"), p("M2 14h4"), p("M10 8h4"), p("M18 16h4")],
+    globe: [c(12, 12, 10), p("M2 12h20"), p("M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z")],
+    folder: [p("M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z")],
+    copy: [p("M8 8h12v12H8z"), p("M4 16V6a2 2 0 0 1 2-2h10")],
+    pencil: [p("M21.17 6.81a1 1 0 0 0-3.99-3.99L3.84 16.17a2 2 0 0 0-.5.83l-1.32 4.35a.5.5 0 0 0 .62.62l4.35-1.32a2 2 0 0 0 .83-.5z"), p("m15 5 4 4")],
+    plus: [p("M5 12h14"), p("M12 5v14")],
+    alert: [p("m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"), p("M12 9v4"), p("M12 17h.01")],
+    info: [c(12, 12, 10), p("M12 16v-4"), p("M12 8h.01")]
   };
   var iconNames = Object.keys(ICONS);
   function icon(name, size = 16) {
@@ -1392,10 +1402,8 @@ select.input { padding-right: 6px; }
 .badge.bad { background: color-mix(in srgb, var(--bad) 16%, transparent); color: var(--bad); }
 @media (prefers-reduced-motion: reduce) { .ccpp * { transition: none !important; animation: none !important; } }
 `;
-  function createHost(scope, id, css, options = {}) {
-    const host = h("div", { id: `ccpp-${id}`, "data-ccpp": id });
-    if (options.fixed !== false)
-      Object.assign(host.style, { position: "fixed", inset: "0", zIndex: "2147483600", pointerEvents: "none" });
+  function shadowBox(css, tag = "div") {
+    const host = document.createElement(tag);
     const root = host.attachShadow({ mode: "open" });
     root.appendChild(h("style", { text: BASE_CSS + css }));
     const box = h("div", { class: "ccpp" });
@@ -1406,6 +1414,14 @@ select.input { padding-right: 6px; }
         box.style.fontFamily = getComputedStyle(document.body).fontFamily;
     };
     sync();
+    return { host, root, box, sync };
+  }
+  function createHost(scope, id, css, options = {}) {
+    const { host, root, box, sync } = shadowBox(css);
+    host.id = `ccpp-${id}`;
+    host.dataset.ccpp = id;
+    if (options.fixed !== false)
+      Object.assign(host.style, { position: "fixed", inset: "0", zIndex: "2147483600", pointerEvents: "none" });
     scope.observe(document.documentElement, { attributes: true, attributeFilter: ["data-mode", "class"] }, sync);
     const attach = () => {
       if (document.body && host.parentNode !== document.body)
@@ -1763,6 +1779,497 @@ select.input { padding-right: 6px; }
   var setLang = (next) => void (lang = next === "auto" ? detect() : next);
   var t = (text) => typeof text === "string" ? text : text[lang];
 
+  // src/plugins/_core/settings/styles.ts
+  var PANEL_CSS = `
+.page { display: flex; flex-direction: column; min-height: 0; height: 100%; }
+.page-head { flex: none; display: flex; align-items: center; gap: 8px; padding: 0 var(--cds-pad-xl, 24px) 8px; }
+.page-head h2 { margin: 0; flex: 1; font-size: var(--cds-font-size-heading, 18px); font-weight: 600; }
+.page-body { flex: 1; min-height: 0; overflow-y: auto; padding: 4px var(--cds-pad-xl, 24px) 24px; scrollbar-gutter: stable; }
+
+.bar { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; }
+.search { position: relative; flex: 1; min-width: 0; }
+.search svg { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--fg3); pointer-events: none; }
+.search .input { padding-left: 32px; }
+.bar select.input { width: 7.5rem; flex: none; }
+
+.tabs { display: flex; gap: 2px; overflow-x: auto; margin: 0 0 14px; border-bottom: 1px solid var(--line); scrollbar-width: none; }
+.tabs::-webkit-scrollbar { display: none; }
+.tabs button { position: relative; flex: none; height: 34px; padding: 0 10px; border: 0; background: transparent; color: var(--fg3); font-size: var(--fs-sm); white-space: nowrap; }
+.tabs button:hover { color: var(--fg); }
+.tabs button.active { color: var(--fg); font-weight: 500; }
+.tabs button.active::after { content: ""; position: absolute; left: 8px; right: 8px; bottom: -1px; height: 2px; border-radius: 2px; background: var(--fg); }
+.tabs .n { margin-left: 4px; color: var(--fg3); font-weight: 400; font-variant-numeric: tabular-nums; }
+
+.banner { display: flex; align-items: center; gap: 10px; padding: 10px 12px; margin-bottom: 14px; border-radius: var(--radius-card); background: color-mix(in srgb, var(--warn) 14%, transparent); color: var(--fg); font-size: var(--fs-sm); }
+.banner svg { color: var(--warn); flex: none; }
+.banner span { flex: 1; }
+
+.grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+@media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
+.sep { display: flex; align-items: center; gap: 10px; margin: 18px 0 10px; color: var(--fg3); font-size: var(--fs-xs); }
+.sep::before, .sep::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+
+.card { display: flex; flex-direction: column; min-width: 0; min-height: 7.5rem; padding: 12px; border-radius: .5rem; border: 1px solid var(--line); background: var(--bg-card, transparent); transition: border-color .12s, background .12s; }
+.card:hover { border-color: color-mix(in srgb, var(--fg) 22%, transparent); }
+.card.crashed { border-color: color-mix(in srgb, var(--bad) 60%, transparent); }
+.card.crashed .card-body { opacity: .5; }
+.card-top { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.chip-icon { display: grid; place-items: center; width: 1.5rem; height: 1.5rem; border-radius: 6px; flex: none; background: color-mix(in srgb, var(--fg) 10%, transparent); color: var(--fg); }
+.card.off .chip-icon { color: var(--fg3); }
+.card-title { flex: 1; min-width: 0; font-size: .875rem; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.card-title:hover { text-decoration: underline; text-underline-offset: 2px; }
+.card-actions { display: flex; align-items: center; gap: 0; flex: none; }
+.card-actions .icon-btn { width: 26px; height: 26px; }
+.icon-btn.star.on { color: #e3a008; } .icon-btn.star.on svg { fill: currentColor; }
+.icon-btn.pin.on { color: var(--fg); } .icon-btn.pin.on svg { fill: currentColor; }
+.card-actions .switch { margin-left: 6px; }
+.card-desc { margin-top: 8px; font-size: .8125rem; line-height: 1.45; color: var(--fg2); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.card-body { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.card-foot { display: flex; align-items: center; gap: 6px; margin-top: auto; padding-top: 8px; border-top: 1px solid var(--line-soft); font-size: .7rem; color: var(--fg3); min-width: 0; }
+.card-desc + .card-foot, .card-body > .card-foot { margin-top: auto; }
+.card-gap { flex: 1; min-height: 8px; }
+.card-foot .author { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card-foot .badge { height: 16px; font-size: 10px; }
+
+.empty { padding: 40px 16px; text-align: center; color: var(--fg3); }
+.empty b { display: block; color: var(--fg2); font-weight: 500; margin-bottom: 4px; }
+
+/* claude.ai settings rows */
+.section { margin-bottom: 24px; }
+.section-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.section-head h3 { flex: 1; margin: 0; font-size: var(--fs); font-weight: 600; }
+.section-head p { margin: 0; }
+.rows > .row + .row { border-top: 1px solid var(--line-soft); }
+.row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 0; }
+.row.wide { flex-direction: column; align-items: stretch; gap: 8px; }
+.row-text { min-width: 0; flex: 1; }
+.row-title { color: var(--fg); }
+.row-desc { color: var(--fg3); margin-top: 2px; font-size: var(--fs-sm); }
+.row-control { flex: none; display: flex; align-items: center; gap: 8px; }
+.row-control select.input { width: auto; min-width: 9rem; }
+.row-control .range { display: flex; align-items: center; gap: 8px; } .row-control .range input { width: 160px; accent-color: var(--fg); }
+.row-control output { min-width: 44px; text-align: right; font-variant-numeric: tabular-nums; color: var(--fg2); }
+.row-control input[type=color] { width: 40px; height: 28px; padding: 0; border: 0; border-radius: 6px; background: none; box-shadow: inset 0 0 0 1px var(--field-ring); }
+.editor { width: 100%; min-height: 360px; }
+.muted { color: var(--fg3); }
+.hint { color: var(--fg3); font-size: var(--fs-sm); margin: 0 0 10px; }
+`;
+  var LAYER_CSS = `
+.backdrop { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: auto; background: color-mix(in srgb, #000 30%, transparent); animation: fade .15s ease-out; }
+.backdrop.clear { background: transparent; }
+@keyframes fade { from { opacity: 0; } }
+@keyframes pop { from { opacity: 0; transform: scale(.98); } }
+.dialog { position: relative; display: flex; flex-direction: column; width: min(560px, calc(100% - 32px)); max-height: calc(100% - 48px); border-radius: calc(var(--radius) + 8px); background: var(--bg); box-shadow: var(--shadow); overflow: hidden; animation: pop .15s ease-out; }
+.dialog.small { width: min(420px, calc(100% - 32px)); }
+.dialog.wide { width: min(760px, calc(100% - 32px)); }
+.d-head { display: flex; align-items: center; gap: 10px; padding: 16px 16px 4px 20px; }
+.d-head h2 { flex: 1; min-width: 0; margin: 0; font-size: var(--cds-font-size-heading, 17px); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.d-head .chip-icon { width: 1.75rem; height: 1.75rem; }
+.d-body { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 20px 16px; }
+.d-desc { color: var(--fg2); margin: 0 0 6px; }
+.d-meta { color: var(--fg3); font-size: var(--fs-xs); margin: 0 0 8px; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.d-sep { height: 1px; background: var(--line); margin: 12px 0; }
+.d-title { font-weight: 600; margin: 0 0 4px; }
+.d-foot { display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding: 12px 20px 16px; border-top: 1px solid var(--line-soft); }
+.d-foot .grow { flex: 1; }
+.field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+.field label { font-size: var(--fs-sm); color: var(--fg2); }
+.btn.danger-solid { background: var(--bad); color: #fff; } .btn.danger-solid:hover { opacity: .9; }
+
+/* standalone shell, used when claude.ai's own settings dialog can't host CC++ */
+.shell { position: relative; display: grid; grid-template-columns: 12rem 1fr; width: min(1024px, calc(100% - 32px)); height: min(50rem, calc(100% - 32px)); border-radius: calc(var(--radius) + 8px); background: var(--bg); box-shadow: var(--shadow); overflow: hidden; animation: pop .15s ease-out; }
+.shell-nav { display: flex; flex-direction: column; gap: 2px; padding: 12px; background: var(--bg-nav); border-right: 1px solid var(--line); }
+.shell-nav .group { padding: 12px 8px 4px; font-size: var(--fs-xs); color: var(--fg3); }
+.shell-nav button { display: flex; align-items: center; gap: 8px; height: var(--h); padding: 0 8px; border: 0; border-radius: var(--radius); background: transparent; color: var(--fg2); text-align: left; }
+.shell-nav button:hover { background: var(--bg2); color: var(--fg); }
+.shell-nav button.active { background: var(--bg3); color: var(--fg); font-weight: 500; }
+.shell-nav .ver { margin-top: auto; padding: 8px; font-size: var(--fs-xs); color: var(--fg3); }
+.shell-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.shell-top { display: flex; justify-content: flex-end; padding: 12px 12px 0; }
+@media (max-width: 640px) { .shell { grid-template-columns: 1fr; grid-template-rows: auto 1fr; } .shell-nav { flex-direction: row; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--line); } .shell-nav .group, .shell-nav .ver { display: none; } }
+`;
+
+  // src/plugins/_core/settings/layer.ts
+  var NATIVE_DIALOG = '[role="dialog"][data-perf-overlay="settings_modal"]';
+  var L = {
+    close: { zh: "关闭", en: "Close" },
+    ok: { zh: "确定", en: "OK" },
+    cancel: { zh: "取消", en: "Cancel" }
+  };
+  var shadow = null;
+  var stack2 = [];
+  function initLayer(scope) {
+    shadow = shadowBox(LAYER_CSS + PANEL_CSS);
+    shadow.host.dataset.ccpp = "layer";
+    Object.assign(shadow.host.style, { inset: "0", zIndex: "2147483600", pointerEvents: "none" });
+    scope.observe(document.documentElement, { attributes: true, attributeFilter: ["data-mode", "class"] }, () => shadow?.sync());
+    scope.listen(window, "keydown", (event) => {
+      if (event.key !== "Escape" || !stack2.length || !shadow?.host.isConnected)
+        return;
+      event.preventDefault();
+      event.stopPropagation();
+      closeTop();
+    }, { capture: true });
+    scope.defer(() => {
+      stack2.length = 0;
+      shadow?.host.remove();
+      shadow = null;
+    });
+  }
+  function place2() {
+    if (!shadow)
+      return null;
+    const dialog = document.querySelector(NATIVE_DIALOG);
+    const parent = dialog ?? document.body;
+    shadow.host.style.position = dialog ? "absolute" : "fixed";
+    if (shadow.host.parentNode !== parent)
+      parent.appendChild(shadow.host);
+    shadow.sync();
+    return shadow.box;
+  }
+  function closeTop() {
+    const top = stack2.pop();
+    top?.el.remove();
+    top?.onClose?.();
+  }
+  function openModal(content, options = {}) {
+    for (let i = stack2.length - 1;i >= 0; i--)
+      if (!stack2[i].el.isConnected || stack2[i].el.getRootNode() !== shadow?.root)
+        stack2.splice(i, 1);
+    const box = place2();
+    if (!box)
+      return () => {};
+    const backdrop = h("div", { class: `backdrop${options.backdrop === "clear" ? " clear" : ""}` }, content);
+    backdrop.addEventListener("mousedown", (event) => event.target === backdrop && close());
+    const layer = { el: backdrop, onClose: options.onClose };
+    stack2.push(layer);
+    box.appendChild(backdrop);
+    queueMicrotask(() => content.querySelector("[autofocus], input, textarea, button:not(.icon-btn)")?.focus());
+    function close() {
+      const index = stack2.indexOf(layer);
+      if (index < 0)
+        return;
+      stack2.splice(index, 1);
+      backdrop.remove();
+      layer.onClose?.();
+    }
+    return close;
+  }
+  function closeAllModals() {
+    while (stack2.length)
+      closeTop();
+    if (shadow)
+      clear(shadow.box);
+  }
+  function dialogFrame(options) {
+    const close = h("button", { type: "button", class: "icon-btn", "aria-label": t(L.close), title: t(L.close) }, icon("x", 16));
+    close.addEventListener("click", options.onClose);
+    return h("div", { class: `dialog${options.size ? ` ${options.size}` : ""}`, role: "dialog", "aria-modal": "true", "aria-label": options.title }, h("div", { class: "d-head" }, options.icon ? h("span", { class: "chip-icon" }, icon(options.icon, 16)) : null, h("h2", { text: options.title }), close), h("div", { class: "d-body" }, ...options.body), options.foot?.length ? h("div", { class: "d-foot" }, ...options.foot) : null);
+  }
+  function confirmDialog(options) {
+    return new Promise((resolve) => {
+      let settled = false;
+      const done = (value) => {
+        if (settled)
+          return;
+        settled = true;
+        close();
+        resolve(value);
+      };
+      const ok = h("button", { type: "button", class: `btn ${options.danger ? "danger-solid" : "primary"}`, text: t(options.ok ?? L.ok) });
+      ok.addEventListener("click", () => done(true));
+      const cancel = h("button", { type: "button", class: "btn", text: t(options.cancel ?? L.cancel) });
+      cancel.addEventListener("click", () => done(false));
+      const frame = dialogFrame({ title: options.title, size: "small", body: [h("p", { class: "d-desc", text: options.body })], foot: [cancel, ok], onClose: () => done(false) });
+      const close = openModal(frame, { onClose: () => done(false) });
+      queueMicrotask(() => ok.focus());
+    });
+  }
+
+  // src/plugins/_core/settings/state.ts
+  var version = "[20261013] v0.3.0";
+  var tabs = new Map;
+  var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
+  var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
+  var isFavorite = (name) => prefs.get().favorites.includes(name);
+  var isPinned = (name) => prefs.get().pinned.includes(name);
+  function toggleIn(key, name) {
+    const current = prefs.get();
+    const list = current[key].includes(name) ? current[key].filter((n) => n !== name) : [...current[key], name];
+    prefs.set({ ...current, [key]: list });
+  }
+  var redrawers = new Set;
+  function onRedraw(fn) {
+    redrawers.add(fn);
+    return () => void redrawers.delete(fn);
+  }
+  var queued = false;
+  function redraw() {
+    if (queued)
+      return;
+    queued = true;
+    queueMicrotask(() => {
+      queued = false;
+      for (const fn of [...redrawers]) {
+        try {
+          fn();
+        } catch {}
+      }
+    });
+  }
+  var view = {
+    category: "",
+    query: "",
+    filter: "all",
+    showApi: false
+  };
+
+  // src/plugins/_core/settings/native.ts
+  var NAV = '[data-perf-region="settings_nav"]';
+  var PANEL = '[data-perf-region="settings_panel"]';
+  var L2 = {
+    group: "CC++",
+    close: { zh: "关闭", en: "Close" }
+  };
+  var DOC_CSS = `
+[data-ccpp-panel] > :not(:first-child):not([data-ccpp-host]) { display: none !important; }
+[data-ccpp-active] li:not([data-ccpp-nav]) > button[aria-current] { background: transparent !important; font-weight: inherit !important; color: var(--cds-text-secondary, inherit) !important; }
+[data-ccpp-active] li:not([data-ccpp-nav]) > button[aria-current]:hover { background: var(--cds-fill-ghost-hover, transparent) !important; color: var(--cds-text-primary, inherit) !important; }
+[data-ccpp-host] { display: flex; flex-direction: column; flex: 1 1 0%; min-height: 0; min-width: 0; }
+[data-ccpp-nav-version] { padding-top: 4px !important; opacity: .8; font-variant-numeric: tabular-nums; }
+`;
+  var sortedTabs = () => [...tabs.values()].sort((a, b) => a.order - b.order);
+  function renderPage(tab, box) {
+    const previous = box.querySelector(".page-body");
+    const scrollTop = previous?.scrollTop ?? 0;
+    const sameTab = box.dataset.tab === tab.id;
+    clear(box);
+    box.dataset.tab = tab.id;
+    const body = h("div", { class: "page-body" });
+    box.appendChild(h("div", { class: "page" }, h("div", { class: "page-head" }, h("h2", { text: t(tab.title) })), body));
+    try {
+      tab.render(body);
+    } catch (error) {
+      body.appendChild(h("div", { class: "banner", text: String(error) }));
+    }
+    if (sameTab)
+      body.scrollTop = scrollTop;
+  }
+  var mounted = null;
+  var pendingTab = null;
+  var nativeOpen = () => !!mounted && !!document.querySelector(NATIVE_DIALOG);
+  function installNative(scope) {
+    addStyle(scope, DOC_CSS, "settings-native");
+    watch(scope, NATIVE_DIALOG, (dialog) => {
+      let active = null;
+      const shadow = shadowBox(PANEL_CSS);
+      shadow.host.dataset.ccppHost = "";
+      shadow.box.style.height = "100%";
+      let classes = null;
+      const nav = () => dialog.querySelector(NAV);
+      const panel = () => dialog.querySelector(PANEL);
+      const learnClasses = (root) => {
+        if (classes)
+          return classes;
+        const on = root.querySelector("li:not([data-ccpp-nav]) > button[aria-current]");
+        const off = root.querySelector("li:not([data-ccpp-nav]) > button:not([aria-current])");
+        const header = root.querySelector("ul[aria-labelledby]")?.previousElementSibling;
+        const list = root.querySelector("ul");
+        if (!off || !list)
+          return null;
+        const fallbackOn = `${off.className.replace(/\btext-secondary\S*/g, "").replace(/\bhover:\S+/g, "")} bg-fill-ghost-selected font-medium text-primary`;
+        classes = {
+          header: header?.className || "px-sm pt-md text-caption text-muted",
+          list: list.className,
+          on: on?.className || fallbackOn,
+          off: off.className,
+          icon: off.querySelector("span[data-cds]")?.className || "shrink-0",
+          label: off.querySelector("span:last-child")?.className || "min-w-0 flex-1 truncate"
+        };
+        return classes;
+      };
+      const paintNav = () => {
+        const root = nav();
+        if (!root)
+          return;
+        const c = learnClasses(root);
+        if (!c)
+          return;
+        const scroller = root.querySelector("ul")?.parentElement;
+        if (!scroller)
+          return;
+        let group = [...scroller.children].find((el) => el.hasAttribute("data-ccpp-nav-group"));
+        const list = sortedTabs();
+        if (!group || group.dataset.tabs !== list.map((tab) => tab.id).join(",") || group.dataset.lang !== t({ zh: "zh", en: "en" })) {
+          group?.remove();
+          const ul = h("ul", { class: c.list, "aria-label": L2.group });
+          for (const tab of list) {
+            const button = h("button", { type: "button", class: c.off, "data-tab": tab.id }, h("span", { class: c.icon, "aria-hidden": "true", style: { display: "inline-flex", width: "1.25rem", justifyContent: "center" } }, icon(tab.icon, 18)), h("span", { class: c.label, text: t(tab.title) }));
+            button.addEventListener("click", (event) => {
+              event.preventDefault();
+              activate(tab.id);
+            });
+            ul.appendChild(h("li", { "data-ccpp-nav": tab.id }, button));
+          }
+          group = h("div", { "data-ccpp-nav-group": "", "data-tabs": list.map((tab) => tab.id).join(","), "data-lang": t({ zh: "zh", en: "en" }), style: { display: "contents" } }, h("div", { class: c.header, text: L2.group }), ul, h("div", { class: c.header, "data-ccpp-nav-version": "", text: `v${version}` }));
+          scroller.appendChild(group);
+        }
+        for (const button of group.querySelectorAll("button[data-tab]")) {
+          const on = button.dataset.tab === active;
+          const want = on ? c.on : c.off;
+          if (button.className !== want)
+            button.className = want;
+          if (on)
+            button.setAttribute("aria-current", "page");
+          else
+            button.removeAttribute("aria-current");
+        }
+        root.toggleAttribute("data-ccpp-active", !!active);
+      };
+      const paintPanel = () => {
+        const target = panel();
+        if (!target)
+          return;
+        target.toggleAttribute("data-ccpp-panel", !!active);
+        if (!active) {
+          shadow.host.remove();
+          return;
+        }
+        if (shadow.host.parentNode !== target)
+          target.appendChild(shadow.host);
+      };
+      const draw = () => {
+        const tab = active ? tabs.get(active) : null;
+        if (active && !tab)
+          active = null;
+        paintNav();
+        paintPanel();
+        if (tab)
+          renderPage(tab, shadow.box);
+      };
+      function activate(id) {
+        if (!tabs.has(id))
+          return;
+        active = id;
+        shadow.sync();
+        draw();
+        shadow.box.querySelector(".page-body")?.scrollTo(0, 0);
+      }
+      const deactivate = () => {
+        if (!active)
+          return;
+        active = null;
+        draw();
+      };
+      let frame = 0;
+      const observer = new MutationObserver(() => {
+        if (frame)
+          return;
+        frame = requestAnimationFrame(() => {
+          frame = 0;
+          paintNav();
+          paintPanel();
+        });
+      });
+      observer.observe(dialog, { childList: true, subtree: true });
+      const onClick = (event) => {
+        const target = event.target;
+        if (target?.closest?.(`${NAV} li:not([data-ccpp-nav]), ${NAV} [role="option"]`))
+          deactivate();
+      };
+      dialog.addEventListener("click", onClick, true);
+      const onHash = () => deactivate();
+      window.addEventListener("hashchange", onHash);
+      const offRedraw = onRedraw(() => active && draw());
+      const self = { activate };
+      mounted = self;
+      paintNav();
+      if (pendingTab) {
+        const id = pendingTab;
+        pendingTab = null;
+        requestAnimationFrame(() => activate(id));
+      }
+      return () => {
+        observer.disconnect();
+        cancelAnimationFrame(frame);
+        dialog.removeEventListener("click", onClick, true);
+        window.removeEventListener("hashchange", onHash);
+        offRedraw();
+        shadow.host.remove();
+        nav()?.removeAttribute("data-ccpp-active");
+        panel()?.removeAttribute("data-ccpp-panel");
+        dialog.querySelector("[data-ccpp-nav-group]")?.remove();
+        if (mounted === self)
+          mounted = null;
+      };
+    });
+    scope.defer(() => {
+      mounted = null;
+      pendingTab = null;
+    });
+  }
+  function openNative(tab) {
+    if (nativeOpen()) {
+      mounted.activate(tab);
+      return Promise.resolve(true);
+    }
+    pendingTab = tab;
+    location.hash = "settings/general";
+    return new Promise((resolve) => {
+      const started = Date.now();
+      const check = () => {
+        if (pendingTab !== tab)
+          return resolve(true);
+        if (Date.now() - started > 2000) {
+          pendingTab = null;
+          return resolve(false);
+        }
+        setTimeout(check, 100);
+      };
+      setTimeout(check, 100);
+    });
+  }
+  var standaloneClose = null;
+  function openStandalone(tabId) {
+    standaloneClose?.();
+    let current = tabs.has(tabId) ? tabId : sortedTabs()[0]?.id;
+    const nav = h("nav", { class: "shell-nav" }, h("div", { class: "group", text: L2.group }));
+    const main = h("div", { class: "shell-main" });
+    const pageBox = h("div", { style: { flex: "1", minHeight: "0", display: "flex", flexDirection: "column" } });
+    const closeBtn = h("button", { type: "button", class: "icon-btn", "aria-label": t(L2.close), title: t(L2.close) }, icon("x", 16));
+    main.append(h("div", { class: "shell-top" }, closeBtn), pageBox);
+    const draw = () => {
+      for (const old of nav.querySelectorAll("button"))
+        old.remove();
+      nav.querySelector(".ver")?.remove();
+      for (const tab of sortedTabs()) {
+        const button = h("button", { type: "button", class: tab.id === current ? "active" : "" }, icon(tab.icon, 16), t(tab.title));
+        button.addEventListener("click", () => {
+          current = tab.id;
+          draw();
+        });
+        nav.appendChild(button);
+      }
+      nav.appendChild(h("div", { class: "ver", text: `CC++ v${version}` }));
+      const tab = current ? tabs.get(current) : null;
+      if (tab)
+        renderPage(tab, pageBox);
+    };
+    const shell = h("div", { class: "shell", role: "dialog", "aria-modal": "true", "aria-label": "CC++" }, nav, main);
+    draw();
+    const offRedraw = onRedraw(draw);
+    const close = openModal(shell, {
+      onClose: () => {
+        offRedraw();
+        standaloneClose = null;
+      }
+    });
+    closeBtn.addEventListener("click", close);
+    standaloneClose = close;
+  }
+  var standaloneOpen = () => !!standaloneClose;
+  var closeStandalone = () => standaloneClose?.();
+
   // src/plugins/_core/settings/options.ts
   function renderOption(settings, key, option, rerender) {
     const owner = settings.owner();
@@ -1777,8 +2284,8 @@ select.input { padding-right: 6px; }
       if (Object.values(settings.def).some((def) => def.visible))
         rerender();
     };
-    const label = h("div", { class: "opt-label", text: t(option.label) });
-    const desc = option.description ? h("div", { class: "opt-desc", text: t(option.description) }) : null;
+    const text = h("div", { class: "row-text" }, h("div", { class: "row-title", text: t(option.label) }), option.description ? h("div", { class: "row-desc", text: t(option.description) }) : null);
+    const row = (control, wide = false) => h("div", { class: `row${wide ? " wide" : ""}`, "data-key": key }, text, wide ? control : h("div", { class: "row-control" }, control));
     switch (option.type) {
       case "boolean": {
         const sw = h("button", { type: "button", class: "switch", role: "switch", "aria-checked": String(value), "aria-label": t(option.label) });
@@ -1787,111 +2294,49 @@ select.input { padding-right: 6px; }
           sw.setAttribute("aria-checked", String(next));
           set(next);
         });
-        return h("div", { class: "opt" }, label, sw, desc);
+        return row(sw);
       }
       case "number": {
         const output = h("output", { text: `${value}${option.unit ?? ""}` });
-        const input = h("input", { type: "range", min: option.min, max: option.max, step: option.step ?? 1, value: String(value) });
+        const input = h("input", { type: "range", min: option.min, max: option.max, step: option.step ?? 1, value: String(value), "aria-label": t(option.label) });
         input.addEventListener("input", () => output.textContent = `${input.value}${option.unit ?? ""}`);
         input.addEventListener("change", () => set(Number(input.value)));
-        return h("div", { class: "opt" }, label, h("div", { class: "range" }, input, output), desc);
+        return row(h("div", { class: "range" }, input, output));
       }
       case "select": {
-        const select = h("select", { class: "input" }, ...option.options.map((o) => h("option", { value: o.value, text: t(o.label), selected: o.value === value })));
+        const select = h("select", { class: "input", "aria-label": t(option.label) }, ...option.options.map((o) => h("option", { value: o.value, text: t(o.label), selected: o.value === value })));
         select.addEventListener("change", () => set(select.value));
-        return h("div", { class: "opt" }, label, select, desc);
+        return row(select);
       }
       case "color": {
-        const input = h("input", { type: "color", value: String(value) });
+        const input = h("input", { type: "color", value: String(value), "aria-label": t(option.label) });
         input.addEventListener("change", () => set(input.value));
-        return h("div", { class: "opt" }, label, input, desc);
+        return row(input);
       }
       case "string": {
-        const input = h("input", { class: "input", value: String(value ?? ""), placeholder: option.placeholder ? t(option.placeholder) : "", maxLength: option.maxLength ?? 2000 });
+        const input = h("input", { class: "input", value: String(value ?? ""), placeholder: option.placeholder ? t(option.placeholder) : "", maxLength: option.maxLength ?? 2000, "aria-label": t(option.label) });
         input.addEventListener("change", () => set(input.value));
-        return h("div", { class: "opt wide" }, label, input, desc);
+        return row(input, true);
       }
       case "text": {
-        const area = h("textarea", { class: "input", rows: option.rows ?? 5, placeholder: option.placeholder ? t(option.placeholder) : "" });
+        const area = h("textarea", { class: "input", rows: option.rows ?? 5, placeholder: option.placeholder ? t(option.placeholder) : "", "aria-label": t(option.label) });
         area.value = String(value ?? "");
         area.addEventListener("change", () => set(area.value));
-        return h("div", { class: "opt wide" }, label, area, desc);
+        return row(area, true);
       }
       case "action": {
         const button = h("button", { type: "button", class: "btn", text: t(option.button) });
-        button.addEventListener("click", () => {
-          if (option.confirm && !confirm(t(option.confirm)))
+        button.addEventListener("click", async () => {
+          if (option.confirm && !await confirmDialog({ title: t(option.label), body: t(option.confirm), danger: true }))
             return;
           option.run();
         });
-        return h("div", { class: "opt" }, label, button, desc);
+        return row(button);
       }
     }
   }
 
-  // src/plugins/_core/settings/styles.ts
-  var DIALOG_CSS = `
-.backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.35); pointer-events: auto; display: grid; place-items: center; animation: fade .15s ease-out; }
-@keyframes fade { from { opacity: 0; } }
-.dialog { width: min(920px, calc(100vw - 32px)); height: min(720px, calc(100vh - 48px)); display: grid; grid-template-columns: 180px 1fr; border-radius: 16px; overflow: hidden; background: var(--bg); border: 1px solid var(--line); box-shadow: var(--shadow); }
-@media (max-width: 640px) { .dialog { grid-template-columns: 1fr; grid-template-rows: auto 1fr; } .nav { flex-direction: row; overflow-x: auto; border-right: 0 !important; border-bottom: 1px solid var(--line); } .nav .brand { display: none; } }
-.nav { display: flex; flex-direction: column; gap: 2px; padding: 14px 10px; background: var(--bg2); border-right: 1px solid var(--line); }
-.brand { display: flex; align-items: baseline; gap: 6px; padding: 2px 8px 12px; }
-.brand b { font-size: 17px; letter-spacing: .2px; } .brand span { font-size: 11px; color: var(--fg3); }
-.tab { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 10px; border-radius: 8px; border: 0; background: transparent; text-align: left; white-space: nowrap; color: var(--fg2); }
-.tab:hover { background: var(--bg3); color: var(--fg); } .tab.active { background: var(--bg); color: var(--fg); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.06); }
-.main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
-.head { display: flex; align-items: center; gap: 8px; padding: 12px 14px; border-bottom: 1px solid var(--line); }
-.head h2 { margin: 0; font-size: 15px; flex: 1; }
-.content { flex: 1; overflow: auto; padding: 14px; }
-.toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
-.search { position: relative; flex: 1; min-width: 180px; } .search svg { position: absolute; left: 9px; top: 7px; color: var(--fg3); } .search .input { padding-left: 30px; }
-.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
-.chip { height: 26px; padding: 0 10px; border-radius: 13px; border: 1px solid var(--line); background: transparent; color: var(--fg2); font-size: 12px; }
-.chip:hover { background: var(--bg2); } .chip.active { background: var(--fg); color: var(--bg); border-color: transparent; }
-.chip .n { opacity: .6; margin-left: 4px; }
-.banner { display: flex; align-items: center; gap: 10px; padding: 8px 12px; margin-bottom: 12px; border-radius: 10px; background: color-mix(in srgb, var(--warn) 16%, transparent); }
-.banner span { flex: 1; }
-.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; }
-.card { display: flex; flex-direction: column; gap: 6px; padding: 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--bg); min-width: 0; }
-.card.open { grid-column: 1 / -1; }
-.card.off { background: var(--bg2); }
-.card-top { display: flex; align-items: center; gap: 8px; }
-.card-icon { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; background: var(--bg3); color: var(--fg2); flex: none; }
-.card.on .card-icon { color: var(--accent); }
-.card-title { flex: 1; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.card-desc { color: var(--fg2); font-size: 12.5px; }
-.card-meta { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
-.card-actions { display: flex; gap: 0; }
-.card-actions .icon-btn { width: 24px; height: 24px; }
-.err { font-size: 12px; color: var(--bad); }
-.options { display: flex; flex-direction: column; gap: 12px; margin-top: 6px; padding-top: 10px; border-top: 1px dashed var(--line); }
-.opt { display: grid; grid-template-columns: 1fr auto; gap: 4px 16px; align-items: center; }
-.opt.wide { grid-template-columns: 1fr; }
-.opt-label { font-weight: 500; } .opt-desc { grid-column: 1 / -1; color: var(--fg3); font-size: 12px; }
-.opt select.input { width: auto; min-width: 140px; }
-.opt .range { display: flex; align-items: center; gap: 8px; } .opt .range input { width: 160px; accent-color: var(--accent); } .opt .range output { min-width: 48px; text-align: right; font-variant-numeric: tabular-nums; color: var(--fg2); }
-.opt input[type=color] { width: 40px; height: 28px; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: none; }
-.opt-foot { display: flex; justify-content: flex-end; }
-.empty { padding: 40px; text-align: center; color: var(--fg3); }
-.section { margin-bottom: 18px; } .section h3 { font-size: 13px; margin: 0 0 8px; } .section p { margin: 0 0 8px; color: var(--fg2); }
-.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-kbd { font: 11px ui-monospace, monospace; padding: 1px 5px; border-radius: 4px; border: 1px solid var(--line); background: var(--bg2); }
-`;
-
-  // src/plugins/_core/settings/index.ts
-  var version = "[20261013] v0.2.0";
-  var tabs = new Map;
-  function registerTab(scope, tab) {
-    tabs.set(tab.id, tab);
-    scope.defer(() => {
-      tabs.delete(tab.id);
-      if (state.tab === tab.id)
-        state.tab = "plugins";
-      render();
-    });
-    render();
-  }
+  // src/plugins/_core/settings/pluginsTab.ts
   var CATEGORY_LABELS = {
     favorites: { zh: "收藏", en: "Favorites" },
     recent: { zh: "最近", en: "Recent" },
@@ -1908,57 +2353,42 @@ kbd { font: 11px ui-monospace, monospace; padding: 1px 5px; border-radius: 4px; 
     core: { zh: "核心", en: "Core" },
     api: { zh: "API", en: "API" }
   };
-  var CATEGORY_ORDER = ["favorites", "recent", "all", "composer", "messages", "chats", "usage", "notifications", "appearance", "declutter", "privacy", "developer", "core", "api"];
-  var L = {
-    plugins: { zh: "插件", en: "Plugins" },
+  var CATEGORY_ORDER = Object.keys(CATEGORY_LABELS);
+  var L3 = {
     search: { zh: "搜索插件…", en: "Search plugins…" },
-    reload: { zh: "以下插件需要刷新页面才能完全生效：", en: "Reload to fully apply:" },
-    reloadNow: { zh: "立即刷新", en: "Reload" },
+    all: { zh: "全部", en: "All" },
+    enabled: { zh: "已启用", en: "Enabled" },
+    disabled: { zh: "已停用", en: "Disabled" },
+    reloadBanner: { zh: "有插件需要刷新页面才能完全生效：", en: "Reload the page to fully apply: " },
+    reload: { zh: "刷新", en: "Reload" },
+    later: { zh: "稍后", en: "Later" },
+    reloadTitle: { zh: "需要刷新", en: "Reload required" },
+    reloadBody: { zh: "「{name}」要刷新页面后才能完全生效。现在刷新吗？", en: "“{name}” fully applies after a reload. Reload now?" },
     empty: { zh: "没有匹配的插件", en: "No matching plugins" },
+    noFavorites: { zh: "还没有收藏的插件", en: "No favorites yet" },
+    noFavoritesHint: { zh: "点插件卡片上的 ☆ 收藏，常用的插件会出现在这里。", en: "Star a plugin card and it shows up here." },
+    noRecent: { zh: "最近 7 天没有新增或更新的插件", en: "Nothing new or updated in the last 7 days" },
+    required: { zh: "必需插件", en: "Required" },
     favorite: { zh: "收藏", en: "Favorite" },
-    pin: { zh: "置顶", en: "Pin to top" },
-    options: { zh: "选项", en: "Options" },
-    reset: { zh: "恢复默认", en: "Reset to defaults" },
-    resetConfirm: { zh: "把这个插件的选项恢复默认？", en: "Reset this plugin's options?" },
-    newBadge: { zh: "新", en: "New" },
-    updated: { zh: "近期更新", en: "Updated" },
+    pin: { zh: "置顶", en: "Pin" },
+    configure: { zh: "设置", en: "Settings" },
+    newBadge: { zh: "NEW", en: "NEW" },
+    updated: { zh: "最近更新", en: "Updated" },
     needsReload: { zh: "需刷新", en: "Reload" },
-    required: { zh: "必需", en: "Required" },
-    error: { zh: "出错", en: "Error" },
-    dependsOn: { zh: "依赖：", en: "Needs: " },
-    keptBy: { zh: "被以下插件需要，保持开启：", en: "Kept on by: " },
-    close: { zh: "关闭", en: "Close" },
-    openSettings: { zh: "CC++ 设置", en: "CC++ settings" }
+    crashed: { zh: "出错", en: "Crashed" },
+    keptBy: { zh: "被这些插件需要，保持开启：", en: "Kept on by: " },
+    settings: { zh: "设置", en: "Settings" },
+    noOptions: { zh: "这个插件没有可调的选项。", en: "This plugin has no options." },
+    reset: { zh: "重置设置", en: "Reset settings" },
+    resetTitle: { zh: "重置设置？", en: "Reset settings?" },
+    resetBody: { zh: "「{name}」的所有选项会恢复默认值。", en: "Every option of “{name}” goes back to its default." },
+    resetOk: { zh: "重置", en: "Reset" },
+    author: { zh: "作者", en: "By" },
+    dependsOn: { zh: "依赖", en: "Needs" }
   };
-  var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
-  var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
-  var state = { open: false, tab: "plugins", category: "", query: "", expanded: new Set };
-  var host2 = null;
-  var scrollTop = 0;
-  var settings = definePluginSettings({
-    language: {
-      type: "select",
-      label: { zh: "界面语言", en: "Language" },
-      default: "auto",
-      options: [
-        { value: "auto", label: { zh: "跟随浏览器", en: "Follow browser" } },
-        { value: "zh", label: "中文" },
-        { value: "en", label: "English" }
-      ]
-    },
-    hotkey: { type: "string", label: { zh: "打开设置的快捷键", en: "Shortcut to open settings" }, description: { zh: "例如 mod+shift+, （mod = ⌘ / Ctrl），留空关闭。", en: "e.g. mod+shift+, (mod = ⌘ / Ctrl). Empty disables it." }, default: "mod+shift+," },
-    userMenuEntry: { type: "boolean", label: { zh: "在头像菜单里显示入口", en: "Entry in the account menu" }, default: true },
-    composerEntry: { type: "boolean", label: { zh: "在输入框旁显示齿轮按钮", en: "Gear button next to the model picker" }, default: false },
-    showApiPlugins: { type: "boolean", label: { zh: "显示 API / 核心插件", en: "Show API and core plugins" }, description: { zh: "它们由其它插件按需自动开启。", en: "They are switched on automatically when another plugin needs them." }, default: false }
-  });
-  var isFavorite = (name) => prefs.get().favorites.includes(name);
-  var isPinned = (name) => prefs.get().pinned.includes(name);
-  var toggleIn = (key, name) => {
-    const current = prefs.get();
-    const list = current[key].includes(name) ? current[key].filter((n) => n !== name) : [...current[key], name];
-    prefs.set({ ...current, [key]: list });
-  };
-  var visiblePlugins = () => allPlugins().filter((p) => settings.store.showApiPlugins || !(p.hidden || p.category === "api"));
+  var fill2 = (text, name) => t(text).replace("{name}", name);
+  var authorOf = (plugin) => plugin.authors?.join(", ") || "CC++";
+  var listedPlugins = () => allPlugins().filter((p) => view.showApi || !(p.hidden || p.category === "api"));
   function matchesQuery(plugin, query) {
     if (!query)
       return true;
@@ -1974,241 +2404,453 @@ kbd { font: 11px ui-monospace, monospace; padding: 1px 5px; border-radius: 4px; 
       return isRecent(plugin);
     return plugin.category === category;
   }
-  function defaultCategory() {
-    return prefs.get().favorites.some((name) => getPlugin(name)) ? "favorites" : "all";
+  function passesFilter(plugin) {
+    if (view.filter === "enabled")
+      return isActive(plugin);
+    if (view.filter === "disabled")
+      return !isActive(plugin);
+    return true;
   }
-  function pluginCard(plugin) {
+  var hasOptions = (plugin) => !!plugin.settings && Object.values(plugin.settings.def).length > 0;
+  async function togglePlugin(plugin, on) {
+    setEnabled(plugin, on);
+    if (!plugin.restartNeeded)
+      return;
+    const reload = await confirmDialog({ title: t(L3.reloadTitle), body: fill2(L3.reloadBody, t(plugin.title)), ok: L3.reload, cancel: L3.later });
+    if (reload)
+      location.reload();
+  }
+  function pluginSwitch(plugin) {
     const enabled = isEnabled(plugin);
-    const active = isActive(plugin);
     const keptBy = !enabled ? activeDependents(plugin.name) : [];
-    const error = pluginError(plugin.name);
-    const open = state.expanded.has(plugin.name);
-    const hasOptions = !!plugin.settings && Object.keys(plugin.settings.def).length > 0;
     const sw = h("button", {
       type: "button",
       class: "switch",
       role: "switch",
-      "aria-checked": String(active),
+      "aria-checked": String(isActive(plugin)),
       "aria-label": t(plugin.title),
       disabled: !!plugin.required || keptBy.length > 0,
-      title: keptBy.length ? t(L.keptBy) + keptBy.map((p) => t(p.title)).join(", ") : ""
+      title: keptBy.length ? t(L3.keptBy) + keptBy.map((p) => t(p.title)).join(", ") : ""
     });
-    sw.addEventListener("click", () => setEnabled(plugin, !enabled));
-    const actions = h("div", { class: "card-actions" }, h("button", { type: "button", class: `icon-btn${isFavorite(plugin.name) ? " on" : ""}`, title: t(L.favorite), "aria-label": t(L.favorite), onclick: () => (toggleIn("favorites", plugin.name), render()) }, icon("star", 14)), h("button", { type: "button", class: `icon-btn${isPinned(plugin.name) ? " on" : ""}`, title: t(L.pin), "aria-label": t(L.pin), onclick: () => (toggleIn("pinned", plugin.name), render()) }, icon("pin", 14)), hasOptions ? h("button", { type: "button", class: `icon-btn${open ? " on" : ""}`, title: t(L.options), "aria-label": t(L.options), "aria-expanded": String(open), onclick: () => (open ? state.expanded.delete(plugin.name) : state.expanded.add(plugin.name), render()) }, icon("settings", 14)) : null);
-    const badges = [];
-    if (isNew(plugin.name))
-      badges.push(h("span", { class: "badge accent", text: t(L.newBadge) }));
-    else if (isRecent(plugin))
-      badges.push(h("span", { class: "badge", text: t(L.updated) }));
-    if (plugin.required)
-      badges.push(h("span", { class: "badge", text: t(L.required) }));
-    if (pendingRestart().includes(plugin))
-      badges.push(h("span", { class: "badge accent", text: t(L.needsReload) }));
-    if (error)
-      badges.push(h("span", { class: "badge bad", text: t(L.error) }));
-    if (plugin.dependencies?.length && settings.store.showApiPlugins)
-      badges.push(h("span", { class: "badge", text: t(L.dependsOn) + plugin.dependencies.join(", ") }));
-    const card = h("div", { class: `card${active ? " on" : " off"}${open ? " open" : ""}`, "data-plugin": plugin.name }, h("div", { class: "card-top" }, h("span", { class: "card-icon" }, icon(plugin.icon ?? "puzzle", 16)), h("span", { class: "card-title", text: t(plugin.title), title: plugin.name }), actions, sw), h("div", { class: "card-desc", text: t(plugin.description) }), badges.length ? h("div", { class: "card-meta" }, ...badges) : null, error ? h("div", { class: "err", text: `${error.stage}: ${error.message}` }) : null);
-    if (open && plugin.settings) {
-      const rows = Object.entries(plugin.settings.def).map(([key, option]) => renderOption(plugin.settings, key, option, render)).filter(Boolean);
-      const reset = h("button", { type: "button", class: "btn", text: t(L.reset) });
-      reset.addEventListener("click", () => {
-        if (!confirm(t(L.resetConfirm)))
-          return;
-        plugin.settings.reset();
-        render();
-      });
-      card.appendChild(h("div", { class: "options" }, ...rows, h("div", { class: "opt-foot" }, reset)));
-    }
-    return card;
+    sw.addEventListener("click", () => togglePlugin(plugin, !enabled));
+    return sw;
   }
-  function renderPlugins(container) {
-    if (!state.category)
-      state.category = defaultCategory();
-    const plugins = visiblePlugins();
-    const searchInput = h("input", { class: "input", type: "search", placeholder: t(L.search), value: state.query, "aria-label": t(L.search) });
-    searchInput.addEventListener("input", () => {
-      state.query = searchInput.value;
+  function badges(plugin) {
+    const out = [];
+    if (isNew(plugin.name))
+      out.push(h("span", { class: "badge accent", text: t(L3.newBadge) }));
+    else if (isRecent(plugin))
+      out.push(h("span", { class: "badge", text: t(L3.updated) }));
+    if (pendingRestart().includes(plugin))
+      out.push(h("span", { class: "badge accent", text: t(L3.needsReload) }));
+    if (pluginError(plugin.name))
+      out.push(h("span", { class: "badge bad", text: t(L3.crashed) }));
+    return out;
+  }
+  function pluginCard(plugin) {
+    const error = pluginError(plugin.name);
+    const iconBtn = (cls, label, name, on, run) => {
+      const button = h("button", { type: "button", class: `icon-btn ${cls}${on ? " on" : ""}`, title: t(label), "aria-label": t(label), "aria-pressed": String(on) }, icon(name, 14));
+      button.addEventListener("click", run);
+      return button;
+    };
+    const title = h("span", { class: "card-title", text: t(plugin.title), title: plugin.name });
+    title.addEventListener("click", () => openPluginDialog(plugin));
+    return h("div", { class: `card${isActive(plugin) ? " on" : " off"}${error ? " crashed" : ""}`, "data-plugin": plugin.name, title: error ? `${error.stage}: ${error.message}` : null }, h("div", { class: "card-body" }, h("div", { class: "card-top" }, h("span", { class: "chip-icon" }, icon(plugin.icon ?? "puzzle", 14)), title, h("div", { class: "card-actions" }, iconBtn("star", L3.favorite, "star", isFavorite(plugin.name), () => toggleIn("favorites", plugin.name)), iconBtn("pin", L3.pin, "pin", isPinned(plugin.name), () => toggleIn("pinned", plugin.name)), hasOptions(plugin) ? iconBtn("cfg", L3.configure, "sliders", false, () => openPluginDialog(plugin)) : null, pluginSwitch(plugin))), h("div", { class: "card-desc", text: t(plugin.description) }), h("div", { class: "card-gap" }), h("div", { class: "card-foot" }, ...badges(plugin), h("span", { class: "author", text: authorOf(plugin) }))));
+  }
+  var sortPlugins = (list) => list.sort((a, b) => Number(isPinned(b.name)) - Number(isPinned(a.name)) || Number(isFavorite(b.name)) - Number(isFavorite(a.name)) || t(a.title).localeCompare(t(b.title)));
+  function defaultCategory() {
+    return prefs.get().favorites.some((name) => getPlugin(name)) ? "favorites" : "all";
+  }
+  function renderPluginsTab(container) {
+    if (!view.category)
+      view.category = defaultCategory();
+    const plugins = listedPlugins();
+    const search = h("input", { class: "input", type: "search", placeholder: t(L3.search), value: view.query, "aria-label": t(L3.search) });
+    search.addEventListener("input", () => {
+      view.query = search.value;
       renderList();
     });
-    container.appendChild(h("div", { class: "toolbar" }, h("label", { class: "search" }, icon("search", 14), searchInput)));
+    const filter = h("select", { class: "input", "aria-label": t(L3.all) }, ...["all", "enabled", "disabled"].map((value) => h("option", { value, text: t(L3[value]), selected: view.filter === value })));
+    filter.addEventListener("change", () => {
+      view.filter = filter.value;
+      renderList();
+    });
+    container.appendChild(h("div", { class: "bar" }, h("label", { class: "search" }, icon("search", 14), search), filter));
     const categories = CATEGORY_ORDER.filter((cat) => ["favorites", "recent", "all"].includes(cat) || plugins.some((p) => p.category === cat));
-    const chips = h("div", { class: "chips", role: "tablist" });
+    const tabBar = h("div", { class: "tabs", role: "tablist" });
     for (const cat of categories) {
       const count = plugins.filter((p) => inCategory(p, cat)).length;
-      const chip = h("button", { type: "button", role: "tab", class: `chip${state.category === cat ? " active" : ""}`, "aria-selected": String(state.category === cat) }, t(CATEGORY_LABELS[cat]), h("span", { class: "n", text: count }));
-      chip.addEventListener("click", () => {
-        state.category = cat;
-        render();
+      const button = h("button", { type: "button", role: "tab", class: view.category === cat ? "active" : "", "aria-selected": String(view.category === cat) }, t(CATEGORY_LABELS[cat]), h("span", { class: "n", text: count }));
+      button.addEventListener("click", () => {
+        view.category = cat;
+        for (const other of tabBar.children)
+          other.classList.toggle("active", other === button), other.setAttribute("aria-selected", String(other === button));
+        renderList();
       });
-      chips.appendChild(chip);
+      tabBar.appendChild(button);
     }
-    container.appendChild(chips);
+    container.appendChild(tabBar);
     const pending = pendingRestart();
     if (pending.length) {
-      container.appendChild(h("div", { class: "banner" }, h("span", { text: t(L.reload) + " " + pending.map((p) => t(p.title)).join("、") }), h("button", { type: "button", class: "btn primary", text: t(L.reloadNow), onclick: () => location.reload() })));
+      const reload = h("button", { type: "button", class: "btn primary", text: t(L3.reload) });
+      reload.addEventListener("click", () => location.reload());
+      container.appendChild(h("div", { class: "banner" }, icon("alert", 16), h("span", { text: t(L3.reloadBanner) + pending.map((p) => t(p.title)).join("、") }), reload));
     }
     const list = h("div");
     container.appendChild(list);
-    const renderList = () => {
+    function renderList() {
       clear(list);
-      const shown = plugins.filter((p) => (state.query ? true : inCategory(p, state.category)) && matchesQuery(p, state.query)).sort((a, b) => Number(isPinned(b.name)) - Number(isPinned(a.name)) || t(a.title).localeCompare(t(b.title)));
+      const shown = plugins.filter((p) => (view.query ? true : inCategory(p, view.category)) && matchesQuery(p, view.query) && passesFilter(p));
       if (!shown.length) {
-        list.appendChild(h("div", { class: "empty", text: t(L.empty) }));
+        const [title, hint] = view.category === "favorites" && !view.query ? [L3.noFavorites, L3.noFavoritesHint] : view.category === "recent" && !view.query ? [L3.noRecent, null] : [L3.empty, null];
+        list.appendChild(h("div", { class: "empty" }, h("b", { text: t(title) }), hint ? t(hint) : null));
         return;
       }
-      list.appendChild(h("div", { class: "grid" }, ...shown.map(pluginCard)));
-    };
+      const splitRequired = view.category === "all" && !view.query;
+      const main = sortPlugins(shown.filter((p) => !splitRequired || !p.required));
+      const required = splitRequired ? sortPlugins(shown.filter((p) => p.required)) : [];
+      if (main.length)
+        list.appendChild(h("div", { class: "grid" }, ...main.map(pluginCard)));
+      if (required.length)
+        list.append(h("div", { class: "sep", text: t(L3.required) }), h("div", { class: "grid" }, ...required.map(pluginCard)));
+    }
     renderList();
-    if (state.query)
-      queueMicrotask(() => {
-        searchInput.focus();
-        searchInput.setSelectionRange(searchInput.value.length, searchInput.value.length);
-      });
   }
-  function render() {
-    if (!host2)
-      return;
-    const previous = host2.box.querySelector(".content");
-    if (previous)
-      scrollTop = previous.scrollTop;
-    clear(host2.box);
-    if (!state.open)
-      return;
-    const allTabs = [{ id: "plugins", title: L.plugins, icon: "plug", order: 0, render: renderPlugins }, ...[...tabs.values()]].sort((a, b) => a.order - b.order);
-    const current = allTabs.find((tab) => tab.id === state.tab) ?? allTabs[0];
-    const nav = h("nav", { class: "nav" }, h("div", { class: "brand" }, h("b", { text: "CC++" }), h("span", { text: version })));
-    for (const tab of allTabs) {
-      const button = h("button", { type: "button", class: `tab${tab === current ? " active" : ""}` }, icon(tab.icon, 15), t(tab.title));
-      button.addEventListener("click", () => {
-        state.tab = tab.id;
-        scrollTop = 0;
-        render();
-      });
-      nav.appendChild(button);
-    }
-    const content = h("div", { class: "content" });
-    const main = h("div", { class: "main" }, h("div", { class: "head" }, h("h2", { text: t(current.title) }), h("button", { type: "button", class: "icon-btn", "aria-label": t(L.close), title: `${t(L.close)} (Esc)`, onclick: closeSettings }, icon("x", 16))), content);
-    const dialog = h("div", { class: "dialog", role: "dialog", "aria-modal": "true", "aria-label": t(L.openSettings) }, nav, main);
-    const backdrop = h("div", { class: "backdrop" }, dialog);
-    backdrop.addEventListener("mousedown", (event) => {
-      if (event.target === backdrop)
-        closeSettings();
-    });
-    host2.box.appendChild(backdrop);
-    try {
-      current.render(content);
-    } catch (error) {
-      content.appendChild(h("div", { class: "err", text: String(error) }));
-    }
-    content.scrollTop = scrollTop;
-  }
-  function openSettings(options = {}) {
-    state.open = true;
-    state.tab = options.tab ?? state.tab;
-    if (options.plugin) {
-      state.tab = "plugins";
-      state.category = "all";
-      state.query = "";
-      state.expanded.add(options.plugin);
-    }
-    render();
-    if (options.plugin)
-      queueMicrotask(() => host2?.box.querySelector(`[data-plugin="${options.plugin}"]`)?.scrollIntoView({ block: "center" }));
-  }
-  function closeSettings() {
-    state.open = false;
-    scrollTop = 0;
-    render();
-  }
-  function injectUserMenuEntry(scope) {
-    let armedUntil = 0;
-    scope.listen(document, "pointerdown", (event) => {
-      if (event.target?.closest?.(SEL.userMenuButton))
-        armedUntil = Date.now() + 3000;
-    }, { capture: true });
-    scope.listen(document, "keydown", (event) => {
-      if ((event.key === "Enter" || event.key === " ") && event.target?.closest?.(SEL.userMenuButton))
-        armedUntil = Date.now() + 3000;
-    }, { capture: true });
-    watch(scope, SEL.menu, (menu) => {
-      if (Date.now() > armedUntil || !settings.store.userMenuEntry)
+  function openPluginDialog(plugin) {
+    const body = h("div");
+    const draw = () => {
+      clear(body);
+      const meta = h("div", { class: "d-meta" }, ...badges(plugin), h("span", { text: `${t(L3.author)} ${authorOf(plugin)}` }));
+      if (plugin.dependencies?.length && view.showApi)
+        meta.appendChild(h("span", { text: `· ${t(L3.dependsOn)} ${plugin.dependencies.join(", ")}` }));
+      const top = h("div", { class: "row" }, h("div", { class: "row-text" }, h("p", { class: "d-desc", text: t(plugin.description) }), meta), h("div", { class: "row-control" }, pluginSwitch(plugin)));
+      const error = pluginError(plugin.name);
+      body.append(top);
+      if (error)
+        body.appendChild(h("div", { class: "banner" }, icon("alert", 16), h("span", { text: `${error.stage}: ${error.message}` })));
+      body.appendChild(h("div", { class: "d-sep" }));
+      body.appendChild(h("div", { class: "d-title", text: t(L3.settings) }));
+      if (!hasOptions(plugin)) {
+        body.appendChild(h("p", { class: "muted", text: t(L3.noOptions) }));
         return;
-      const sample = menu.querySelector(SEL.menuItem);
-      const item = h("div", { role: "menuitem", tabindex: "-1", class: sample?.className ?? "", "data-ccpp-entry": "", style: { display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" } }, icon("plug", 16), h("span", { text: t(L.openSettings) }));
-      const activate = (event) => {
+      }
+      const rows = Object.entries(plugin.settings.def).map(([key, option]) => renderOption(plugin.settings, key, option, draw)).filter(Boolean);
+      body.appendChild(h("div", { class: "rows" }, ...rows));
+    };
+    draw();
+    const reset = h("button", { type: "button", class: "btn danger", text: t(L3.reset), disabled: !hasOptions(plugin) });
+    reset.addEventListener("click", async () => {
+      if (!await confirmDialog({ title: t(L3.resetTitle), body: fill2(L3.resetBody, t(plugin.title)), ok: L3.resetOk, danger: true }))
+        return;
+      plugin.settings.reset();
+      draw();
+    });
+    let close = () => {};
+    const frame = dialogFrame({ title: t(plugin.title), icon: plugin.icon ?? "puzzle", body: [body], foot: [reset, h("span", { class: "grow" })], onClose: () => close() });
+    const offSettings = onSettingsChange((name) => name === plugin.name && refreshHead());
+    const offRedraw = onRedraw(refreshHead);
+    function refreshHead() {
+      const top = body.querySelector(":scope > .row");
+      const fresh = h("div", { class: "row-control" }, pluginSwitch(plugin));
+      top?.querySelector(".row-control")?.replaceWith(fresh);
+    }
+    close = openModal(frame, {
+      onClose: () => {
+        offSettings();
+        offRedraw();
+      }
+    });
+  }
+
+  // src/plugins/_core/settings/userMenu.ts
+  var SETTINGS_ITEM = '[data-testid="user-menu-settings"]';
+  var L4 = {
+    plugins: { zh: "插件", en: "Plugins" },
+    all: { zh: "打开 CC++ 设置", en: "Open CC++ settings" }
+  };
+  function installUserMenu(scope, options) {
+    watch(scope, SEL.menu, (menu) => {
+      let tries = 0;
+      let item = null;
+      let frame = 0;
+      const tryInsert = () => {
+        const settingsItem = menu.querySelector(SETTINGS_ITEM);
+        if (!settingsItem) {
+          if (++tries < 20)
+            frame = requestAnimationFrame(tryInsert);
+          return;
+        }
+        item = build(menu, settingsItem, options);
+        settingsItem.after(item);
+      };
+      tryInsert();
+      return () => {
+        cancelAnimationFrame(frame);
+        item?.remove();
+        menu.querySelector("[data-ccpp-submenu]")?.remove();
+      };
+    });
+  }
+  function closeMenu(menu) {
+    menu.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  }
+  function build(menu, settingsItem, options) {
+    const sampleSub = menu.querySelector('[role="menuitem"][aria-haspopup="menu"]');
+    const itemClass = (sampleSub ?? settingsItem).className;
+    const subItemClass = sampleSub ? itemClass : `${itemClass} justify-between data-[popup-open]:bg-fill-ghost-hover`;
+    const iconClass = settingsItem.querySelector(":scope > span")?.className ?? "flex size-icon shrink-0 items-center justify-center";
+    const separatorClass = menu.querySelector('[role="separator"]')?.className ?? "my-1 h-px bg-border";
+    const panelClass = menu.className.replace(/\bw-\[[^\]]+\]/g, "");
+    const scrollClass = menu.firstElementChild?.className ?? "";
+    const row = (iconNode, label, opts = {}) => {
+      const el = h("div", { role: "menuitem", tabindex: "-1", "data-cds-icon-row": "", "data-ccpp-item": "", class: opts.sub ? subItemClass : itemClass, style: { cursor: "pointer" } }, h("span", { class: iconClass }, iconNode), h("span", { class: "min-w-0 flex-1 truncate", text: label }), opts.sub ? h("span", { class: "-mr-1 shrink-0 text-muted", style: { display: "inline-flex" } }, icon("chevronRight", 16)) : opts.trailing ?? null);
+      if (opts.sub)
+        el.setAttribute("aria-haspopup", "menu");
+      el.addEventListener("pointerenter", () => {
+        for (const other of el.parentElement?.querySelectorAll("[data-highlighted]") ?? [])
+          other.removeAttribute("data-highlighted");
+        el.setAttribute("data-highlighted", "");
+      });
+      el.addEventListener("pointerleave", () => el.removeAttribute("data-highlighted"));
+      if (opts.run) {
+        const run = opts.run;
+        const activate = (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          closeMenu(menu);
+          setTimeout(run, 0);
+        };
+        el.addEventListener("click", activate);
+        el.addEventListener("keydown", (event) => (event.key === "Enter" || event.key === " ") && activate(event));
+      }
+      return el;
+    };
+    const panel = (anchor, container, width) => {
+      const scroll = h("div", { class: scrollClass, style: { maxHeight: "min(70vh, 32rem)", overflowY: "auto" } });
+      const el = h("div", { role: "menu", "data-ccpp-panel-level": "", class: panelClass, style: { position: "absolute", width, zIndex: "1" } }, scroll);
+      container.appendChild(el);
+      const a = anchor.getBoundingClientRect();
+      const c = container.getBoundingClientRect();
+      const gap = 4;
+      const room = window.innerWidth - c.right;
+      if (room > el.offsetWidth + gap + 8)
+        el.style.left = `calc(100% + ${gap}px)`;
+      else
+        el.style.right = `calc(100% + ${gap}px)`;
+      const top = a.top - c.top - 4;
+      const maxTop = window.innerHeight - c.top - el.offsetHeight - 8;
+      el.style.top = `${Math.max(-c.top + 8, Math.min(top, maxTop))}px`;
+      return { el, scroll };
+    };
+    let sub = null;
+    let pluginPanel = null;
+    const closePlugins = () => {
+      pluginPanel?.remove();
+      pluginPanel = null;
+      pluginsRow?.removeAttribute("data-popup-open");
+    };
+    const closeSub = () => {
+      closePlugins();
+      sub?.remove();
+      sub = null;
+      entry.removeAttribute("data-popup-open");
+      entry.setAttribute("aria-expanded", "false");
+    };
+    let pluginsRow = null;
+    const openPlugins = () => {
+      if (pluginPanel || !sub || !pluginsRow)
+        return;
+      pluginsRow.setAttribute("data-popup-open", "");
+      const { el, scroll } = panel(pluginsRow, sub, "16rem");
+      pluginPanel = el;
+      for (const plugin of options.plugins()) {
+        const dot = h("span", {
+          class: "shrink-0",
+          title: isActive(plugin) ? "ON" : "OFF",
+          style: { width: "6px", height: "6px", borderRadius: "50%", marginInlineStart: "8px", background: isActive(plugin) ? "var(--cds-fill-accent, #2a78d6)" : "var(--cds-alpha-2, rgba(127,127,127,.4))" }
+        });
+        scroll.appendChild(row(icon(plugin.icon ?? "puzzle", 16), t(plugin.title), { trailing: dot, run: () => options.openPlugin(plugin) }));
+      }
+      el.addEventListener("pointerover", (event) => event.stopPropagation());
+    };
+    const openSub = () => {
+      if (sub)
+        return;
+      entry.setAttribute("data-popup-open", "");
+      entry.setAttribute("aria-expanded", "true");
+      const { el, scroll } = panel(entry, menu, "14rem");
+      sub = el;
+      sub.dataset.ccppSubmenu = "";
+      for (const tab of options.tabs()) {
+        if (tab.id === "plugins") {
+          pluginsRow = row(icon(tab.icon, 16), t(L4.plugins), { sub: true });
+          pluginsRow.addEventListener("pointerenter", openPlugins);
+          pluginsRow.addEventListener("click", (event) => {
+            event.stopPropagation();
+            openPlugins();
+          });
+          scroll.appendChild(pluginsRow);
+        } else {
+          scroll.appendChild(row(icon(tab.icon, 16), t(tab.title), { run: () => options.openTab(tab.id) }));
+        }
+      }
+      scroll.appendChild(h("div", { role: "separator", class: separatorClass }));
+      scroll.appendChild(row(icon("settings", 16), t(L4.all), { run: () => options.openTab("plugins") }));
+      scroll.addEventListener("pointerover", (event) => {
+        const target = event.target.closest('[role="menuitem"]');
+        if (target && target !== pluginsRow)
+          closePlugins();
+      });
+      sub.addEventListener("pointerover", (event) => event.stopPropagation());
+    };
+    const entry = row(icon("plug", 16), "CC++", { sub: true });
+    entry.setAttribute("aria-expanded", "false");
+    entry.addEventListener("pointerenter", openSub);
+    entry.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (sub)
+        closeSub();
+      else
+        openSub();
+    });
+    entry.addEventListener("keydown", (event) => {
+      if (event.key === "ArrowRight" || event.key === "Enter" || event.key === " ") {
         event.preventDefault();
         event.stopPropagation();
-        document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
-        openSettings();
-      };
-      item.addEventListener("click", activate);
-      item.addEventListener("keydown", (event) => (event.key === "Enter" || event.key === " ") && activate(event));
-      const separator = menu.querySelector('[role="separator"]');
-      if (separator)
-        separator.after(item);
-      else
-        menu.prepend(item);
-      return () => item.remove();
+        openSub();
+        sub?.querySelector('[role="menuitem"]')?.focus();
+      }
     });
+    menu.addEventListener("pointerover", (event) => {
+      const target = event.target.closest('[role="menuitem"]');
+      if (target && target !== entry && !target.closest("[data-ccpp-submenu]"))
+        closeSub();
+    });
+    return entry;
+  }
+  // src/plugins/_core/settings/index.ts
+  var L5 = {
+    plugins: { zh: "插件", en: "Plugins" },
+    openSettings: { zh: "CC++ 设置", en: "CC++ settings" }
+  };
+  function registerTab(scope, tab) {
+    tabs.set(tab.id, tab);
+    scope.defer(() => {
+      if (tabs.get(tab.id) === tab)
+        tabs.delete(tab.id);
+      redraw();
+    });
+    redraw();
+  }
+  var settings = definePluginSettings({
+    language: {
+      type: "select",
+      label: { zh: "界面语言", en: "Language" },
+      default: "auto",
+      options: [
+        { value: "auto", label: { zh: "跟随浏览器", en: "Follow browser" } },
+        { value: "zh", label: "中文" },
+        { value: "en", label: "English" }
+      ]
+    },
+    nativeDialog: {
+      type: "boolean",
+      label: { zh: "放进 claude.ai 的设置弹窗", en: "Live inside claude.ai's settings dialog" },
+      description: { zh: "CC++ 的页面作为一组标签出现在 claude.ai 设置的侧栏里。关掉后用独立弹窗。", en: "CC++ pages appear as a group in claude.ai's settings sidebar. Off uses a standalone dialog." },
+      default: true
+    },
+    userMenuEntry: { type: "boolean", label: { zh: "头像菜单里的 CC++ 子菜单", en: "CC++ submenu in the account menu" }, default: true },
+    hotkey: { type: "string", label: { zh: "打开设置的快捷键", en: "Shortcut to open settings" }, description: { zh: "例如 mod+shift+. （mod = ⌘ / Ctrl），留空关闭。", en: "e.g. mod+shift+. (mod = ⌘ / Ctrl). Empty disables it." }, default: "mod+shift+." },
+    composerEntry: { type: "boolean", label: { zh: "在输入框旁显示 CC++ 按钮", en: "CC++ button next to the model picker" }, default: false },
+    showApiPlugins: { type: "boolean", label: { zh: "显示 API / 核心插件", en: "Show API and core plugins" }, description: { zh: "它们由其它插件按需自动开启。", en: "They are switched on automatically when another plugin needs them." }, default: false }
+  });
+  var isSettingsOpen = () => nativeOpen() || standaloneOpen();
+  async function openSettings(options = {}) {
+    const plugin = options.plugin ? getPlugin(options.plugin) : undefined;
+    if (plugin) {
+      view.category = "all";
+      view.query = "";
+    }
+    const tab = plugin ? "plugins" : options.tab && tabs.has(options.tab) ? options.tab : "plugins";
+    let shown = false;
+    if (settings.store.nativeDialog)
+      shown = await openNative(tab);
+    if (!shown)
+      openStandalone(tab);
+    if (plugin)
+      openPluginDialog(plugin);
+  }
+  function closeSettings() {
+    closeAllModals();
+    closeStandalone();
+    if (nativeOpen())
+      document.querySelector('[data-perf-region="settings_panel"] button[aria-label]')?.click();
+  }
+  var entries = null;
+  function installEntries(parent) {
+    entries?.dispose();
+    const scope = entries = parent.child();
+    if (settings.store.userMenuEntry) {
+      installUserMenu(scope, {
+        tabs: sortedTabs,
+        plugins: () => listedPlugins().sort((a, b) => t(a.title).localeCompare(t(b.title))),
+        openTab: (tab) => openSettings({ tab }),
+        openPlugin: (plugin) => openPluginDialog(plugin)
+      });
+    }
+    const toggle = () => isSettingsOpen() ? closeSettings() : openSettings();
+    if (settings.store.hotkey.trim())
+      bindKey(scope, settings.store.hotkey, toggle, { inInputs: true });
+    addMenuCommand(scope, `⚙️ ${t(L5.openSettings)}${settings.store.hotkey ? ` (${comboLabel(settings.store.hotkey)})` : ""}`, () => openSettings());
+    if (settings.store.composerEntry)
+      addSlotItem(scope, "composer", "settings", () => slotButton(t(L5.openSettings), () => openSettings(), icon("plug", 16)), 100);
   }
   var settings_default = definePlugin({
     name: "Settings",
     title: { zh: "设置面板", en: "Settings" },
-    description: { zh: "CC++ 的设置面板本身也是插件：插件开关、分类、搜索、收藏、置顶与选项。", en: "The CC++ settings panel, itself a plugin: switches, categories, search, favorites, pins and options." },
+    description: {
+      zh: "CC++ 的设置界面本身也是插件：claude.ai 设置侧栏里的 CC++ 分组、头像菜单子菜单、插件卡片（收藏、置顶、单插件设置弹窗）。",
+      en: "The CC++ settings UI, itself a plugin: the CC++ group in claude.ai's settings sidebar, the account-menu submenu, and plugin cards with favorites, pins and per-plugin dialogs."
+    },
     category: "core",
     icon: "settings",
     required: true,
-    dependencies: ["DomApi", "HotkeysApi", "MenuApi", "SlotsApi"],
+    dependencies: ["DomApi", "HotkeysApi", "MenuApi", "SlotsApi", "StylesApi"],
     settings,
     start(scope) {
       setLang(settings.store.language);
-      host2 = createHost(scope, "settings", DIALOG_CSS);
-      scope.defer(() => host2 = null);
-      scope.listen(window, "keydown", (event) => {
-        if (event.key === "Escape" && state.open) {
-          event.stopPropagation();
-          closeSettings();
-        }
-      }, { capture: true });
-      scope.defer(onPluginStateChange(() => state.open && render()));
-      scope.defer(prefs.subscribe(() => state.open && render()));
-      if (settings.store.hotkey.trim())
-        bindKey(scope, settings.store.hotkey, () => state.open ? closeSettings() : openSettings(), { inInputs: true });
-      addMenuCommand(scope, `⚙️ ${t(L.openSettings)}${settings.store.hotkey ? ` (${comboLabel(settings.store.hotkey)})` : ""}`, () => openSettings());
-      injectUserMenuEntry(scope);
-      if (settings.store.composerEntry)
-        addSlotItem(scope, "composer", "settings", () => slotButton(t(L.openSettings), () => openSettings(), icon("plug", 16)), 100);
-      if (state.open)
-        render();
+      view.showApi = settings.store.showApiPlugins;
+      registerTab(scope, { id: "plugins", title: L5.plugins, icon: "puzzle", order: 0, render: renderPluginsTab });
+      initLayer(scope);
+      installNative(scope);
+      scope.defer(onPluginStateChange(redraw));
+      scope.defer(onSettingsChange((_, key) => key === "enabled" && redraw()));
+      scope.defer(prefs.subscribe(redraw));
+      installEntries(scope);
     },
-    onSettingsChange(key) {
+    onSettingsChange(key, scope) {
       if (key === "language")
         setLang(settings.store.language);
-      if (key === "showApiPlugins" || key === "language")
-        render();
+      if (key === "showApiPlugins")
+        view.showApi = settings.store.showApiPlugins;
       if (key === "hotkey" || key === "composerEntry" || key === "userMenuEntry")
-        queueMicrotask(() => restartPlugin(getPlugin("Settings")));
+        installEntries(scope);
+      redraw();
     }
   });
 
   // src/plugins/_core/backup/index.ts
-  var L2 = {
-    title: { zh: "备份与关于", en: "Backup & about" },
-    backup: { zh: "备份", en: "Backup" },
+  var L6 = {
+    title: { zh: "备份", en: "Backup" },
     backupHint: { zh: "导出全部 CC++ 数据（插件开关、选项、收藏的消息、输入历史、自定义 CSS），可在另一台电脑导入。", en: "Export all CC++ data (switches, options, starred messages, prompt history, Quick CSS) to restore elsewhere." },
     export: { zh: "导出 JSON", en: "Export JSON" },
     import: { zh: "导入 JSON", en: "Import JSON" },
     reset: { zh: "清空全部数据", en: "Erase all data" },
     resetConfirm: { zh: "清空 CC++ 的全部设置与数据？此操作不可撤销。", en: "Erase every CC++ setting and data? This cannot be undone." },
     imported: { zh: "已导入，部分插件可能需要刷新页面。", en: "Imported. Some plugins may need a reload." },
-    bad: { zh: "文件不是 CC++ 备份。", en: "That file is not a CC++ backup." },
-    about: { zh: "关于", en: "About" },
-    aboutText: {
-      zh: "CC++ 是 claude.ai 的插件化用户脚本：内核只负责插件注册、依赖与设置，网络、路由、DOM 观察、设置面板本身也都是插件。只调用 claude.ai 同源接口，不读取或外传 Cookie / token，不连接任何第三方服务器。",
-      en: "CC++ is a plugin-based userscript for claude.ai. The kernel only registers plugins, resolves dependencies and stores settings; network, routing, DOM watching and this settings panel are plugins too. It only calls claude.ai's same-origin API, never reads or sends cookies or tokens, and talks to no third-party server."
-    },
-    stats: { zh: "已启用 {on} / {all} 个插件", en: "{on} of {all} plugins running" }
+    bad: { zh: "文件不是 CC++ 备份。", en: "That file is not a CC++ backup." }
   };
   var FORMAT = "ccpp-backup";
   function buildBackup() {
@@ -2235,81 +2877,102 @@ kbd { font: 11px ui-monospace, monospace; padding: 1px 5px; border-radius: 4px; 
     }
     return true;
   }
+  function importBackup() {
+    const file = h("input", { type: "file", accept: "application/json,.json", style: { display: "none" } });
+    file.addEventListener("change", async () => {
+      const chosen = file.files?.[0];
+      file.remove();
+      if (!chosen)
+        return;
+      try {
+        if (!restoreBackup(JSON.parse(await chosen.text())))
+          throw new Error("format");
+        toast(t(L6.imported), { kind: "ok" });
+      } catch {
+        toast(t(L6.bad), { kind: "error" });
+      }
+    });
+    document.body.appendChild(file);
+    file.click();
+  }
+  var settings2 = definePluginSettings({
+    exportData: {
+      type: "action",
+      label: { zh: "导出备份", en: "Export backup" },
+      description: L6.backupHint,
+      button: L6.export,
+      run: () => download(`ccpp-backup-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify(buildBackup(), null, 2), "application/json")
+    },
+    importData: { type: "action", label: { zh: "导入备份", en: "Import backup" }, description: { zh: "从导出的 JSON 恢复。", en: "Restore from an exported JSON file." }, button: L6.import, run: importBackup },
+    eraseData: {
+      type: "action",
+      label: L6.reset,
+      description: { zh: "清空后页面会刷新。", en: "The page reloads afterwards." },
+      button: { zh: "清空", en: "Erase" },
+      confirm: L6.resetConfirm,
+      run: () => {
+        for (const key of Object.keys(dumpAll()))
+          removeKey(key);
+        location.reload();
+      }
+    }
+  });
   var backup_default = definePlugin({
     name: "Backup",
-    title: L2.title,
-    description: { zh: "导出 / 导入 / 清空 CC++ 的全部设置与数据。", en: "Export, import or erase all CC++ settings and data." },
+    title: L6.title,
+    description: {
+      zh: "导出 / 导入 / 清空 CC++ 的全部设置与数据。CC++ 只调用 claude.ai 同源接口，不读取或外传 Cookie / token；只有在线主题会去下载你填写的 CSS 地址。",
+      en: "Export, import or erase all CC++ settings and data. CC++ only calls claude.ai's own API and never reads or sends cookies or tokens; only online themes download the CSS URLs you add."
+    },
     category: "core",
     icon: "download",
     enabledByDefault: true,
-    dependencies: ["Settings", "NoticesApi"],
-    start(scope) {
-      registerTab(scope, {
-        id: "backup",
-        title: L2.title,
-        icon: "download",
-        order: 20,
-        render(container) {
-          const file = h("input", { type: "file", accept: "application/json,.json", style: { display: "none" } });
-          file.addEventListener("change", async () => {
-            const chosen = file.files?.[0];
-            if (!chosen)
-              return;
-            try {
-              if (!restoreBackup(JSON.parse(await chosen.text())))
-                throw new Error("format");
-              toast(t(L2.imported), { kind: "ok" });
-            } catch {
-              toast(t(L2.bad), { kind: "error" });
-            }
-            file.value = "";
-          });
-          const exportBtn = h("button", { type: "button", class: "btn primary" }, icon("download", 14), t(L2.export));
-          exportBtn.addEventListener("click", () => download(`ccpp-backup-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify(buildBackup(), null, 2), "application/json"));
-          const importBtn = h("button", { type: "button", class: "btn" }, icon("upload", 14), t(L2.import));
-          importBtn.addEventListener("click", () => file.click());
-          const resetBtn = h("button", { type: "button", class: "btn danger" }, icon("trash", 14), t(L2.reset));
-          resetBtn.addEventListener("click", () => {
-            if (!confirm(t(L2.resetConfirm)))
-              return;
-            for (const key of Object.keys(dumpAll()))
-              removeKey(key);
-            location.reload();
-          });
-          const plugins = allPlugins().filter((p) => !p.hidden && p.category !== "api");
-          container.append(h("div", { class: "section" }, h("h3", { text: t(L2.backup) }), h("p", { text: t(L2.backupHint) }), h("div", { class: "row" }, exportBtn, importBtn, resetBtn, file)), h("div", { class: "section" }, h("h3", { text: t(L2.about) }), h("p", { text: t(L2.aboutText) }), h("p", { class: "muted", text: `CC++ ${version} · ` + t(L2.stats).replace("{on}", String(plugins.filter((p) => isActive(p)).length)).replace("{all}", String(plugins.length)) }), h("p", {}, h("a", { href: "https://github.com/0-V-linuxdo/CCPP", target: "_blank", rel: "noopener", text: "github.com/0-V-linuxdo/CCPP" }))));
-        }
-      });
-    }
+    dependencies: ["NoticesApi"],
+    settings: settings2,
+    start() {}
   });
 
   // src/plugins/_core/quickCss/index.ts
   var css = persisted("quick-css", "", (v) => typeof v === "string");
-  var L3 = {
+  var settings3 = definePluginSettings({
+    apply: { type: "boolean", label: { zh: "启用自定义 CSS", en: "Enable Quick CSS" }, description: { zh: "关掉后保留内容，但不再作用于页面。", en: "Off keeps your CSS but stops applying it." }, default: true }
+  });
+  var refresh = () => {};
+  var L7 = {
     title: { zh: "自定义 CSS", en: "Quick CSS" },
-    hint: { zh: "写入的 CSS 会实时应用到 claude.ai（输入停顿 0.4 秒后生效）。", en: "CSS here applies to claude.ai live (0.4 s after you stop typing)." },
-    placeholder: { zh: `/* 例如：隐藏侧栏底部头像 */
+    editor: { zh: "编辑器", en: "Editor" },
+    hint: { zh: "实时应用到 claude.ai（停止输入 0.4 秒后生效）。Tab 键缩进。", en: "Applies to claude.ai live, 0.4 s after you stop typing. Tab indents." },
+    placeholder: { zh: `/* 例如：让侧栏头像淡一点 */
 [data-testid="user-menu-button"] { opacity: .6; }`, en: `/* e.g. dim the account button */
 [data-testid="user-menu-button"] { opacity: .6; }` }
   };
   var quickCss_default = definePlugin({
     name: "QuickCss",
-    title: L3.title,
-    description: { zh: "在设置面板里写自己的 CSS，实时作用于页面。", en: "Write your own CSS in the settings panel and see it applied live." },
-    category: "core",
+    title: L7.title,
+    description: { zh: "在设置里写自己的 CSS，实时作用于页面。", en: "Write your own CSS in settings and see it applied live." },
+    category: "appearance",
     icon: "brush",
     enabledByDefault: true,
     dependencies: ["StylesApi", "Settings"],
+    settings: settings3,
     start(scope) {
-      const setCss = addStyle(scope, css.get(), "quick-css");
-      scope.defer(css.subscribe(setCss));
+      const setCss = addStyle(scope, settings3.store.apply ? css.get() : "", "quick-css");
+      refresh = () => setCss(settings3.store.apply ? css.get() : "");
+      scope.defer(() => refresh = () => {});
+      scope.defer(css.subscribe((value) => setCss(settings3.store.apply ? value : "")));
       registerTab(scope, {
         id: "quick-css",
-        title: L3.title,
+        title: L7.title,
         icon: "brush",
-        order: 10,
+        order: 20,
         render(container) {
-          const area = h("textarea", { class: "input", rows: 24, spellcheck: false, placeholder: t(L3.placeholder), style: { width: "100%", minHeight: "420px" } });
+          const sw = h("button", { type: "button", class: "switch", role: "switch", "aria-checked": String(settings3.store.apply), "aria-label": t(settings3.def.apply.label) });
+          sw.addEventListener("click", () => {
+            settings3.store.apply = !settings3.store.apply;
+            sw.setAttribute("aria-checked", String(settings3.store.apply));
+            setCss(settings3.store.apply ? css.get() : "");
+          });
+          const area = h("textarea", { class: "input editor", rows: 22, spellcheck: false, placeholder: t(L7.placeholder), "aria-label": t(L7.editor) });
           area.value = css.get();
           let timer;
           area.addEventListener("input", () => {
@@ -2322,7 +2985,293 @@ kbd { font: 11px ui-monospace, monospace; padding: 1px 5px; border-radius: 4px; 
             event.preventDefault();
             area.setRangeText("  ", area.selectionStart, area.selectionEnd, "end");
           });
-          container.append(h("p", { class: "muted", text: t(L3.hint), style: { margin: "0 0 10px" } }), area);
+          container.append(h("div", { class: "rows" }, h("div", { class: "row" }, h("div", { class: "row-text" }, h("div", { class: "row-title", text: t(settings3.def.apply.label) }), h("div", { class: "row-desc", text: t(settings3.def.apply.description) })), h("div", { class: "row-control" }, sw))), h("div", { class: "section-head", style: { marginTop: "12px" } }, h("h3", { text: t(L7.editor) })), h("p", { class: "hint", text: t(L7.hint) }), area);
+        }
+      });
+    },
+    onSettingsChange() {
+      refresh();
+    }
+  });
+
+  // src/plugins/_core/themes/index.ts
+  var logger7 = new Logger("Themes");
+  var isStore = (v) => !!v && Array.isArray(v.online) && Array.isArray(v.local);
+  var store = persisted("themes", { online: [], local: [] }, isStore);
+  function parseMeta(css) {
+    const block = /\/\*([\s\S]*?)\*\//.exec(css)?.[1] ?? "";
+    const meta = {};
+    for (const match of block.matchAll(/@(name|author|description)\s+([^\n*]+)/g))
+      meta[match[1]] = match[2].trim();
+    return meta;
+  }
+  function validThemeUrl(raw) {
+    try {
+      const url = new URL(raw.trim());
+      return url.protocol === "https:" ? url.href : null;
+    } catch {
+      return null;
+    }
+  }
+  function combinedCss(themes) {
+    return [...themes.online.filter((x) => x.enabled && x.css).map((x) => `/* ${x.url} */
+${x.css}`), ...themes.local.filter((x) => x.enabled).map((x) => `/* ${x.name} */
+${x.css}`)].join(`
+
+`);
+  }
+  function fetchText(url) {
+    if (typeof GM_xmlhttpRequest === "function") {
+      return new Promise((resolve, reject) => GM_xmlhttpRequest({
+        method: "GET",
+        url,
+        timeout: 15000,
+        onload: (r) => r.status >= 200 && r.status < 300 ? resolve(r.responseText) : reject(new Error(`HTTP ${r.status}`)),
+        onerror: () => reject(new Error("network")),
+        ontimeout: () => reject(new Error("timeout"))
+      }));
+    }
+    return fetch(url, { credentials: "omit" }).then((r) => r.ok ? r.text() : Promise.reject(new Error(`HTTP ${r.status}`)));
+  }
+  var REFRESH_MS = 60 * 60 * 1000;
+  async function refreshOnline(url, force = false) {
+    const theme = store.get().online.find((x) => x.url === url);
+    if (!theme || !force && theme.css && Date.now() - (theme.fetchedAt ?? 0) < REFRESH_MS)
+      return;
+    let patch;
+    try {
+      patch = { css: await fetchText(url), fetchedAt: Date.now(), error: undefined };
+    } catch (error) {
+      logger7.warn("Theme download failed:", url, error);
+      patch = { error: error instanceof Error ? error.message : String(error) };
+    }
+    const current = store.get();
+    store.set({ ...current, online: current.online.map((x) => x.url === url ? { ...x, ...patch } : x) });
+  }
+  var L8 = {
+    title: { zh: "主题", en: "Themes" },
+    search: { zh: "搜索主题…", en: "Search themes…" },
+    all: { zh: "全部", en: "All" },
+    enabled: { zh: "已启用", en: "Enabled" },
+    disabled: { zh: "已停用", en: "Disabled" },
+    online: { zh: "在线主题", en: "Online themes" },
+    local: { zh: "本地主题", en: "Local themes" },
+    onlineShort: { zh: "在线", en: "Online" },
+    localShort: { zh: "本地", en: "Local" },
+    add: { zh: "添加", en: "Add" },
+    create: { zh: "新建", en: "New" },
+    addOnline: { zh: "添加在线主题", en: "Add online theme" },
+    urlLabel: { zh: "CSS 地址（https）", en: "CSS URL (https)" },
+    urlHint: { zh: "CC++ 会下载这个 CSS 并应用到 claude.ai，每小时更新一次。", en: "CC++ downloads this CSS, applies it to claude.ai and refreshes it hourly." },
+    badUrl: { zh: "请填写 https 开头的地址", en: "Enter an https URL" },
+    dupUrl: { zh: "这个主题已经添加过了", en: "That theme is already added" },
+    editLocal: { zh: "编辑本地主题", en: "Edit local theme" },
+    newLocal: { zh: "新建本地主题", en: "New local theme" },
+    name: { zh: "名称", en: "Name" },
+    author: { zh: "作者", en: "Author" },
+    css: { zh: "CSS", en: "CSS" },
+    save: { zh: "保存", en: "Save" },
+    cancel: { zh: "取消", en: "Cancel" },
+    edit: { zh: "编辑", en: "Edit" },
+    copyUrl: { zh: "复制地址", en: "Copy URL" },
+    copied: { zh: "已复制", en: "Copied" },
+    refresh: { zh: "重新下载", en: "Download again" },
+    remove: { zh: "删除", en: "Delete" },
+    removeTitle: { zh: "删除主题？", en: "Delete theme?" },
+    removeBody: { zh: "「{name}」会被删除。", en: "“{name}” will be deleted." },
+    emptyOnline: { zh: "还没有在线主题。点「添加」填一个 CSS 地址。", en: "No online themes yet. Use Add to enter a CSS URL." },
+    emptyLocal: { zh: "还没有本地主题。点「新建」自己写一个。", en: "No local themes yet. Use New to write one." },
+    noMatch: { zh: "没有匹配的主题", en: "No matching themes" },
+    failed: { zh: "下载失败", en: "Download failed" },
+    lines: { zh: "{n} 行 CSS", en: "{n} lines of CSS" },
+    untitled: { zh: "未命名主题", en: "Untitled theme" }
+  };
+  var ui = { query: "", filter: "all" };
+  var nameOfOnline = (theme) => parseMeta(theme.css ?? "").name || new URL(theme.url).pathname.split("/").pop() || theme.url;
+  function setOnline(url, patch) {
+    const current = store.get();
+    store.set({ ...current, online: current.online.map((x) => x.url === url ? { ...x, ...patch } : x) });
+  }
+  function setLocal(id, patch) {
+    const current = store.get();
+    store.set({ ...current, local: patch ? current.local.map((x) => x.id === id ? { ...x, ...patch } : x) : current.local.filter((x) => x.id !== id) });
+  }
+  function themeCard(o) {
+    const sw = h("button", { type: "button", class: "switch", role: "switch", "aria-checked": String(o.enabled), "aria-label": o.name });
+    sw.addEventListener("click", () => o.toggle(!o.enabled));
+    return h("div", { class: `card${o.enabled ? " on" : " off"}${o.error ? " crashed" : ""}` }, h("div", { class: "card-body" }, h("div", { class: "card-top" }, h("span", { class: "chip-icon" }, icon("palette", 14)), h("span", { class: "card-title", text: o.name, title: o.name, style: { cursor: "default" } }), h("div", { class: "card-actions" }, ...o.actions, sw)), h("div", { class: "card-desc", text: o.desc }), h("div", { class: "card-gap" }), h("div", { class: "card-foot" }, icon(o.online ? "globe" : "folder", 12), h("span", { text: t(o.online ? L8.onlineShort : L8.localShort) }), o.error ? h("span", { class: "badge bad", text: t(L8.failed), title: o.error }) : null, h("span", { class: "author", text: o.author }))));
+  }
+  var iconAction = (name, label, run) => {
+    const button = h("button", { type: "button", class: "icon-btn", title: t(label), "aria-label": t(label) }, icon(name, 14));
+    button.addEventListener("click", run);
+    return button;
+  };
+  async function askRemove(name) {
+    return confirmDialog({ title: t(L8.removeTitle), body: t(L8.removeBody).replace("{name}", name), ok: L8.remove, danger: true });
+  }
+  function openAddOnline() {
+    const input = h("input", { class: "input", type: "url", placeholder: "https://…/theme.css", autofocus: true, "aria-label": t(L8.urlLabel) });
+    const error = h("div", { class: "row-desc", style: { color: "var(--bad)" } });
+    const add = h("button", { type: "button", class: "btn primary", text: t(L8.add) });
+    const cancel = h("button", { type: "button", class: "btn", text: t(L8.cancel) });
+    const submit = () => {
+      const url = validThemeUrl(input.value);
+      if (!url)
+        return void (error.textContent = t(L8.badUrl));
+      if (store.get().online.some((x) => x.url === url))
+        return void (error.textContent = t(L8.dupUrl));
+      const current = store.get();
+      store.set({ ...current, online: [...current.online, { url, enabled: true }] });
+      refreshOnline(url, true);
+      close();
+    };
+    add.addEventListener("click", submit);
+    input.addEventListener("keydown", (event) => event.key === "Enter" && submit());
+    let close = () => {};
+    cancel.addEventListener("click", () => close());
+    close = openModal(dialogFrame({ title: t(L8.addOnline), icon: "globe", size: "small", body: [h("div", { class: "field" }, h("label", { text: t(L8.urlLabel) }), input, error), h("p", { class: "hint", text: t(L8.urlHint) })], foot: [cancel, add], onClose: () => close() }));
+  }
+  function openLocalEditor(theme) {
+    const name = h("input", { class: "input", value: theme?.name ?? "", placeholder: t(L8.untitled), autofocus: true });
+    const author = h("input", { class: "input", value: theme?.author ?? "" });
+    const css = h("textarea", { class: "input editor", rows: 16, spellcheck: false, placeholder: `/* @name My theme */
+:root { }` });
+    css.value = theme?.css ?? "";
+    css.addEventListener("keydown", (event) => {
+      if (event.key !== "Tab")
+        return;
+      event.preventDefault();
+      css.setRangeText("  ", css.selectionStart, css.selectionEnd, "end");
+    });
+    const save = h("button", { type: "button", class: "btn primary", text: t(L8.save) });
+    const cancel = h("button", { type: "button", class: "btn", text: t(L8.cancel) });
+    save.addEventListener("click", () => {
+      const meta = parseMeta(css.value);
+      const next = { name: name.value.trim() || meta.name || t(L8.untitled), author: author.value.trim() || meta.author || "", css: css.value };
+      if (theme)
+        setLocal(theme.id, next);
+      else {
+        const current = store.get();
+        store.set({ ...current, local: [...current.local, { id: `t${Date.now().toString(36)}`, enabled: true, ...next }] });
+      }
+      close();
+    });
+    let close = () => {};
+    cancel.addEventListener("click", () => close());
+    close = openModal(dialogFrame({
+      title: t(theme ? L8.editLocal : L8.newLocal),
+      icon: "palette",
+      size: "wide",
+      body: [h("div", { class: "field" }, h("label", { text: t(L8.name) }), name), h("div", { class: "field" }, h("label", { text: t(L8.author) }), author), h("div", { class: "field" }, h("label", { text: t(L8.css) }), css)],
+      foot: [cancel, save],
+      onClose: () => close()
+    }));
+  }
+  function renderThemes(container) {
+    const search = h("input", { class: "input", type: "search", placeholder: t(L8.search), value: ui.query, "aria-label": t(L8.search) });
+    const filter = h("select", { class: "input", "aria-label": t(L8.all) }, ...["all", "enabled", "disabled", "online", "local"].map((value) => h("option", { value, text: t(value === "online" ? L8.onlineShort : value === "local" ? L8.localShort : L8[value]), selected: ui.filter === value })));
+    container.appendChild(h("div", { class: "bar" }, h("label", { class: "search" }, icon("search", 14), search), filter));
+    const body = h("div");
+    container.appendChild(body);
+    const matches = (name, extra, enabled) => (!ui.query || `${name} ${extra}`.toLowerCase().includes(ui.query.toLowerCase())) && (ui.filter === "enabled" ? enabled : ui.filter === "disabled" ? !enabled : true);
+    const draw = () => {
+      clear(body);
+      const themes = store.get();
+      const section = (title, buttonText, buttonIcon, onAdd, cards, empty) => {
+        const add = h("button", { type: "button", class: "btn" }, icon(buttonIcon, 14), t(buttonText));
+        add.addEventListener("click", onAdd);
+        const filtered = ui.query || ui.filter !== "all";
+        body.appendChild(h("div", { class: "section" }, h("div", { class: "section-head" }, h("h3", { text: t(title) }), add), cards.length ? h("div", { class: "grid" }, ...cards) : h("div", { class: "empty", text: t(filtered ? L8.noMatch : empty) })));
+      };
+      if (ui.filter !== "local") {
+        const cards = themes.online.filter((x) => matches(nameOfOnline(x), x.url, x.enabled)).map((theme) => {
+          const meta = parseMeta(theme.css ?? "");
+          return themeCard({
+            name: nameOfOnline(theme),
+            desc: meta.description || theme.url,
+            author: meta.author || new URL(theme.url).host,
+            online: true,
+            enabled: theme.enabled,
+            error: theme.error,
+            toggle: (on) => {
+              setOnline(theme.url, { enabled: on });
+              if (on)
+                refreshOnline(theme.url);
+            },
+            actions: [
+              iconAction("copy", L8.copyUrl, () => navigator.clipboard?.writeText(theme.url).then(() => toast(t(L8.copied), { kind: "ok" }))),
+              iconAction("refresh", L8.refresh, () => void refreshOnline(theme.url, true)),
+              iconAction("trash", L8.remove, async () => {
+                if (!await askRemove(nameOfOnline(theme)))
+                  return;
+                const current = store.get();
+                store.set({ ...current, online: current.online.filter((x) => x.url !== theme.url) });
+              })
+            ]
+          });
+        });
+        section(L8.online, L8.add, "plus", openAddOnline, cards, L8.emptyOnline);
+      }
+      if (ui.filter !== "online") {
+        const cards = themes.local.filter((x) => matches(x.name, x.author, x.enabled)).map((theme) => themeCard({
+          name: theme.name,
+          desc: parseMeta(theme.css).description || t(L8.lines).replace("{n}", String(theme.css.split(`
+`).length)),
+          author: theme.author || "—",
+          online: false,
+          enabled: theme.enabled,
+          toggle: (on) => setLocal(theme.id, { enabled: on }),
+          actions: [
+            iconAction("pencil", L8.edit, () => openLocalEditor(theme)),
+            iconAction("trash", L8.remove, async () => await askRemove(theme.name) && setLocal(theme.id, null))
+          ]
+        }));
+        section(L8.local, L8.create, "plus", () => openLocalEditor(), cards, L8.emptyLocal);
+      }
+    };
+    search.addEventListener("input", () => {
+      ui.query = search.value;
+      draw();
+    });
+    filter.addEventListener("change", () => {
+      ui.filter = filter.value;
+      draw();
+    });
+    draw();
+  }
+  var themes_default = definePlugin({
+    name: "Themes",
+    title: L8.title,
+    description: { zh: "在线主题（填 CSS 地址）和本地主题（自己写 CSS），可分别启用、编辑、删除。", en: "Online themes (from a CSS URL) and local themes (your own CSS), each switchable, editable and removable." },
+    category: "appearance",
+    icon: "palette",
+    enabledByDefault: true,
+    dependencies: ["StylesApi", "Settings", "NoticesApi"],
+    start(scope) {
+      const setCss = addStyle(scope, combinedCss(store.get()), "themes");
+      let redrawTab = () => {};
+      scope.defer(store.subscribe((value) => {
+        setCss(combinedCss(value));
+        redrawTab();
+      }));
+      for (const theme of store.get().online)
+        if (theme.enabled)
+          refreshOnline(theme.url);
+      registerTab(scope, {
+        id: "themes",
+        title: L8.title,
+        icon: "palette",
+        order: 10,
+        render(container) {
+          renderThemes(container);
+          redrawTab = () => {
+            if (!container.isConnected)
+              return;
+            const top = container.scrollTop;
+            clear(container);
+            renderThemes(container);
+            container.scrollTop = top;
+          };
         }
       });
     }
@@ -2436,8 +3385,8 @@ kbd { font: 11px ui-monospace, monospace; padding: 1px 5px; border-radius: 4px; 
   }
 
   // src/plugins/usageDisplay/index.ts
-  var logger7 = new Logger("UsageDisplay");
-  var settings2 = definePluginSettings({
+  var logger8 = new Logger("UsageDisplay");
+  var settings4 = definePluginSettings({
     style: {
       type: "select",
       label: { zh: "输入框里的样式", en: "Style in the chat input" },
@@ -2452,7 +3401,7 @@ kbd { font: 11px ui-monospace, monospace; padding: 1px 5px; border-radius: 4px; 
     warnAt: { type: "number", label: { zh: "黄色提醒阈值", en: "Amber from" }, default: 70, min: 10, max: 99, unit: "%" },
     dangerAt: { type: "number", label: { zh: "红色提醒阈值", en: "Red from" }, default: 90, min: 10, max: 100, unit: "%" }
   });
-  var L4 = {
+  var L9 = {
     title: { zh: "用量", en: "Usage" },
     session: { zh: "5 小时会话", en: "5-hour session" },
     weekly: { zh: "每周", en: "Weekly" },
@@ -2474,7 +3423,7 @@ kbd { font: 11px ui-monospace, monospace; padding: 1px 5px; border-radius: 4px; 
   var listeners2 = new Set;
   var changed = () => listeners2.forEach((fn) => fn());
   var MIN_GAP_MS = 5000;
-  async function refresh(force = false) {
+  async function refresh2(force = false) {
     if (loading || !force && Date.now() - lastAttempt < MIN_GAP_MS)
       return;
     if (!force && document.hidden)
@@ -2490,8 +3439,8 @@ kbd { font: 11px ui-monospace, monospace; padding: 1px 5px; border-radius: 4px; 
     } catch (err) {
       if (err.name === "AbortError" && !inflight)
         return;
-      error = err instanceof ApiError && (err.status === 401 || err.status === 403) ? t(L4.signedOut) : err.message || String(err);
-      logger7.warn("Usage refresh failed:", err);
+      error = err instanceof ApiError && (err.status === 401 || err.status === 403) ? t(L9.signedOut) : err.message || String(err);
+      logger8.warn("Usage refresh failed:", err);
     } finally {
       clearTimeout(timeout);
       inflight = null;
@@ -2509,7 +3458,7 @@ kbd { font: 11px ui-monospace, monospace; padding: 1px 5px; border-radius: 4px; 
   var COLORS = { ok: "#3f9a5b", warn: "#c98a12", bad: "#d1453b" };
   function ring(window2, label) {
     const percent = window2?.utilization ?? 0;
-    const color = COLORS[level(percent, settings2.store.warnAt, settings2.store.dangerAt)];
+    const color = COLORS[level(percent, settings4.store.warnAt, settings4.store.dangerAt)];
     return h("span", {
       class: "ccpp-usage-ring",
       "aria-label": `${label} ${Math.round(percent)}%`,
@@ -2517,13 +3466,13 @@ kbd { font: 11px ui-monospace, monospace; padding: 1px 5px; border-radius: 4px; 
     });
   }
   function chip(open) {
-    const style = settings2.store.style;
+    const style = settings4.store.style;
     const five = usage?.fiveHour ?? null;
     const week = usage?.sevenDay ?? null;
     const pct = (w) => w ? `${Math.round(w.utilization)}%` : "–";
     const text = !usage ? error ? "!" : "…" : `${pct(five)} · ${pct(week)}`;
-    const tip = usage ? `${t(L4.session)} ${pct(five)} · ${t(L4.weekly)} ${pct(week)}` : error ?? t(L4.loading);
-    const button = h("button", { type: "button", class: `ccpp-slot-btn ccpp-usage${error && !usage ? " err" : ""}`, title: tip, "aria-label": tip }, style !== "text" ? h("span", { class: "ccpp-usage-rings" }, ring(five, t(L4.session)), ring(week, t(L4.weekly))) : null, style !== "rings" ? h("span", { class: "ccpp-usage-text", text }) : null);
+    const tip = usage ? `${t(L9.session)} ${pct(five)} · ${t(L9.weekly)} ${pct(week)}` : error ?? t(L9.loading);
+    const button = h("button", { type: "button", class: `ccpp-slot-btn ccpp-usage${error && !usage ? " err" : ""}`, title: tip, "aria-label": tip }, style !== "text" ? h("span", { class: "ccpp-usage-rings" }, ring(five, t(L9.session)), ring(week, t(L9.weekly))) : null, style !== "rings" ? h("span", { class: "ccpp-usage-text", text }) : null);
     button.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
@@ -2539,7 +3488,7 @@ kbd { font: 11px ui-monospace, monospace; padding: 1px 5px; border-radius: 4px; 
 html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
 .ccpp-usage.err { color: #d1453b; }
 `;
-  var PANEL_CSS = `
+  var PANEL_CSS2 = `
 .metric { display: flex; flex-direction: column; gap: 4px; }
 .metric .line { display: flex; justify-content: space-between; } .metric .pct { font-weight: 600; font-variant-numeric: tabular-nums; }
 .bar { height: 6px; border-radius: 3px; background: var(--bg3); overflow: hidden; } .bar > i { display: block; height: 100%; border-radius: 3px; }
@@ -2547,31 +3496,31 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
 .foot a { color: var(--accent); text-decoration: none; }
 `;
   function metric(label, window2) {
-    const lv = level(window2.utilization, settings2.store.warnAt, settings2.store.dangerAt);
-    const reset = window2.resetsAt ? window2.resetsAt - Date.now() < 24 * 3600 * 1000 ? t(L4.resetsIn).replace("{t}", untilText(window2.resetsAt)) : t(L4.resetsAt).replace("{t}", dateTimeText(window2.resetsAt)) : "";
+    const lv = level(window2.utilization, settings4.store.warnAt, settings4.store.dangerAt);
+    const reset = window2.resetsAt ? window2.resetsAt - Date.now() < 24 * 3600 * 1000 ? t(L9.resetsIn).replace("{t}", untilText(window2.resetsAt)) : t(L9.resetsAt).replace("{t}", dateTimeText(window2.resetsAt)) : "";
     return h("div", { class: "metric" }, h("div", { class: "line" }, h("span", { text: label }), h("span", { class: "pct", text: `${Math.round(window2.utilization)}%`, style: { color: COLORS[lv] } })), h("div", { class: "bar" }, h("i", { style: { width: `${window2.utilization}%`, background: COLORS[lv] } })), reset ? h("div", { class: "muted", text: reset, style: { fontSize: "12px" } }) : null);
   }
   function renderPanel(panel) {
-    const refreshBtn = h("button", { type: "button", class: "icon-btn", title: t(L4.refresh), "aria-label": t(L4.refresh) }, icon("refresh", 15));
+    const refreshBtn = h("button", { type: "button", class: "icon-btn", title: t(L9.refresh), "aria-label": t(L9.refresh) }, icon("refresh", 15));
     if (loading)
       refreshBtn.firstElementChild?.classList.add("spin");
-    refreshBtn.addEventListener("click", () => refresh(true));
-    panel.appendChild(h("div", { class: "top" }, icon("gauge", 16), h("b", { text: t(L4.title) }), refreshBtn));
+    refreshBtn.addEventListener("click", () => refresh2(true));
+    panel.appendChild(h("div", { class: "top" }, icon("gauge", 16), h("b", { text: t(L9.title) }), refreshBtn));
     if (error)
-      panel.appendChild(h("div", { class: "msg bad", text: t(L4.error).replace("{e}", error) }));
+      panel.appendChild(h("div", { class: "msg bad", text: t(L9.error).replace("{e}", error) }));
     if (!usage && !error)
-      panel.appendChild(h("div", { class: "msg", text: t(L4.loading) }));
+      panel.appendChild(h("div", { class: "msg", text: t(L9.loading) }));
     if (usage) {
       const rows = [
-        usage.fiveHour && metric(t(L4.session), usage.fiveHour),
-        usage.sevenDay && metric(t(L4.weekly), usage.sevenDay),
-        ...usage.extra.map((e) => metric(`${t(L4.weekly)} · ${e.key}`, e.window))
+        usage.fiveHour && metric(t(L9.session), usage.fiveHour),
+        usage.sevenDay && metric(t(L9.weekly), usage.sevenDay),
+        ...usage.extra.map((e) => metric(`${t(L9.weekly)} · ${e.key}`, e.window))
       ].filter(Boolean);
       if (!rows.length)
-        panel.appendChild(h("div", { class: "msg", text: t(L4.none) }));
+        panel.appendChild(h("div", { class: "msg", text: t(L9.none) }));
       panel.append(...rows);
     }
-    panel.appendChild(h("div", { class: "foot" }, h("span", { text: usage ? t(L4.updated).replace("{t}", agoText(usage.fetchedAt)) : "" }), h("a", { href: "/settings/usage", text: t(L4.open) })));
+    panel.appendChild(h("div", { class: "foot" }, h("span", { text: usage ? t(L9.updated).replace("{t}", agoText(usage.fetchedAt)) : "" }), h("a", { href: "/settings/usage", text: t(L9.open) })));
   }
   var usageDisplay_default = definePlugin({
     name: "UsageDisplay",
@@ -2584,13 +3533,13 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
     icon: "gauge",
     enabledByDefault: true,
     dependencies: ["ClaudeApi", "SlotsApi", "StylesApi", "ChatStateApi"],
-    settings: settings2,
+    settings: settings4,
     start(scope) {
       addStyle(scope, SLOT_CSS, "usage");
-      const panel = createPopover(scope, "usage-panel", PANEL_CSS);
+      const panel = createPopover(scope, "usage-panel", PANEL_CSS2);
       const open = (anchor) => {
         panel.open(anchor, renderPanel);
-        refresh();
+        refresh2();
       };
       const item = addSlotItem(scope, "composer", "usage", () => chip(open), -10);
       const update = () => {
@@ -2600,17 +3549,17 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
       listeners2.add(update);
       scope.defer(() => listeners2.delete(update));
       scope.defer(() => inflight?.abort());
-      scope.interval(() => refresh(), settings2.store.refreshSec * 1000);
-      scope.listen(document, "visibilitychange", () => !document.hidden && Date.now() - lastAttempt > settings2.store.refreshSec * 1000 && refresh());
-      scope.on("reply:end", () => scope.timeout(() => refresh(true), 2500));
+      scope.interval(() => refresh2(), settings4.store.refreshSec * 1000);
+      scope.listen(document, "visibilitychange", () => !document.hidden && Date.now() - lastAttempt > settings4.store.refreshSec * 1000 && refresh2());
+      scope.on("reply:end", () => scope.timeout(() => refresh2(true), 2500));
       scope.interval(() => panel.update(), 60000);
-      refresh(true);
+      refresh2(true);
     }
   });
 
   // src/plugins/chatNavigator/index.ts
-  var logger8 = new Logger("ChatNavigator");
-  var settings3 = definePluginSettings({
+  var logger9 = new Logger("ChatNavigator");
+  var settings5 = definePluginSettings({
     showAssistant: { type: "boolean", label: { zh: "列出 Claude 的回复", en: "List Claude's replies" }, description: { zh: "关闭后目录里只有你的提问。", en: "Off lists only your prompts." }, default: true },
     minMessages: { type: "number", label: { zh: "至少几条消息才显示", en: "Show from this many messages" }, description: { zh: "默认一问一答就显示。", en: "By default one prompt and reply is enough." }, default: 2, min: 1, max: 20 },
     jumpEffect: {
@@ -2625,7 +3574,7 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
     },
     keys: { type: "boolean", label: { zh: "键盘跳转", en: "Keyboard" }, description: { zh: "不在输入框里时：↑ / ↓ 逐条跳转，Home / End 到首尾，Esc 收起目录。", en: "Outside the input: ↑ / ↓ step through messages, Home / End go to the ends, Esc closes the outline." }, default: true }
   });
-  var L5 = {
+  var L10 = {
     title: { zh: "对话目录", en: "Outline" },
     streaming: { zh: "正在回复…", en: "Replying…" },
     unloaded: { zh: "（滚动到这里后显示）", en: "(shown once scrolled into view)" },
@@ -2674,12 +3623,12 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
     enabledByDefault: true,
     updatedAt: "2026-10-13",
     dependencies: ["TranscriptApi", "RouterApi", "ChatStateApi"],
-    settings: settings3,
+    settings: settings5,
     start(scope) {
       const { box } = createHost(scope, "navigator", CSS4);
-      const ticks = h("div", { class: "ticks", role: "navigation", "aria-label": t(L5.title) });
+      const ticks = h("div", { class: "ticks", role: "navigation", "aria-label": t(L10.title) });
       const meta = h("div", { class: "meta" });
-      const list = h("ul", { class: "list", role: "menu", "aria-label": t(L5.title) });
+      const list = h("ul", { class: "list", role: "menu", "aria-label": t(L10.title) });
       const menu = h("div", { class: "menu" }, meta, list);
       const rail = h("div", { class: "rail" }, menu, ticks);
       box.append(rail);
@@ -2690,7 +3639,7 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
       let aim = -1;
       let loadToken = 0;
       let hideTimer;
-      const shown = () => settings3.store.showAssistant ? items : items.filter((i) => i.role === "user");
+      const shown = () => settings5.store.showAssistant ? items : items.filter((i) => i.role === "user");
       const feedKey = () => chatId ?? `${location.pathname}${location.search}|${scroller?.closest('[data-perf-region="side_pane"]') ? "side" : "main"}`;
       const harvest = () => {
         const key = feedKey();
@@ -2722,7 +3671,7 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
             return;
           items = conversation.messages.map((m, index) => ({ index, role: m.role, text: m.text }));
         } catch (error) {
-          logger8.warn("Falling back to the page for the outline:", error);
+          logger9.warn("Falling back to the page for the outline:", error);
           if (token !== loadToken)
             return;
           items = fromDom();
@@ -2732,7 +3681,7 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
           items = [...items, ...fromDom().slice(items.length)];
         draw();
       };
-      const visible = () => !!scroller?.isConnected && shown().length >= settings3.store.minMessages;
+      const visible = () => !!scroller?.isConnected && shown().length >= settings5.store.minMessages;
       const place = () => {
         if (!visible()) {
           rail.style.display = "none";
@@ -2753,8 +3702,8 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
         if (item.text.trim())
           return { text: snippet(item.text, 120), dim: false };
         if (isLive(item))
-          return { text: t(L5.streaming), dim: true };
-        return { text: chatId ? t(L5.empty) : t(L5.unloaded), dim: true };
+          return { text: t(L10.streaming), dim: true };
+        return { text: chatId ? t(L10.empty) : t(L10.unloaded), dim: true };
       };
       const activePos = () => {
         const entries = shown();
@@ -2773,7 +3722,7 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
           const tick = h("button", {
             type: "button",
             class: `tick ${item.role}${i === active ? " current" : ""}${stars.has(item.index) ? " marked" : ""}${isLive(item) ? " live" : ""}`,
-            "aria-label": t(L5.goTo).replace("{n}", String(i + 1)).replace("{total}", String(entries.length))
+            "aria-label": t(L10.goTo).replace("{n}", String(i + 1)).replace("{total}", String(entries.length))
           });
           tick.addEventListener("click", () => go(i));
           ticks.appendChild(tick);
@@ -2804,7 +3753,7 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
         current = item.index;
         aim = pos;
         draw();
-        jumpTo(item.index, { flash: settings3.store.jumpEffect === "border", scroller });
+        jumpTo(item.index, { flash: settings5.store.jumpEffect === "border", scroller });
       };
       const setOpen = (open) => {
         clearTimeout(hideTimer);
@@ -2887,7 +3836,7 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
           load(total > items.length);
         syncCurrent();
       }, 1200);
-      if (settings3.store.keys) {
+      if (settings5.store.keys) {
         scope.listen(document, "keydown", (event) => {
           if (!visible() || event.altKey || event.isComposing)
             return;
@@ -2942,11 +3891,11 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
   }
 
   // src/plugins/messageStars/index.ts
-  var settings4 = definePluginSettings({
+  var settings6 = definePluginSettings({
     headerButton: { type: "boolean", label: { zh: "在对话标题栏显示收藏列表按钮", en: "Starred list button in the chat header" }, default: true },
     otherChats: { type: "boolean", label: { zh: "列表里同时显示其它对话的收藏", en: "Also list stars from other chats" }, default: true }
   });
-  var L6 = {
+  var L11 = {
     star: { zh: "收藏这条消息", en: "Star this message" },
     unstar: { zh: "取消收藏", en: "Unstar" },
     list: { zh: "收藏的消息", en: "Starred messages" },
@@ -2987,7 +3936,7 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
     icon: "star",
     enabledByDefault: true,
     dependencies: ["DomApi", "StylesApi", "SlotsApi", "TranscriptApi", "RouterApi", "ChatStateApi"],
-    settings: settings4,
+    settings: settings6,
     start(scope) {
       addStyle(scope, CSS5, "stars");
       const isStarred = (key) => starsFor(currentRoute().chatId).some((s) => s.key === key);
@@ -3008,7 +3957,7 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
           row.classList.toggle("ccpp-starred-row", on);
           for (const btn of row.querySelectorAll(".ccpp-star-btn")) {
             btn.classList.toggle("on", on);
-            btn.title = t(on ? L6.unstar : L6.star);
+            btn.title = t(on ? L11.unstar : L11.star);
             btn.setAttribute("aria-pressed", String(on));
           }
         }
@@ -3017,7 +3966,7 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
       const makeButton = (row, extra = "") => {
         const info = rowInfo(row);
         const on = !!info && isStarred(info.key);
-        const btn = h("button", { type: "button", class: `ccpp-star-btn${extra}${on ? " on" : ""}`, title: t(on ? L6.unstar : L6.star), "aria-label": t(L6.star), "aria-pressed": String(on) }, icon("star", 15));
+        const btn = h("button", { type: "button", class: `ccpp-star-btn${extra}${on ? " on" : ""}`, title: t(on ? L11.unstar : L11.star), "aria-label": t(L11.star), "aria-pressed": String(on) }, icon("star", 15));
         btn.addEventListener("click", (event) => {
           event.preventDefault();
           event.stopPropagation();
@@ -3062,20 +4011,20 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
       const renderList = (panel, close) => {
         const chatId = currentRoute().chatId;
         const here = starsFor(chatId);
-        panel.appendChild(h("div", { class: "top" }, icon("star", 16), h("b", { text: t(L6.list) })));
+        panel.appendChild(h("div", { class: "top" }, icon("star", 16), h("b", { text: t(L11.list) })));
         const item = (star, onClick, sub) => {
           const row = h("button", { type: "button", class: "item" }, h("span", { class: "star", text: "★" }), h("span", { class: "grow" }, h("div", { class: "clip2", text: star.text || "…" }), h("div", { class: "sub", text: sub })));
           row.addEventListener("click", onClick);
           return row;
         };
         if (here.length) {
-          panel.appendChild(h("div", { class: "sec", text: t(L6.here) }));
+          panel.appendChild(h("div", { class: "sec", text: t(L11.here) }));
           for (const star of here)
-            panel.appendChild(item(star, () => (close(), void jumpTo(star.index)), `${star.role === "user" ? t(L6.you) : "Claude"} · #${star.index + 1} · ${agoText(star.at)}`));
+            panel.appendChild(item(star, () => (close(), void jumpTo(star.index)), `${star.role === "user" ? t(L11.you) : "Claude"} · #${star.index + 1} · ${agoText(star.at)}`));
         }
-        const others = settings4.store.otherChats ? Object.entries(book.get()).filter(([id]) => id !== chatId) : [];
+        const others = settings6.store.otherChats ? Object.entries(book.get()).filter(([id]) => id !== chatId) : [];
         if (others.length) {
-          panel.appendChild(h("div", { class: "sec", text: t(L6.others) }));
+          panel.appendChild(h("div", { class: "sec", text: t(L11.others) }));
           for (const [id, chat] of others.slice(0, 30)) {
             for (const star of chat.stars.slice(0, 5)) {
               panel.appendChild(item(star, () => {
@@ -3086,13 +4035,13 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
           }
         }
         if (!here.length && !others.length)
-          panel.appendChild(h("div", { class: "msg", text: t(L6.none) }));
+          panel.appendChild(h("div", { class: "msg", text: t(L11.none) }));
       };
       let headerItem = null;
-      if (settings4.store.headerButton) {
+      if (settings6.store.headerButton) {
         headerItem = addSlotItem(scope, "header", "stars", () => {
           const count = starsFor(currentRoute().chatId).length;
-          const btn = slotButton(t(L6.list), (event) => list.open(event.currentTarget, renderList), icon("star", 16), count ? String(count) : "");
+          const btn = slotButton(t(L11.list), (event) => list.open(event.currentTarget, renderList), icon("star", 16), count ? String(count) : "");
           if (count)
             btn.classList.add("on");
           return btn;
@@ -3116,13 +4065,13 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
   });
 
   // src/plugins/projectStatus/index.ts
-  var logger9 = new Logger("ProjectStatus");
-  var settings5 = definePluginSettings({
+  var logger10 = new Logger("ProjectStatus");
+  var settings7 = definePluginSettings({
     showCode: { type: "boolean", label: { zh: "图标右上角显示项目自身的 Code 状态", en: "Show the project's own Code session on the icon corner" }, description: { zh: "右侧圆点是项目里线程（对话）的状态；图标右上角是项目总控 Code 会话的状态，和原生会话图标的角标位置一致。", en: "The dot on the right is for the project's threads; the icon corner is for the project's own Code session, like the native session icons." }, default: true },
     showWaiting: { type: "boolean", label: { zh: "也标出「等你回复」的项目", en: "Also mark projects waiting on you" }, description: { zh: "有线程在等你时显示黄色圆点。", en: "A yellow dot when a thread is waiting for you." }, default: true },
     refreshSec: { type: "number", label: { zh: "刷新间隔", en: "Refresh every" }, default: 15, min: 5, max: 120, step: 5, unit: "s" }
   });
-  var L7 = {
+  var L12 = {
     running: { zh: "运行中", en: "Running" },
     waiting: { zh: "等你回复", en: "Waiting for you" }
   };
@@ -3174,7 +4123,7 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
     enabledByDefault: true,
     updatedAt: "2026-10-13",
     dependencies: ["ClaudeApi", "DomApi", "StylesApi"],
-    settings: settings5,
+    settings: settings7,
     start(scope) {
       addStyle(scope, CSS6, "project-status");
       const activity = new Map;
@@ -3186,11 +4135,11 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
         if (!row)
           return;
         const info = activity.get(id);
-        const kind = row.querySelector(NATIVE_STATUS) ? null : dotKind(info, settings5.store.showWaiting);
+        const kind = row.querySelector(NATIVE_STATUS) ? null : dotKind(info, settings7.store.showWaiting);
         place(row, ":scope > [data-ccpp-status]", kind, "data-ccpp-status", () => row);
         const holder = row.querySelector(ICON_HOLDER);
         const nativeCorner = holder?.querySelector(".status-dot:not([data-ccpp-corner] *), [aria-hidden] > .status-dot:not([data-ccpp-corner] *)");
-        const corner = settings5.store.showCode && holder && !nativeCorner ? cornerKind(info, settings5.store.showWaiting) : null;
+        const corner = settings7.store.showCode && holder && !nativeCorner ? cornerKind(info, settings7.store.showWaiting) : null;
         place(row, "[data-ccpp-corner]", corner, "data-ccpp-corner", () => holder);
       };
       const place = (row, selector, kind, attr, parent) => {
@@ -3205,7 +4154,7 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
         const target = parent();
         if (!target)
           return;
-        const label = t(kind === "clay" ? L7.running : L7.waiting);
+        const label = t(kind === "clay" ? L12.running : L12.waiting);
         target.appendChild(h("span", { [attr]: kind, title: label }, h("span", { role: "status", "aria-label": label }, h("span", { class: "status-dot", "data-kind": kind }))));
       };
       const poll = async () => {
@@ -3220,7 +4169,7 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
             if (result.status === "fulfilled")
               activity.set(result.value.channelId, result.value);
             else
-              logger9.debug("Project activity failed:", result.reason);
+              logger10.debug("Project activity failed:", result.reason);
           }
           for (const id of rows.keys())
             paint(id);
@@ -3246,18 +4195,18 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
         };
       });
       scope.defer(() => clearTimeout(pollSoon));
-      scope.interval(poll, settings5.store.refreshSec * 1000);
+      scope.interval(poll, settings7.store.refreshSec * 1000);
       scope.listen(document, "visibilitychange", () => !document.hidden && poll());
     }
   });
 
   // src/plugins/inputHistory/index.ts
-  var settings6 = definePluginSettings({
+  var settings8 = definePluginSettings({
     max: { type: "number", label: { zh: "最多保存几条", en: "Prompts to keep" }, default: 100, min: 10, max: 1000, step: 10 },
     button: { type: "boolean", label: { zh: "在输入框旁显示历史按钮", en: "History button next to the model picker" }, default: false },
     clear: { type: "action", label: { zh: "清空历史", en: "Clear history" }, button: { zh: "清空", en: "Clear" }, confirm: { zh: "清空全部输入历史？", en: "Clear all prompt history?" }, run: () => history.set([]) }
   });
-  var L8 = {
+  var L13 = {
     title: { zh: "输入历史", en: "Prompt history" },
     empty: { zh: "还没有历史。发送过的提问会出现在这里。", en: "No history yet. Prompts you send show up here." },
     hint: { zh: "在空输入框里按 ↑ / ↓ 翻阅，Esc 恢复草稿", en: "↑ / ↓ in the input to browse, Esc restores your draft" }
@@ -3292,13 +4241,13 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
     icon: "history",
     enabledByDefault: true,
     dependencies: ["ComposerApi", "SlotsApi"],
-    settings: settings6,
+    settings: settings8,
     start(scope) {
       let cursor = -1;
       let draft = "";
       let applied = "";
       onSubmit(scope, (text) => {
-        history.set(remember(history.get(), text, settings6.store.max));
+        history.set(remember(history.get(), text, settings8.store.max));
         cursor = -1;
         draft = "";
       });
@@ -3349,14 +4298,14 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
         event.stopPropagation();
         show(list[cursor]);
       }, { capture: true });
-      if (settings6.store.button) {
+      if (settings8.store.button) {
         const popover = createPopover(scope, "input-history", "", 360);
-        addSlotItem(scope, "composer", "input-history", () => slotButton(t(L8.title), (event) => popover.open(event.currentTarget, (panel, close) => {
-          panel.appendChild(h("div", { class: "top" }, icon("history", 16), h("b", { text: t(L8.title) })));
-          panel.appendChild(h("div", { class: "msg", text: t(L8.hint), style: { fontSize: "12px" } }));
+        addSlotItem(scope, "composer", "input-history", () => slotButton(t(L13.title), (event) => popover.open(event.currentTarget, (panel, close) => {
+          panel.appendChild(h("div", { class: "top" }, icon("history", 16), h("b", { text: t(L13.title) })));
+          panel.appendChild(h("div", { class: "msg", text: t(L13.hint), style: { fontSize: "12px" } }));
           const list = history.get();
           if (!list.length)
-            panel.appendChild(h("div", { class: "msg", text: t(L8.empty) }));
+            panel.appendChild(h("div", { class: "msg", text: t(L13.empty) }));
           for (const text of list.slice(0, 50)) {
             const item = h("button", { type: "button", class: "item" }, h("span", { class: "grow clip2", text: snippet(text, 200) }));
             item.addEventListener("click", () => {
@@ -3372,7 +4321,7 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
   });
 
   // src/plugins/promptPresets/index.ts
-  var settings7 = definePluginSettings({
+  var settings9 = definePluginSettings({
     presets: {
       type: "text",
       label: { zh: "预设", en: "Presets" },
@@ -3397,7 +4346,7 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
       ]
     }
   });
-  var L9 = {
+  var L14 = {
     title: { zh: "提示词预设", en: "Prompt presets" },
     empty: { zh: "还没有预设，在 CC++ 设置里添加。", en: "No presets yet; add some in CC++ settings." }
   };
@@ -3409,20 +4358,20 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
   }
   var promptPresets_default = definePlugin({
     name: "PromptPresets",
-    title: L9.title,
+    title: L14.title,
     description: { zh: "输入框旁的预设按钮，一键插入常用提示词。", en: "A button next to the model picker that inserts saved prompts." },
     category: "composer",
     icon: "fileText",
     enabledByDefault: false,
     dependencies: ["ComposerApi", "SlotsApi"],
-    settings: settings7,
+    settings: settings9,
     start(scope) {
       const popover = createPopover(scope, "presets", "", 320);
-      addSlotItem(scope, "composer", "presets", () => slotButton(t(L9.title), (event) => popover.open(event.currentTarget, (panel, close) => {
-        panel.appendChild(h("div", { class: "top" }, icon("fileText", 16), h("b", { text: t(L9.title) })));
-        const presets = parsePresets(settings7.store.presets);
+      addSlotItem(scope, "composer", "presets", () => slotButton(t(L14.title), (event) => popover.open(event.currentTarget, (panel, close) => {
+        panel.appendChild(h("div", { class: "top" }, icon("fileText", 16), h("b", { text: t(L14.title) })));
+        const presets = parsePresets(settings9.store.presets);
         if (!presets.length)
-          panel.appendChild(h("div", { class: "msg", text: t(L9.empty) }));
+          panel.appendChild(h("div", { class: "msg", text: t(L14.empty) }));
         for (const preset of presets) {
           const item = h("button", { type: "button", class: "item" }, h("span", { class: "grow" }, h("div", { class: "clip", text: preset.title, style: { fontWeight: "600" } }), h("div", { class: "sub clip", text: snippet(preset.body, 80) })));
           item.addEventListener("click", () => {
@@ -3430,7 +4379,7 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
             const editor = getEditor();
             if (!editor)
               return;
-            if (settings7.store.mode === "replace")
+            if (settings9.store.mode === "replace")
               setText(preset.body, editor);
             else
               insertText(preset.body, editor);
@@ -3442,7 +4391,7 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
   });
 
   // src/plugins/replyNotification/index.ts
-  var settings8 = definePluginSettings({
+  var settings10 = definePluginSettings({
     when: {
       type: "select",
       label: { zh: "什么时候提醒", en: "Notify when" },
@@ -3459,7 +4408,7 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
     toast: { type: "boolean", label: { zh: "页面内提示条", en: "In-page toast" }, default: true },
     test: { type: "action", label: { zh: "试一下", en: "Try it" }, button: { zh: "发送测试提醒", en: "Send a test" }, run: () => notify2({ chatId: currentRoute().chatId, title: "CC++", durationMs: 0, at: Date.now() }, true) }
   });
-  var L10 = {
+  var L15 = {
     done: { zh: "Claude 回复完成", en: "Claude finished replying" },
     took: { zh: "用时 {s} 秒", en: "Took {s}s" },
     open: { zh: "点击回到对话", en: "Click to return to the chat" }
@@ -3488,21 +4437,21 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
     setTimeout(() => void ctx.close(), 1200);
   }
   function notify2(event, test = false) {
-    const body = [event.title, event.durationMs ? t(L10.took).replace("{s}", String(Math.round(event.durationMs / 1000))) : ""].filter(Boolean).join(" · ");
+    const body = [event.title, event.durationMs ? t(L15.took).replace("{s}", String(Math.round(event.durationMs / 1000))) : ""].filter(Boolean).join(" · ");
     const back = () => {
       window.focus();
       if (event.chatId && currentRoute().chatId !== event.chatId)
         location.assign(`/chat/${event.chatId}`);
     };
-    if (settings8.store.sound)
-      chime(settings8.store.volume);
-    if (settings8.store.toast)
-      toast(body, { title: t(L10.done), kind: "ok", onClick: back, key: "reply-done" });
-    if (settings8.store.desktop && "Notification" in window) {
+    if (settings10.store.sound)
+      chime(settings10.store.volume);
+    if (settings10.store.toast)
+      toast(body, { title: t(L15.done), kind: "ok", onClick: back, key: "reply-done" });
+    if (settings10.store.desktop && "Notification" in window) {
       const show = () => {
         try {
-          const n = new Notification(t(L10.done), { body: `${body}
-${t(L10.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
+          const n = new Notification(t(L15.done), { body: `${body}
+${t(L15.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
           n.onclick = () => {
             back();
             n.close();
@@ -3526,23 +4475,23 @@ ${t(L10.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
     icon: "bell",
     enabledByDefault: true,
     dependencies: ["ChatStateApi", "NoticesApi", "RouterApi"],
-    settings: settings8,
+    settings: settings10,
     start(scope) {
       scope.on("reply:end", (event) => {
-        if (event.durationMs < settings8.store.minSeconds * 1000)
+        if (event.durationMs < settings10.store.minSeconds * 1000)
           return;
-        if (settings8.store.when === "hidden" && !document.hidden && document.hasFocus())
+        if (settings10.store.when === "hidden" && !document.hidden && document.hasFocus())
           return;
         notify2(event);
       });
-      if (settings8.store.desktop && "Notification" in window && Notification.permission === "default") {
+      if (settings10.store.desktop && "Notification" in window && Notification.permission === "default") {
         scope.listen(document, "pointerdown", () => void Notification.requestPermission(), { once: true });
       }
     }
   });
 
   // src/plugins/tabStatus/index.ts
-  var settings9 = definePluginSettings({
+  var settings11 = definePluginSettings({
     working: { type: "string", label: { zh: "回复中的标题前缀", en: "Title prefix while replying" }, default: "⏳", maxLength: 8 },
     done: { type: "string", label: { zh: "后台完成后的前缀", en: "Prefix after finishing in the background" }, description: { zh: "回到标签页后自动清除。", en: "Cleared when you come back to the tab." }, default: "✅", maxLength: 8 }
   });
@@ -3561,12 +4510,12 @@ ${t(L10.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
     icon: "tab",
     enabledByDefault: true,
     dependencies: ["ChatStateApi"],
-    settings: settings9,
+    settings: settings11,
     start(scope) {
       let state = chatPhase() === "streaming" ? "working" : "idle";
-      const prefixes = () => [settings9.store.working, settings9.store.done];
+      const prefixes = () => [settings11.store.working, settings11.store.done];
       const apply = () => {
-        const prefix = state === "working" ? settings9.store.working : state === "done" ? settings9.store.done : "";
+        const prefix = state === "working" ? settings11.store.working : state === "done" ? settings11.store.done : "";
         const next = withPrefix(document.title, prefix, prefixes());
         if (next !== document.title)
           document.title = next;
@@ -3606,7 +4555,7 @@ ${t(L10.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
   });
 
   // src/plugins/widerChat/index.ts
-  var settings10 = definePluginSettings({
+  var settings12 = definePluginSettings({
     width: { type: "number", label: { zh: "对话最大宽度", en: "Maximum chat width" }, default: 64, min: 40, max: 160, step: 2, unit: "rem" },
     composer: { type: "boolean", label: { zh: "输入框同步加宽", en: "Widen the chat input too" }, default: true }
   });
@@ -3624,15 +4573,15 @@ ${composer ? `[data-composer-card-holder], [data-cds="ChatComposer"] { max-width
     icon: "width",
     enabledByDefault: false,
     dependencies: ["StylesApi"],
-    settings: settings10,
+    settings: settings12,
     start(scope) {
-      const set = addStyle(scope, widerCss(settings10.store.width, settings10.store.composer), "wider-chat");
-      this.onSettingsChange = () => set(widerCss(settings10.store.width, settings10.store.composer));
+      const set = addStyle(scope, widerCss(settings12.store.width, settings12.store.composer), "wider-chat");
+      this.onSettingsChange = () => set(widerCss(settings12.store.width, settings12.store.composer));
     }
   });
 
   // src/plugins/composerLook/index.ts
-  var settings11 = definePluginSettings({
+  var settings13 = definePluginSettings({
     opacity: { type: "number", label: { zh: "输入框背景不透明度", en: "Input background opacity" }, description: { zh: "100 为完全不透明。", en: "100 is fully opaque." }, default: 85, min: 20, max: 100, step: 5, unit: "%" },
     blur: { type: "number", label: { zh: "背景模糊", en: "Background blur" }, default: 12, min: 0, max: 40, unit: "px" },
     radius: { type: "number", label: { zh: "圆角", en: "Corner radius" }, description: { zh: "0 表示保持官方样式。", en: "0 keeps claude.ai's own radius." }, default: 0, min: 0, max: 40, unit: "px" }
@@ -3653,16 +4602,16 @@ ${composer ? `[data-composer-card-holder], [data-cds="ChatComposer"] { max-width
     icon: "blend",
     enabledByDefault: false,
     dependencies: ["StylesApi"],
-    settings: settings11,
+    settings: settings13,
     start(scope) {
-      const css = () => composerCss(settings11.store.opacity, settings11.store.blur, settings11.store.radius);
+      const css = () => composerCss(settings13.store.opacity, settings13.store.blur, settings13.store.radius);
       const set = addStyle(scope, css(), "composer-look");
       this.onSettingsChange = () => set(css());
     }
   });
 
   // src/plugins/customGreeting/index.ts
-  var settings12 = definePluginSettings({
+  var settings14 = definePluginSettings({
     phrases: {
       type: "text",
       label: { zh: "问候语（每行一条）", en: "Greetings (one per line)" },
@@ -3720,13 +4669,13 @@ ${composer ? `[data-composer-card-holder], [data-cds="ChatComposer"] { max-width
     icon: "message",
     enabledByDefault: false,
     dependencies: ["DomApi", "RouterApi"],
-    settings: settings12,
+    settings: settings14,
     start(scope) {
-      const phrases = () => settings12.store.phrases.split(`
+      const phrases = () => settings14.store.phrases.split(`
 `).map((s) => s.trim()).filter(Boolean);
       let text = "";
       const next = () => {
-        const pick = pickPhrase(phrases(), settings12.store.order, position.get());
+        const pick = pickPhrase(phrases(), settings14.store.order, position.get());
         if (pick.index >= 0)
           position.set(pick.index);
         text = fillPhrase(pick.text, displayName(), new Date().getHours(), /[一-龥]/.test(pick.text));
@@ -3736,7 +4685,7 @@ ${composer ? `[data-composer-card-holder], [data-cds="ChatComposer"] { max-width
           if (text && el.textContent !== text)
             el.textContent = text;
         }
-        const placeholder = settings12.store.placeholder.trim();
+        const placeholder = settings14.store.placeholder.trim();
         if (placeholder) {
           for (const p of document.querySelectorAll(`${SEL.editor} p[data-placeholder]`)) {
             if (p.dataset.placeholder !== placeholder)
@@ -3746,7 +4695,7 @@ ${composer ? `[data-composer-card-holder], [data-cds="ChatComposer"] { max-width
       };
       next();
       onRoute(scope, (route) => {
-        if (route.kind === "new" && settings12.store.rotate === "visit")
+        if (route.kind === "new" && settings14.store.rotate === "visit")
           next();
         paint();
       }, false);
@@ -3755,35 +4704,35 @@ ${composer ? `[data-composer-card-holder], [data-cds="ChatComposer"] { max-width
         const observer = new MutationObserver(paint);
         observer.observe(el, { childList: true, characterData: true, subtree: true });
         const onClick = () => {
-          if (settings12.store.rotate !== "click")
+          if (settings14.store.rotate !== "click")
             return;
           next();
           paint();
         };
-        el.style.cursor = settings12.store.rotate === "click" ? "pointer" : "";
+        el.style.cursor = settings14.store.rotate === "click" ? "pointer" : "";
         el.addEventListener("click", onClick);
         return () => {
           observer.disconnect();
           el.removeEventListener("click", onClick);
         };
       });
-      if (settings12.store.placeholder.trim())
+      if (settings14.store.placeholder.trim())
         watch(scope, `${SEL.editor} p[data-placeholder]`, (p) => {
           paint();
           const observer = new MutationObserver(paint);
           observer.observe(p, { attributes: true, attributeFilter: ["data-placeholder"] });
           return () => observer.disconnect();
         });
-      if (settings12.store.rotate === "timer")
+      if (settings14.store.rotate === "timer")
         scope.interval(() => {
           next();
           paint();
-        }, settings12.store.intervalSec * 1000);
+        }, settings14.store.intervalSec * 1000);
     }
   });
 
   // src/plugins/cleaner/index.ts
-  var settings13 = definePluginSettings({
+  var settings15 = definePluginSettings({
     upgrade: { type: "boolean", label: { zh: "隐藏升级 / 购买入口", en: "Hide upgrade and buy prompts" }, default: true },
     plan: { type: "boolean", label: { zh: "隐藏头像旁的套餐名", en: "Hide the plan name next to your name" }, default: false },
     codeNudge: { type: "boolean", label: { zh: "隐藏输入框里的 Claude Code 推广提示", en: "Hide the Claude Code nudge in the input" }, default: true },
@@ -3808,10 +4757,10 @@ ${composer ? `[data-composer-card-holder], [data-cds="ChatComposer"] { max-width
     icon: "brush",
     enabledByDefault: true,
     dependencies: ["StylesApi", "DomApi"],
-    settings: settings13,
+    settings: settings15,
     start(scope) {
-      addStyle(scope, cleanerCss(settings13.store), "cleaner");
-      if (settings13.store.upgrade) {
+      addStyle(scope, cleanerCss(settings15.store), "cleaner");
+      if (settings15.store.upgrade) {
         onDomChange(scope, () => {
           for (const el of document.querySelectorAll("a, button")) {
             if (el.dataset.ccppCleaned !== undefined || el.closest("[data-ccpp]"))
@@ -3840,7 +4789,7 @@ ${composer ? `[data-composer-card-holder], [data-cds="ChatComposer"] { max-width
   });
 
   // src/plugins/noDictation/index.ts
-  var settings14 = definePluginSettings({
+  var settings16 = definePluginSettings({
     dictation: { type: "boolean", label: { zh: "隐藏听写按钮", en: "Hide dictation" }, default: true },
     voice: { type: "boolean", label: { zh: "隐藏语音模式按钮", en: "Hide voice mode" }, default: true }
   });
@@ -3860,14 +4809,14 @@ ${composer ? `[data-composer-card-holder], [data-cds="ChatComposer"] { max-width
     icon: "micOff",
     enabledByDefault: false,
     dependencies: ["StylesApi"],
-    settings: settings14,
+    settings: settings16,
     start(scope) {
-      addStyle(scope, noDictationCss(settings14.store.dictation, settings14.store.voice), "no-dictation");
+      addStyle(scope, noDictationCss(settings16.store.dictation, settings16.store.voice), "no-dictation");
     }
   });
 
   // src/plugins/streamerMode/index.ts
-  var settings15 = definePluginSettings({
+  var settings17 = definePluginSettings({
     identity: { type: "boolean", label: { zh: "模糊你的名字、头像与套餐", en: "Blur your name, avatar and plan" }, default: true },
     sidebar: { type: "boolean", label: { zh: "模糊侧栏的对话 / 项目标题", en: "Blur chat and project titles in the sidebar" }, default: true },
     title: { type: "boolean", label: { zh: "模糊当前对话标题", en: "Blur the current chat title" }, default: false },
@@ -3897,19 +4846,19 @@ ${targets.map((t) => `${t}:hover`).join(`,
     icon: "eyeOff",
     enabledByDefault: false,
     dependencies: ["StylesApi"],
-    settings: settings15,
+    settings: settings17,
     start(scope) {
-      const set = addStyle(scope, streamerCss(settings15.store), "streamer");
-      this.onSettingsChange = () => set(streamerCss(settings15.store));
+      const set = addStyle(scope, streamerCss(settings17.store), "streamer");
+      this.onSettingsChange = () => set(streamerCss(settings17.store));
     }
   });
 
   // src/plugins/recentChats/index.ts
-  var settings16 = definePluginSettings({
+  var settings18 = definePluginSettings({
     hotkey: { type: "string", label: { zh: "快捷键", en: "Shortcut" }, default: "ctrl+`" },
     count: { type: "number", label: { zh: "显示几个最近对话", en: "Chats to show" }, default: 9, min: 3, max: 24 }
   });
-  var L11 = {
+  var L16 = {
     title: { zh: "最近打开的对话", en: "Recently opened chats" },
     empty: { zh: "还没有记录。打开过的对话会出现在这里。", en: "Nothing yet. Chats you open show up here." },
     hint: { zh: "↑↓←→ 选择 · Enter 打开 · 1–9 直达 · Esc 关闭", en: "Arrows to pick · Enter to open · 1–9 to jump · Esc to close" }
@@ -3952,7 +4901,7 @@ ${targets.map((t) => `${t}:hover`).join(`,
     icon: "grid",
     enabledByDefault: true,
     dependencies: ["RouterApi", "HotkeysApi", "ChatStateApi"],
-    settings: settings16,
+    settings: settings18,
     start(scope) {
       onRoute(scope, (route) => {
         if (!route.chatId)
@@ -3992,14 +4941,14 @@ ${targets.map((t) => `${t}:hover`).join(`,
       };
       const render = () => {
         clear(box);
-        const list = visits.get().slice(0, settings16.store.count);
+        const list = visits.get().slice(0, settings18.store.count);
         const cards = h("div", { class: "cards" });
         list.forEach((visit, i) => {
           const card = h("button", { type: "button", class: `card${i === selected ? " sel" : ""}${visit.id === currentRoute().chatId ? " cur" : ""}` }, i < 9 ? h("span", { class: "n", text: String(i + 1) }) : null, h("span", { class: "t", text: visit.title || visit.id.slice(0, 8) }), h("span", { class: "s", text: agoText(visit.at) }));
           card.addEventListener("click", () => go(visit));
           cards.appendChild(card);
         });
-        const overlay = h("div", { class: "overlay", role: "dialog", "aria-label": t(L11.title) }, h("div", { class: "box" }, h("h3", {}, t(L11.title), h("span", { text: t(L11.hint) })), list.length ? cards : h("div", { class: "empty", text: t(L11.empty) })));
+        const overlay = h("div", { class: "overlay", role: "dialog", "aria-label": t(L16.title) }, h("div", { class: "box" }, h("h3", {}, t(L16.title), h("span", { text: t(L16.hint) })), list.length ? cards : h("div", { class: "empty", text: t(L16.empty) })));
         overlay.addEventListener("mousedown", (event) => event.target === overlay && close());
         box.appendChild(overlay);
       };
@@ -4010,12 +4959,12 @@ ${targets.map((t) => `${t}:hover`).join(`,
         selected = visits.get()[0]?.id === currentRoute().chatId ? 1 : 0;
         render();
       };
-      if (settings16.store.hotkey.trim())
-        bindKey(scope, settings16.store.hotkey, toggle, { inInputs: true });
+      if (settings18.store.hotkey.trim())
+        bindKey(scope, settings18.store.hotkey, toggle, { inInputs: true });
       scope.listen(window, "keydown", (event) => {
         if (!open)
           return;
-        const list = visits.get().slice(0, settings16.store.count);
+        const list = visits.get().slice(0, settings18.store.count);
         const cols = Math.max(1, Math.floor((box.querySelector(".cards")?.clientWidth ?? 720) / 250));
         const moves = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: cols, ArrowUp: -cols, Tab: event.shiftKey ? -1 : 1 };
         if (event.key in moves)
@@ -4037,10 +4986,10 @@ ${targets.map((t) => `${t}:hover`).join(`,
   });
 
   // src/plugins/exportChat/index.ts
-  var settings17 = definePluginSettings({
+  var settings19 = definePluginSettings({
     timestamps: { type: "boolean", label: { zh: "Markdown 里包含时间", en: "Include times in Markdown" }, default: true }
   });
-  var L12 = {
+  var L17 = {
     title: { zh: "导出对话", en: "Export chat" },
     md: { zh: "Markdown (.md)", en: "Markdown (.md)" },
     txt: { zh: "纯文本 (.txt)", en: "Plain text (.txt)" },
@@ -4080,13 +5029,13 @@ ${m.text.trim()}`).join(`
   }
   var exportChat_default = definePlugin({
     name: "ExportChat",
-    title: L12.title,
+    title: L17.title,
     description: { zh: "对话标题栏加一个导出按钮：下载 Markdown / 纯文本 / JSON，或复制为 Markdown。", en: "An export button in the chat header: download Markdown, text or JSON, or copy as Markdown." },
     category: "chats",
     icon: "download",
     enabledByDefault: true,
     dependencies: ["TranscriptApi", "SlotsApi", "NoticesApi", "RouterApi"],
-    settings: settings17,
+    settings: settings19,
     start(scope) {
       const popover = createPopover(scope, "export", "", 240);
       const run = async (format) => {
@@ -4101,27 +5050,27 @@ ${m.text.trim()}`).join(`
           else if (format === "txt")
             download(`${name}.txt`, toText(chat));
           else {
-            const md = toMarkdown(chat, settings17.store.timestamps);
+            const md = toMarkdown(chat, settings19.store.timestamps);
             if (format === "md")
               download(`${name}.md`, md, "text/markdown");
             else {
               await navigator.clipboard.writeText(md);
-              toast(t(L12.copied), { kind: "ok", timeoutMs: 2500 });
+              toast(t(L17.copied), { kind: "ok", timeoutMs: 2500 });
             }
           }
         } catch (error) {
-          toast(t(L12.failed).replace("{e}", error.message || String(error)), { kind: "error" });
+          toast(t(L17.failed).replace("{e}", error.message || String(error)), { kind: "error" });
         }
       };
       addSlotItem(scope, "header", "export", () => {
-        const btn = slotButton(t(L12.title), (event) => popover.open(event.currentTarget, (panel) => {
-          panel.appendChild(h("div", { class: "top" }, icon("download", 16), h("b", { text: t(L12.title) })));
-          for (const [format, label] of [["md", L12.md], ["txt", L12.txt], ["json", L12.json], ["copy", L12.copy]]) {
+        const btn = slotButton(t(L17.title), (event) => popover.open(event.currentTarget, (panel) => {
+          panel.appendChild(h("div", { class: "top" }, icon("download", 16), h("b", { text: t(L17.title) })));
+          for (const [format, label] of [["md", L17.md], ["txt", L17.txt], ["json", L17.json], ["copy", L17.copy]]) {
             const item = h("button", { type: "button", class: "item", text: t(label) });
             item.addEventListener("click", () => void run(format));
             panel.appendChild(item);
           }
-          panel.appendChild(h("div", { class: "msg", text: t(L12.note), style: { fontSize: "12px" } }));
+          panel.appendChild(h("div", { class: "msg", text: t(L17.note), style: { fontSize: "12px" } }));
         }), icon("download", 16));
         btn.hidden = !currentRoute().chatId;
         return btn;
@@ -4130,7 +5079,7 @@ ${m.text.trim()}`).join(`
   });
 
   // src/plugins/messageTimestamps/index.ts
-  var settings18 = definePluginSettings({
+  var settings20 = definePluginSettings({
     always: { type: "boolean", label: { zh: "始终显示时间（不用悬停）", en: "Always show the time (no hover needed)" }, default: true },
     absolute: { type: "boolean", label: { zh: "显示具体时间而不是「x 分钟前」", en: "Show the exact time instead of “x minutes ago”" }, default: true }
   });
@@ -4142,11 +5091,11 @@ ${m.text.trim()}`).join(`
     icon: "clock",
     enabledByDefault: false,
     dependencies: ["DomApi", "StylesApi"],
-    settings: settings18,
+    settings: settings20,
     start(scope) {
-      if (settings18.store.always)
+      if (settings20.store.always)
         addStyle(scope, `${SEL.messageActions} ${SEL.messageTime} { opacity: 1 !important; visibility: visible !important; }`, "timestamps");
-      if (!settings18.store.absolute)
+      if (!settings20.store.absolute)
         return;
       watch(scope, `${SEL.messageActions} ${SEL.messageTime}`, (el) => {
         const paint = () => {
@@ -4167,10 +5116,10 @@ ${m.text.trim()}`).join(`
   });
 
   // src/plugins/collapseCode/index.ts
-  var settings19 = definePluginSettings({
+  var settings21 = definePluginSettings({
     lines: { type: "number", label: { zh: "超过多少行折叠（行）", en: "Collapse code longer than (lines)" }, default: 30, min: 8, max: 200, step: 2 }
   });
-  var L13 = { expand: { zh: "展开全部代码（{n} 行）", en: "Show all {n} lines" }, collapse: { zh: "收起代码", en: "Collapse code" } };
+  var L18 = { expand: { zh: "展开全部代码（{n} 行）", en: "Show all {n} lines" }, collapse: { zh: "收起代码", en: "Collapse code" } };
   var CSS8 = `
 .ccpp-code-collapsed { max-height: var(--ccpp-code-max, 30lh) !important; overflow: hidden !important; -webkit-mask-image: linear-gradient(#000 70%, transparent); mask-image: linear-gradient(#000 70%, transparent); }
 .ccpp-code-toggle { display: block; margin: 4px auto 8px; padding: 2px 12px; border-radius: 999px; border: 1px solid rgba(127,127,127,.3); background: transparent; color: inherit; font: 12px/20px ui-sans-serif, system-ui, sans-serif; opacity: .8; cursor: pointer; }
@@ -4184,10 +5133,10 @@ ${m.text.trim()}`).join(`
     icon: "collapse",
     enabledByDefault: false,
     dependencies: ["DomApi", "StylesApi"],
-    settings: settings19,
+    settings: settings21,
     start(scope) {
       addStyle(scope, CSS8, "collapse-code");
-      const max = settings19.store.lines;
+      const max = settings21.store.lines;
       watch(scope, `${SEL.assistantMessage}[data-is-streaming="false"] pre`, (pre) => {
         const lines = (pre.textContent ?? "").split(`
 `).length;
@@ -4195,10 +5144,10 @@ ${m.text.trim()}`).join(`
           return;
         pre.style.setProperty("--ccpp-code-max", `${max}lh`);
         pre.classList.add("ccpp-code-collapsed");
-        const button = h("button", { type: "button", class: "ccpp-code-toggle", text: t(L13.expand).replace("{n}", String(lines)) });
+        const button = h("button", { type: "button", class: "ccpp-code-toggle", text: t(L18.expand).replace("{n}", String(lines)) });
         button.addEventListener("click", () => {
           const collapsed = pre.classList.toggle("ccpp-code-collapsed");
-          button.textContent = collapsed ? t(L13.expand).replace("{n}", String(lines)) : t(L13.collapse);
+          button.textContent = collapsed ? t(L18.expand).replace("{n}", String(lines)) : t(L18.collapse);
         });
         pre.after(button);
         return () => {
@@ -4273,7 +5222,7 @@ ${m.text.trim()}`).join(`
   });
 
   // src/plugins/noTelemetry/index.ts
-  var logger10 = new Logger("NoTelemetry");
+  var logger11 = new Logger("NoTelemetry");
   var HOSTS = /(^|\.)(sentry\.io|segment\.(io|com)|statsig(api)?\.(com|net)|featuregates\.org|intercom\.io|datadoghq\.(com|eu)|browser-intake-[a-z0-9-]+\.datadoghq\.(com|eu)|honeycomb\.io|googletagmanager\.com|google-analytics\.com)$/i;
   var PATHS = /^\/(api\/event_logging|api\/(v\d\/)?(track|telemetry|metrics)|sentry|_\/(rum|logs))\b/i;
   function isTelemetry(req) {
@@ -4296,14 +5245,14 @@ ${m.text.trim()}`).join(`
       block(scope, (req) => {
         const hit = isTelemetry(req);
         if (hit && ++blocked % 50 === 1)
-          logger10.debug(`Blocked ${blocked} telemetry requests so far`);
+          logger11.debug(`Blocked ${blocked} telemetry requests so far`);
         return hit;
       });
     }
   });
 
   // src/plugins/consoleJanitor/index.ts
-  var settings20 = definePluginSettings({
+  var settings22 = definePluginSettings({
     levels: {
       type: "select",
       label: { zh: "静音哪些输出", en: "Silence" },
@@ -4322,10 +5271,10 @@ ${m.text.trim()}`).join(`
     icon: "terminal",
     enabledByDefault: false,
     startAt: "document-start",
-    settings: settings20,
+    settings: settings22,
     start(scope) {
       const target = pageWindow.console;
-      const levels = settings20.store.levels === "warn" ? ["log", "info", "debug", "warn"] : ["log", "info", "debug"];
+      const levels = settings22.store.levels === "warn" ? ["log", "info", "debug", "warn"] : ["log", "info", "debug"];
       for (const level of levels) {
         const original = target[level];
         const quiet = function(...args) {
@@ -4356,6 +5305,7 @@ ${m.text.trim()}`).join(`
     hotkeys_default,
     menu_default,
     settings_default,
+    themes_default,
     quickCss_default,
     backup_default,
     usageDisplay_default,
@@ -4385,10 +5335,10 @@ ${m.text.trim()}`).join(`
   // src/index.ts
   var FLAG = "__ccpp";
   var GLOBAL = "CCPP";
-  var logger11 = new Logger("Kernel");
+  var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "[20261013] v0.2.0",
+      version: "[20261013] v0.3.0",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -4405,7 +5355,7 @@ ${m.text.trim()}`).join(`
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "[20261013] v0.2.0";
+    win[FLAG] = "[20261013] v0.3.0";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     startPhase("document-start");
@@ -4421,7 +5371,7 @@ ${m.text.trim()}`).join(`
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger11.info(`CC++ ${"[20261013] v0.2.0"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"[20261013] v0.3.0"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();

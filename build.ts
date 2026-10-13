@@ -28,6 +28,8 @@ const HEADER = `// ==UserScript==
 // @grant        unsafeWindow
 // @grant        GM_registerMenuCommand
 // @grant        GM_unregisterMenuCommand
+// @grant        GM_xmlhttpRequest
+// @connect      *
 // @noframes
 // @license      MIT
 // ==/UserScript==

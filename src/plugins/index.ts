@@ -20,6 +20,7 @@ import stylesApi from "@api/styles";
 import transcriptApi from "@api/transcript";
 import backup from "@core/backup";
 import quickCss from "@core/quickCss";
+import themes from "@core/themes";
 import settings from "@core/settings";
 import usageDisplay from "@plugins/usageDisplay";
 import chatNavigator from "@plugins/chatNavigator";
@@ -47,6 +48,6 @@ import consoleJanitor from "@plugins/consoleJanitor";
 /** Every plugin in the build. Order does not matter; the kernel sorts by dependencies. */
 export const PLUGINS: Plugin[] = [
     domApi, stylesApi, routerApi, networkApi, claudeApi, chatStateApi, noticesApi, slotsApi, composerApi, transcriptApi, hotkeysApi, menuApi,
-    settings, quickCss, backup,
+    settings, themes, quickCss, backup,
     usageDisplay, chatNavigator, messageStars, projectStatus, inputHistory, promptPresets, replyNotification, tabStatus, widerChat, composerLook, customGreeting, cleaner, noShareLink, noDictation, streamerMode, recentChats, exportChat, messageTimestamps, collapseCode, betterLinks, noTelemetry, consoleJanitor,
 ];
