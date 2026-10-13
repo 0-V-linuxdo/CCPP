@@ -3,13 +3,14 @@ import { describe, expect, test } from "bun:test";
 import { orgFromCookie, parseActivity, parseChannelSessions, parseConversation, parseSessionState, parseUsage } from "../src/plugins/_api/claude";
 import { parseRoute } from "../src/plugins/_api/router";
 import { matches, parseCombo } from "../src/plugins/_api/hotkeys";
+import { titleFrom } from "../src/plugins/_api/chatState";
+import { recordVisit, renameVisit } from "../src/plugins/recentChats";
 import { level } from "../src/plugins/usageDisplay";
 import { dotKind } from "../src/plugins/projectStatus";
 import { remember } from "../src/plugins/inputHistory";
 import { parsePresets } from "../src/plugins/promptPresets";
 import { withPrefix } from "../src/plugins/tabStatus";
 import { pickPhrase, fillPhrase } from "../src/plugins/customGreeting";
-import { recordVisit } from "../src/plugins/recentChats";
 import { toMarkdown } from "../src/plugins/exportChat";
 import { splitLinks } from "../src/plugins/betterLinks";
 import { isTelemetry } from "../src/plugins/noTelemetry";
@@ -134,5 +135,28 @@ describe("project sessions", () => {
     test("channel list maps projects to their own session", () => {
         const map = parseChannelSessions({ data: [{ id: "chan_a", channel_session_id: "cse_1" }, { id: "chan_b" }, { id: "chan_c", channel_session_id: "bad id" }] });
         expect([...map]).toEqual([["chan_a", "cse_1"]]);
+    });
+});
+
+describe("chat titles", () => {
+    test("drops tab status marks and the site suffix", () => {
+        expect(titleFrom("⏳ C++ 验收测试 - Claude")).toBe("C++ 验收测试");
+        expect(titleFrom("✅ ✅ Plan trip | Claude")).toBe("Plan trip");
+        expect(titleFrom("C# tips - Claude")).toBe("C# tips");
+    });
+    test("treats the placeholder as no title", () => {
+        expect(titleFrom("Claude")).toBe("");
+        expect(titleFrom("⏳ Claude")).toBe("");
+    });
+});
+
+describe("recent chats", () => {
+    test("keeps a known name and picks up a generated one", () => {
+        let list = recordVisit([], { id: "a", title: "", at: 1 });
+        list = renameVisit(list, "a", "Trip plan");
+        expect(list[0].title).toBe("Trip plan");
+        list = recordVisit(list, { id: "a", title: "", at: 2 });
+        expect(list[0]).toEqual({ id: "a", title: "Trip plan", at: 2 });
+        expect(renameVisit(list, "a", "")).toBe(list);
     });
 });

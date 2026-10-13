@@ -29,7 +29,18 @@ let startedAt = 0;
 let quietTicks = 0;
 export const chatPhase = () => phase;
 
-export const chatTitle = () => document.title.replace(/\s*[-–|]\s*Claude\s*$/i, "").trim();
+/** Leading status marks that tab-title plugins add, like "⏳ " or "✅ ". */
+const STATUS_PREFIX = /^(?:[\p{Extended_Pictographic}\p{So}\uFE0F\u200D]+\s+)+/u;
+/** claude.ai's placeholder title before a chat gets its generated name. */
+const PLACEHOLDER = /^(?:claude|new chat|untitled)$/i;
+
+/** The open chat's name from the tab title: "" while it is still the placeholder. */
+export function titleFrom(raw: string) {
+    const title = raw.replace(STATUS_PREFIX, "").replace(/\s*[-–|]\s*Claude(?:\s+Code)?\s*$/i, "").trim();
+    return PLACEHOLDER.test(title) ? "" : title;
+}
+
+export const chatTitle = () => titleFrom(document.title);
 
 /** A reply only counts as finished after this many quiet checks, so a brief flicker is not "done". */
 export const QUIET_TICKS = 2;

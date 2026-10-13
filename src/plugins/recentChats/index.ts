@@ -35,7 +35,20 @@ export interface Visit {
 const visits = persisted<Visit[]>("recent-chats", [], (v): v is Visit[] => Array.isArray(v) && v.every(x => x && typeof x.id === "string" && typeof x.title === "string" && typeof x.at === "number"));
 
 export function recordVisit(list: Visit[], visit: Visit, max = 50) {
-    return [visit, ...list.filter(v => v.id !== visit.id)].slice(0, max);
+    const previous = list.find(v => v.id === visit.id);
+    // Keep a known name when the tab still shows the placeholder.
+    const title = visit.title || previous?.title || "";
+    return [{ ...visit, title }, ...list.filter(v => v.id !== visit.id)].slice(0, max);
+}
+
+/** Picks up the name claude.ai generates for a new chat after the visit was recorded. */
+export function renameVisit(list: Visit[], id: string, title: string) {
+    if (!title) return list;
+    const index = list.findIndex(v => v.id === id);
+    if (index < 0 || list[index].title === title) return list;
+    const next = [...list];
+    next[index] = { ...next[index], title };
+    return next;
 }
 
 const CSS = `
@@ -69,9 +82,17 @@ export default definePlugin({
             // The title updates a moment after navigation.
             scope.timeout(() => {
                 if (currentRoute().chatId !== id) return;
-                visits.set(recordVisit(visits.get(), { id, title: chatTitle() || id.slice(0, 8), at: Date.now() }));
+                visits.set(recordVisit(visits.get(), { id, title: chatTitle(), at: Date.now() }));
             }, 1500);
         });
+        // New chats get their name after the first reply; refresh the stored one when it changes.
+        scope.interval(() => {
+            const id = currentRoute().chatId;
+            if (!id) return;
+            const list = visits.get();
+            const next = renameVisit(list, id, chatTitle());
+            if (next !== list) visits.set(next);
+        }, 3000);
 
         const { box } = createHost(scope, "recent-chats", CSS);
         let selected = 0;
@@ -98,7 +119,7 @@ export default definePlugin({
                     "button",
                     { type: "button", class: `card${i === selected ? " sel" : ""}${visit.id === currentRoute().chatId ? " cur" : ""}` },
                     i < 9 ? h("span", { class: "n", text: String(i + 1) }) : null,
-                    h("span", { class: "t", text: visit.title }),
+                    h("span", { class: "t", text: visit.title || visit.id.slice(0, 8) }),
                     h("span", { class: "s", text: agoText(visit.at) }),
                 );
                 card.addEventListener("click", () => go(visit));

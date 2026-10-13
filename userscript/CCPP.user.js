@@ -926,7 +926,13 @@
   var startedAt = 0;
   var quietTicks = 0;
   var chatPhase = () => phase2;
-  var chatTitle = () => document.title.replace(/\s*[-–|]\s*Claude\s*$/i, "").trim();
+  var STATUS_PREFIX = /^(?:[\p{Extended_Pictographic}\p{So}\uFE0F\u200D]+\s+)+/u;
+  var PLACEHOLDER = /^(?:claude|new chat|untitled)$/i;
+  function titleFrom(raw) {
+    const title = raw.replace(STATUS_PREFIX, "").replace(/\s*[-–|]\s*Claude(?:\s+Code)?\s*$/i, "").trim();
+    return PLACEHOLDER.test(title) ? "" : title;
+  }
+  var chatTitle = () => titleFrom(document.title);
   var QUIET_TICKS = 2;
   var CHECK_MS = 400;
   function tick(streamingNow, now = Date.now()) {
@@ -3729,7 +3735,19 @@ ${targets.map((t) => `${t}:hover`).join(`,
   };
   var visits = persisted("recent-chats", [], (v) => Array.isArray(v) && v.every((x) => x && typeof x.id === "string" && typeof x.title === "string" && typeof x.at === "number"));
   function recordVisit(list, visit, max = 50) {
-    return [visit, ...list.filter((v) => v.id !== visit.id)].slice(0, max);
+    const previous = list.find((v) => v.id === visit.id);
+    const title = visit.title || previous?.title || "";
+    return [{ ...visit, title }, ...list.filter((v) => v.id !== visit.id)].slice(0, max);
+  }
+  function renameVisit(list, id, title) {
+    if (!title)
+      return list;
+    const index = list.findIndex((v) => v.id === id);
+    if (index < 0 || list[index].title === title)
+      return list;
+    const next = [...list];
+    next[index] = { ...next[index], title };
+    return next;
   }
   var CSS7 = `
 .overlay { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(0,0,0,.25); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); pointer-events: auto; animation: in .12s ease-out; }
@@ -3762,9 +3780,18 @@ ${targets.map((t) => `${t}:hover`).join(`,
         scope.timeout(() => {
           if (currentRoute().chatId !== id)
             return;
-          visits.set(recordVisit(visits.get(), { id, title: chatTitle() || id.slice(0, 8), at: Date.now() }));
+          visits.set(recordVisit(visits.get(), { id, title: chatTitle(), at: Date.now() }));
         }, 1500);
       });
+      scope.interval(() => {
+        const id = currentRoute().chatId;
+        if (!id)
+          return;
+        const list = visits.get();
+        const next = renameVisit(list, id, chatTitle());
+        if (next !== list)
+          visits.set(next);
+      }, 3000);
       const { box } = createHost(scope, "recent-chats", CSS7);
       let selected = 0;
       let open = false;
@@ -3787,7 +3814,7 @@ ${targets.map((t) => `${t}:hover`).join(`,
         const list = visits.get().slice(0, settings16.store.count);
         const cards = h("div", { class: "cards" });
         list.forEach((visit, i) => {
-          const card = h("button", { type: "button", class: `card${i === selected ? " sel" : ""}${visit.id === currentRoute().chatId ? " cur" : ""}` }, i < 9 ? h("span", { class: "n", text: String(i + 1) }) : null, h("span", { class: "t", text: visit.title }), h("span", { class: "s", text: agoText(visit.at) }));
+          const card = h("button", { type: "button", class: `card${i === selected ? " sel" : ""}${visit.id === currentRoute().chatId ? " cur" : ""}` }, i < 9 ? h("span", { class: "n", text: String(i + 1) }) : null, h("span", { class: "t", text: visit.title || visit.id.slice(0, 8) }), h("span", { class: "s", text: agoText(visit.at) }));
           card.addEventListener("click", () => go(visit));
           cards.appendChild(card);
         });
