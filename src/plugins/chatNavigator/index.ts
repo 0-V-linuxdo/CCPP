@@ -47,6 +47,8 @@ interface Item {
     index: number;
     role: "user" | "assistant";
     text: string;
+    /** A project-chat card row (thread started, error…), left out of the outline. */
+    notice?: boolean;
 }
 
 /*
@@ -109,7 +111,7 @@ const flat = (text: string) => text.replace(/\s+/g, " ").trim();
  * Rendered rows anchor the two lists to each other; rows between anchors take the message at the
  * same offset. Without any anchor the newest message lines up with the last row.
  */
-export function alignWithApi(items: Item[], api: Pick<ChannelMessage, "role" | "text">[]): Item[] {
+export function alignWithApi(items: Item[], api: Pick<ChannelMessage, "role" | "text" | "notice">[]): Item[] {
     if (!api.length || !items.length) return items;
     const keys = api.map(m => flat(m.text).slice(0, 24));
     const anchors: [number, number][] = [];
@@ -131,10 +133,13 @@ export function alignWithApi(items: Item[], api: Pick<ChannelMessage, "role" | "
         for (const anchor of anchors) if (Math.abs(anchor[0] - index) < Math.abs(best[0] - index)) best = anchor;
         return best[1] - best[0];
     };
-    return items.map(item => {
+    const last = anchors.length ? anchors[anchors.length - 1][0] : -1;
+    return items.flatMap(item => {
         const message = api[item.index + offsetFor(item.index)];
-        if (!message) return item;
-        return { index: item.index, role: message.role, text: item.text || message.text };
+        if (message?.notice) return [];
+        // A blank row past every message is the list's trailing spacer.
+        if (!message) return item.text || item.index <= last ? [item] : [];
+        return [{ index: item.index, role: message.role, text: item.text || message.text }];
     });
 }
 

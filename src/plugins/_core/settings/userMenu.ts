@@ -131,20 +131,23 @@ function enhance(menu: HTMLElement, settingsItem: HTMLElement, options: UserMenu
 
     /** A floating panel beside `anchor`, inside `container` (the menu popup or a parent panel). */
     const panel = (anchor: HTMLElement, container: HTMLElement, width: string) => {
-        const scroll = h("div", { class: scrollClass, style: { maxHeight: "min(70vh, 32rem)", overflowY: "auto" } });
+        const scroll = h("div", { class: scrollClass, style: { maxHeight: "min(calc(100vh - 16px), 32rem)", overflowY: "auto" } });
         const el = h("div", { role: "menu", "data-ccpp-panel-level": "", class: panelClass, style: { position: "absolute", width, zIndex: "1" } }, scroll);
         container.appendChild(el);
-        const a = anchor.getBoundingClientRect();
-        const c = container.getBoundingClientRect();
-        const gap = 4;
-        // Prefer the right side like native submenus; flip left when there is no room.
-        if (window.innerWidth - c.right > el.offsetWidth + gap + 8) el.style.left = `calc(100% + ${gap}px)`;
-        else el.style.right = `calc(100% + ${gap}px)`;
-        const top = a.top - c.top - 4;
-        const maxTop = window.innerHeight - c.top - el.offsetHeight - 8;
-        el.style.top = `${Math.max(-c.top + 8, Math.min(top, maxTop))}px`;
+        // Placed once filled: the panel's height decides how far up it must move to stay on screen.
+        const place = () => {
+            const a = anchor.getBoundingClientRect();
+            const c = container.getBoundingClientRect();
+            const gap = 4;
+            // Prefer the right side like native submenus; flip left when there is no room.
+            if (window.innerWidth - c.right > el.offsetWidth + gap + 8) el.style.left = `calc(100% + ${gap}px)`;
+            else el.style.right = `calc(100% + ${gap}px)`;
+            const top = a.top - c.top - 4;
+            const maxTop = window.innerHeight - c.top - el.offsetHeight - 8;
+            el.style.top = `${Math.max(-c.top + 8, Math.min(top, maxTop))}px`;
+        };
         el.addEventListener("pointerover", event => event.stopPropagation());
-        return { el, scroll };
+        return { el, scroll, place };
     };
 
     /** One open submenu per level; hovering another row of the same level closes it. */
@@ -164,9 +167,10 @@ function enhance(menu: HTMLElement, settingsItem: HTMLElement, options: UserMenu
             const show = () => {
                 if (open?.trigger === trigger) return;
                 close();
-                const { el, scroll } = panel(trigger, container, width);
+                const { el, scroll, place } = panel(trigger, container, width);
                 const child = level(el);
                 fill(scroll, child);
+                place();
                 // Hovering a row without its own submenu folds deeper panels away.
                 scroll.addEventListener("pointerover", event => {
                     const target = (event.target as Element).closest('[role="menuitem"]');

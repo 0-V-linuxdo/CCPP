@@ -202,7 +202,9 @@ describe("project outline", () => {
             { id: "s", body: '{"kind":"status","text":"x"}', created_at: "2026-10-13T12:00:03Z" },
             { id: "a", body: "question", author_account_id: "u", created_at: "2026-10-13T12:00:01Z" },
         ] });
-        expect(list.map(m => `${m.role}:${m.text}`)).toEqual(["user:question", "assistant:reply"]);
+        expect(list.map(m => `${m.role}:${m.text}:${!!m.notice}`)).toEqual(["user:question:false", "assistant:reply:false", "assistant::true"]);
+        // Routing lines have no row in the project chat.
+        expect(parseChannelMessages({ data: [{ id: "r", body: '{"type":"message_routed"}', created_at: "2026-10-13T12:00:00Z" }] })).toEqual([]);
     });
     test("unrendered rows get labels from the project messages", () => {
         const api = ["q1 hello there", "a1 answer text", "q2 second question", "a2 second answer"].map((text, i) => ({ role: (i % 2 ? "assistant" : "user") as "user" | "assistant", text }));
@@ -213,6 +215,10 @@ describe("project outline", () => {
             { index: 3, role: "assistant" as const, text: "" },
         ];
         expect(alignWithApi(rows, api).map(r => r.text)).toEqual(["q1 hello there", "a1 answer text", "You said: q2 second question", "a2 second answer"]);
+        // Card rows (thread started, errors) and the trailing spacer drop out of the outline.
+        const withCard = [api[0], { role: "assistant" as const, text: "", notice: true }, ...api.slice(1)];
+        const cardRows = [0, 1, 2, 3, 4, 5].map(index => ({ index, role: "user" as const, text: index === 3 ? "You said: q2 second question" : "" }));
+        expect(alignWithApi(cardRows, withCard).map(r => r.text)).toEqual(["q1 hello there", "a1 answer text", "You said: q2 second question", "a2 second answer"]);
         // No rendered row: the newest message lines up with the last row.
         expect(alignWithApi(rows.slice(0, 2).map(r => ({ ...r, text: "" })), api).map(r => r.text)).toEqual(["q2 second question", "a2 second answer"]);
     });

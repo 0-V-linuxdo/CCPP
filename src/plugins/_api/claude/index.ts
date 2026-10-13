@@ -173,11 +173,13 @@ export interface ChannelMessage {
     role: "user" | "assistant";
     text: string;
     at: number;
+    /** A card the project chat shows as its own row (thread started, error, suggestion…), not a message. */
+    notice?: boolean;
 }
 
 /**
- * Plain messages of a project chat or thread, oldest first. Status cards, activity lines and other
- * JSON bodies are app chrome, not messages, and are dropped.
+ * Messages of a project chat or thread, oldest first. JSON bodies are app cards: routing lines are
+ * dropped, the rest stay as blank `notice` entries because the page gives each its own row.
  */
 export function parseChannelMessages(raw: unknown): ChannelMessage[] {
     const list = (raw as { data?: unknown })?.data;
@@ -187,12 +189,19 @@ export function parseChannelMessages(raw: unknown): ChannelMessage[] {
         if (!m || typeof m !== "object" || typeof m.body !== "string") continue;
         const body = m.body.trim();
         if (!body) continue;
+        const base = { id: String(m.id ?? ""), role: (m.author_account_id ? "user" : "assistant") as ChannelMessage["role"], at: Date.parse(m.created_at) || 0 };
         if (body.startsWith("{")) {
+            let card: { type?: unknown } | null = null;
             try {
-                if (JSON.parse(body) && typeof JSON.parse(body) === "object") continue;
+                card = JSON.parse(body);
             } catch {}
+            if (card && typeof card === "object") {
+                // Routing lines never get a row; every other card does, so keep its place in the list.
+                if (card.type !== "message_routed") out.push({ ...base, role: "assistant", text: "", notice: true });
+                continue;
+            }
         }
-        out.push({ id: String(m.id ?? ""), role: m.author_account_id ? "user" : "assistant", text: body, at: Date.parse(m.created_at) || 0 });
+        out.push({ ...base, text: body });
     }
     return out.sort((a, b) => a.at - b.at);
 }

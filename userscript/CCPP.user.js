@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.5
+// @version      20261013.0.3.6
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -665,13 +665,19 @@
       const body = m.body.trim();
       if (!body)
         continue;
+      const base = { id: String(m.id ?? ""), role: m.author_account_id ? "user" : "assistant", at: Date.parse(m.created_at) || 0 };
       if (body.startsWith("{")) {
+        let card = null;
         try {
-          if (JSON.parse(body) && typeof JSON.parse(body) === "object")
-            continue;
+          card = JSON.parse(body);
         } catch {}
+        if (card && typeof card === "object") {
+          if (card.type !== "message_routed")
+            out.push({ ...base, role: "assistant", text: "", notice: true });
+          continue;
+        }
       }
-      out.push({ id: String(m.id ?? ""), role: m.author_account_id ? "user" : "assistant", text: body, at: Date.parse(m.created_at) || 0 });
+      out.push({ ...base, text: body });
     }
     return out.sort((a, b) => a.at - b.at);
   }
@@ -2038,7 +2044,7 @@ select.input { padding-right: 6px; }
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "[20261013] v0.3.5";
+  var version = "[20261013] v0.3.6";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -2734,21 +2740,23 @@ select.input { padding-right: 6px; }
       el.setAttribute("data-highlighted", "");
     };
     const panel = (anchor, container, width) => {
-      const scroll = h("div", { class: scrollClass, style: { maxHeight: "min(70vh, 32rem)", overflowY: "auto" } });
+      const scroll = h("div", { class: scrollClass, style: { maxHeight: "min(calc(100vh - 16px), 32rem)", overflowY: "auto" } });
       const el = h("div", { role: "menu", "data-ccpp-panel-level": "", class: panelClass, style: { position: "absolute", width, zIndex: "1" } }, scroll);
       container.appendChild(el);
-      const a = anchor.getBoundingClientRect();
-      const c = container.getBoundingClientRect();
-      const gap = 4;
-      if (window.innerWidth - c.right > el.offsetWidth + gap + 8)
-        el.style.left = `calc(100% + ${gap}px)`;
-      else
-        el.style.right = `calc(100% + ${gap}px)`;
-      const top = a.top - c.top - 4;
-      const maxTop = window.innerHeight - c.top - el.offsetHeight - 8;
-      el.style.top = `${Math.max(-c.top + 8, Math.min(top, maxTop))}px`;
+      const place = () => {
+        const a = anchor.getBoundingClientRect();
+        const c = container.getBoundingClientRect();
+        const gap = 4;
+        if (window.innerWidth - c.right > el.offsetWidth + gap + 8)
+          el.style.left = `calc(100% + ${gap}px)`;
+        else
+          el.style.right = `calc(100% + ${gap}px)`;
+        const top = a.top - c.top - 4;
+        const maxTop = window.innerHeight - c.top - el.offsetHeight - 8;
+        el.style.top = `${Math.max(-c.top + 8, Math.min(top, maxTop))}px`;
+      };
       el.addEventListener("pointerover", (event) => event.stopPropagation());
-      return { el, scroll };
+      return { el, scroll, place };
     };
     const level = (container) => {
       let open = null;
@@ -2768,9 +2776,10 @@ select.input { padding-right: 6px; }
           if (open?.trigger === trigger)
             return;
           close();
-          const { el, scroll } = panel(trigger, container, width);
+          const { el, scroll, place } = panel(trigger, container, width);
           const child = level(el);
           fill(scroll, child);
+          place();
           scroll.addEventListener("pointerover", (event) => {
             const target = event.target.closest('[role="menuitem"]');
             if (target && !target.hasAttribute("aria-haspopup"))
@@ -3780,11 +3789,14 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
           best = anchor;
       return best[1] - best[0];
     };
-    return items.map((item) => {
+    const last = anchors.length ? anchors[anchors.length - 1][0] : -1;
+    return items.flatMap((item) => {
       const message = api[item.index + offsetFor(item.index)];
+      if (message?.notice)
+        return [];
       if (!message)
-        return item;
-      return { index: item.index, role: message.role, text: item.text || message.text };
+        return item.text || item.index <= last ? [item] : [];
+      return [{ index: item.index, role: message.role, text: item.text || message.text }];
     });
   }
   var paneOf = (scroller) => scroller.closest('[data-perf-region="side_pane"]') ? "side" : "main";
@@ -5815,7 +5827,7 @@ ${m.text.trim()}`).join(`
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "[20261013] v0.3.5",
+      version: "[20261013] v0.3.6",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -5832,7 +5844,7 @@ ${m.text.trim()}`).join(`
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "[20261013] v0.3.5";
+    win[FLAG] = "[20261013] v0.3.6";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     startPhase("document-start");
@@ -5848,7 +5860,7 @@ ${m.text.trim()}`).join(`
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"[20261013] v0.3.5"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"[20261013] v0.3.6"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();
