@@ -35,7 +35,8 @@ const DOC_CSS = `
 [data-ccpp-active] li:not([data-ccpp-nav]) > button[aria-current] { background: transparent !important; font-weight: inherit !important; color: var(--cds-text-secondary, inherit) !important; }
 [data-ccpp-active] li:not([data-ccpp-nav]) > button[aria-current]:hover { background: var(--cds-fill-ghost-hover, transparent) !important; color: var(--cds-text-primary, inherit) !important; }
 [data-ccpp-host] { display: flex; flex-direction: column; flex: 1 1 0%; min-height: 0; min-width: 0; }
-[data-ccpp-nav-version] { padding-top: 4px !important; opacity: .8; font-variant-numeric: tabular-nums; }
+[data-ccpp-nav-head] { display: flex !important; align-items: baseline; gap: 6px; }
+[data-ccpp-nav-version] { opacity: .7; font-size: .92em; font-variant-numeric: tabular-nums; }
 `;
 
 export const sortedTabs = () => [...tabs.values()].sort((a, b) => a.order - b.order);
@@ -128,9 +129,9 @@ export function installNative(scope: Scope, position: () => "above" | "below") {
                 group = h(
                     "div",
                     { "data-ccpp-nav-group": "", "data-tabs": list.map(tab => tab.id).join(","), "data-lang": t({ zh: "zh", en: "en" }), style: { display: "contents" } },
-                    h("div", { class: c.header, text: L.group }),
+                    // The version sits right of the group name, on the same line.
+                    h("div", { class: c.header, "data-ccpp-nav-head": "" }, h("span", { text: L.group }), h("span", { "data-ccpp-nav-version": "", text: `v${version}` })),
                     ul,
-                    h("div", { class: c.header, "data-ccpp-nav-version": "", text: `v${version}` }),
                 );
                 scroller.appendChild(group);
             }
@@ -286,14 +287,13 @@ let standaloneClose: (() => void) | null = null;
 export function openStandalone(tabId: string) {
     standaloneClose?.();
     let current = tabs.has(tabId) ? tabId : sortedTabs()[0]?.id;
-    const nav = h("nav", { class: "shell-nav" }, h("div", { class: "group", text: L.group }));
+    const nav = h("nav", { class: "shell-nav" }, h("div", { class: "group" }, L.group, h("span", { class: "ver", text: ` v${version}` })));
     const main = h("div", { class: "shell-main" });
     const pageBox = h("div", { style: { flex: "1", minHeight: "0", display: "flex", flexDirection: "column" } });
     const closeBtn = h("button", { type: "button", class: "icon-btn", "aria-label": t(L.close), title: t(L.close) }, icon("x", 16));
     main.append(h("div", { class: "shell-top" }, closeBtn), pageBox);
     const draw = () => {
         for (const old of nav.querySelectorAll("button")) old.remove();
-        nav.querySelector(".ver")?.remove();
         for (const tab of sortedTabs()) {
             const button = h("button", { type: "button", class: tab.id === current ? "active" : "" }, icon(tab.icon, 16), t(tab.title));
             button.addEventListener("click", () => {
@@ -302,7 +302,6 @@ export function openStandalone(tabId: string) {
             });
             nav.appendChild(button);
         }
-        nav.appendChild(h("div", { class: "ver", text: `CC++ v${version}` }));
         const tab = current ? tabs.get(current) : null;
         if (tab) renderPage(tab, pageBox);
     };

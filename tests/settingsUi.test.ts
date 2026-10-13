@@ -38,6 +38,10 @@ describe("settings UI", () => {
         await tick();
         const group = dialog.querySelector("[data-ccpp-nav-group]");
         expect(group).not.toBeNull();
+        // The version sits beside the group name, as a plain "v0.x.y".
+        const head = group!.querySelector("[data-ccpp-nav-head]")!;
+        expect(head.firstElementChild!.textContent).toBe("CC++");
+        expect(head.querySelector("[data-ccpp-nav-version]")!.textContent).toMatch(/^v[\w.]+$/);
         const ids = [...dialog.querySelectorAll<HTMLElement>("[data-ccpp-nav]")].map(li => li.dataset.ccppNav);
         expect(ids).toEqual(["plugins", "themes", "quick-css"]);
         // Our buttons copy the native classes.

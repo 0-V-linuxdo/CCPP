@@ -40,7 +40,7 @@ const result = await Bun.build({
     target: "browser",
     format: "iife",
     minify: false,
-    define: { VERSION: JSON.stringify(displayVersion) },
+    define: { VERSION: JSON.stringify(pkg.version) },
 });
 
 if (!result.success) {

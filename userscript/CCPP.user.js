@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.6
+// @version      20261013.0.3.7
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -1940,10 +1940,10 @@ select.input { padding-right: 6px; }
 .shell-nav button { display: flex; align-items: center; gap: 8px; height: var(--h); padding: 0 8px; border: 0; border-radius: var(--radius); background: transparent; color: var(--fg2); text-align: left; }
 .shell-nav button:hover { background: var(--bg2); color: var(--fg); }
 .shell-nav button.active { background: var(--bg3); color: var(--fg); font-weight: 500; }
-.shell-nav .ver { margin-top: auto; padding: 8px; font-size: var(--fs-xs); color: var(--fg3); }
+.shell-nav .ver { font-size: var(--fs-xs); color: var(--fg3); font-variant-numeric: tabular-nums; }
 .shell-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .shell-top { display: flex; justify-content: flex-end; padding: 12px 12px 0; }
-@media (max-width: 640px) { .shell { grid-template-columns: 1fr; grid-template-rows: auto 1fr; } .shell-nav { flex-direction: row; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--line); } .shell-nav .group, .shell-nav .ver { display: none; } }
+@media (max-width: 640px) { .shell { grid-template-columns: 1fr; grid-template-rows: auto 1fr; } .shell-nav { flex-direction: row; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--line); } .shell-nav .group { display: none; } }
 `;
 
   // src/plugins/_core/settings/layer.ts
@@ -2044,7 +2044,7 @@ select.input { padding-right: 6px; }
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "[20261013] v0.3.6";
+  var version = "0.3.7";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -2096,7 +2096,8 @@ select.input { padding-right: 6px; }
 [data-ccpp-active] li:not([data-ccpp-nav]) > button[aria-current] { background: transparent !important; font-weight: inherit !important; color: var(--cds-text-secondary, inherit) !important; }
 [data-ccpp-active] li:not([data-ccpp-nav]) > button[aria-current]:hover { background: var(--cds-fill-ghost-hover, transparent) !important; color: var(--cds-text-primary, inherit) !important; }
 [data-ccpp-host] { display: flex; flex-direction: column; flex: 1 1 0%; min-height: 0; min-width: 0; }
-[data-ccpp-nav-version] { padding-top: 4px !important; opacity: .8; font-variant-numeric: tabular-nums; }
+[data-ccpp-nav-head] { display: flex !important; align-items: baseline; gap: 6px; }
+[data-ccpp-nav-version] { opacity: .7; font-size: .92em; font-variant-numeric: tabular-nums; }
 `;
   var sortedTabs = () => [...tabs.values()].sort((a, b) => a.order - b.order);
   function renderPage(tab, box) {
@@ -2173,7 +2174,7 @@ select.input { padding-right: 6px; }
             });
             ul.appendChild(h("li", { "data-ccpp-nav": tab.id }, button));
           }
-          group = h("div", { "data-ccpp-nav-group": "", "data-tabs": list.map((tab) => tab.id).join(","), "data-lang": t({ zh: "zh", en: "en" }), style: { display: "contents" } }, h("div", { class: c.header, text: L2.group }), ul, h("div", { class: c.header, "data-ccpp-nav-version": "", text: `v${version}` }));
+          group = h("div", { "data-ccpp-nav-group": "", "data-tabs": list.map((tab) => tab.id).join(","), "data-lang": t({ zh: "zh", en: "en" }), style: { display: "contents" } }, h("div", { class: c.header, "data-ccpp-nav-head": "" }, h("span", { text: L2.group }), h("span", { "data-ccpp-nav-version": "", text: `v${version}` })), ul);
           scroller.appendChild(group);
         }
         const wantFirst = navPosition() === "above";
@@ -2326,7 +2327,7 @@ select.input { padding-right: 6px; }
   function openStandalone(tabId) {
     standaloneClose?.();
     let current = tabs.has(tabId) ? tabId : sortedTabs()[0]?.id;
-    const nav = h("nav", { class: "shell-nav" }, h("div", { class: "group", text: L2.group }));
+    const nav = h("nav", { class: "shell-nav" }, h("div", { class: "group" }, L2.group, h("span", { class: "ver", text: ` v${version}` })));
     const main = h("div", { class: "shell-main" });
     const pageBox = h("div", { style: { flex: "1", minHeight: "0", display: "flex", flexDirection: "column" } });
     const closeBtn = h("button", { type: "button", class: "icon-btn", "aria-label": t(L2.close), title: t(L2.close) }, icon("x", 16));
@@ -2334,7 +2335,6 @@ select.input { padding-right: 6px; }
     const draw = () => {
       for (const old of nav.querySelectorAll("button"))
         old.remove();
-      nav.querySelector(".ver")?.remove();
       for (const tab of sortedTabs()) {
         const button = h("button", { type: "button", class: tab.id === current ? "active" : "" }, icon(tab.icon, 16), t(tab.title));
         button.addEventListener("click", () => {
@@ -2343,7 +2343,6 @@ select.input { padding-right: 6px; }
         });
         nav.appendChild(button);
       }
-      nav.appendChild(h("div", { class: "ver", text: `CC++ v${version}` }));
       const tab = current ? tabs.get(current) : null;
       if (tab)
         renderPage(tab, pageBox);
@@ -5827,7 +5826,7 @@ ${m.text.trim()}`).join(`
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "[20261013] v0.3.6",
+      version: "0.3.7",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -5844,7 +5843,7 @@ ${m.text.trim()}`).join(`
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "[20261013] v0.3.6";
+    win[FLAG] = "0.3.7";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     startPhase("document-start");
@@ -5860,7 +5859,7 @@ ${m.text.trim()}`).join(`
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"[20261013] v0.3.6"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.7"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();
