@@ -12,31 +12,50 @@ import { isDark } from "./page";
 /** Colours and controls shared by every CC++ surface. Lives inside each shadow root. */
 export const BASE_CSS = `
 :host { all: initial; }
-.ccpp { --bg: #ffffff; --bg2: #f5f4ef; --bg3: #ebe9e1; --fg: #1f1e1d; --fg2: #5e5d59; --fg3: #8f8d86; --line: rgba(31,30,29,.12);
-  --accent: #d97757; --accent-fg: #fff; --ok: #3f9a5b; --warn: #c98a12; --bad: #d1453b; --shadow: 0 8px 32px rgba(0,0,0,.18);
-  font: 13px/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; color: var(--fg); }
-.ccpp.dark { --bg: #262624; --bg2: #30302e; --bg3: #3a3a37; --fg: #f5f4ef; --fg2: #c2c0b6; --fg3: #8f8d86; --line: rgba(255,255,255,.1); --shadow: 0 8px 32px rgba(0,0,0,.5); }
+/* claude.ai's own design tokens (--cds-*) cascade into shadow roots, so CC++ looks and themes
+   like the page. The literals are fallbacks for when claude.ai renames a token. */
+.ccpp { --bg: var(--cds-surface-2, #ffffff); --bg-nav: var(--cds-surface-1, #f5f4ef); --bg2: var(--cds-fill-ghost-hover, #f0eee6); --bg3: var(--cds-fill-ghost-selected, #e8e6dc);
+  --fg: var(--cds-text-primary, #1f1e1d); --fg2: var(--cds-text-secondary, #5e5d59); --fg3: var(--cds-text-muted, #8f8d86);
+  --line: var(--cds-alpha-2, rgba(31,30,29,.12)); --line-soft: var(--cds-alpha-1, rgba(31,30,29,.06));
+  --accent: var(--cds-fill-accent, #2a78d6); --accent-fg: #fff; --clay: #d97757; --ok: #3f9a5b; --warn: var(--cds-fill-warning, #c98a12); --bad: #d03b3b;
+  --field: var(--cds-fill-field, transparent); --field-ring: var(--cds-fill-field-ring, rgba(31,30,29,.15));
+  --radius: var(--cds-radius, 8px); --radius-card: calc(var(--cds-radius, 8px) + 4px); --h: var(--cds-h-control, 32px);
+  --shadow: inset 0 0 0 var(--cds-ring-inner, 0) var(--cds-ring-color, transparent), 0 0 0 var(--cds-ring-outer, 1px) var(--cds-ring-color, rgba(31,30,29,.1)), var(--cds-shadow-lg, 0 8px 24px rgba(0,0,0,.14));
+  --focus: var(--cds-focus-shadow, 0 0 0 2px #2a78d6);
+  --fs: var(--cds-font-size-body, 14px); --fs-sm: var(--cds-font-size-footnote, 13px); --fs-xs: var(--cds-font-size-caption, 12px);
+  font-size: var(--fs); line-height: 1.45; color: var(--fg); -webkit-font-smoothing: antialiased; }
+.ccpp:not(.dark) { color-scheme: light; } .ccpp.dark { color-scheme: dark;
+  --bg: var(--cds-surface-2, #262624); --bg-nav: var(--cds-surface-1, #1f1e1d); --bg2: var(--cds-fill-ghost-hover, rgba(255,255,255,.06)); --bg3: var(--cds-fill-ghost-selected, rgba(255,255,255,.1));
+  --fg: var(--cds-text-primary, #f5f4ef); --fg2: var(--cds-text-secondary, #c2c0b6); --fg3: var(--cds-text-muted, #8f8d86);
+  --line: var(--cds-alpha-2, rgba(255,255,255,.1)); --line-soft: var(--cds-alpha-1, rgba(255,255,255,.05)); --field-ring: var(--cds-fill-field-ring, rgba(255,255,255,.15)); }
 .ccpp * { box-sizing: border-box; }
 .ccpp button { font: inherit; color: inherit; cursor: pointer; }
-.btn { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg2); }
+.ccpp :focus-visible { outline: none; box-shadow: var(--focus); }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: var(--h); padding: 0 12px; border-radius: var(--radius); border: 0; background: var(--bg2); color: var(--fg); white-space: nowrap; }
 .btn:hover { background: var(--bg3); }
-.btn.primary { background: var(--accent); color: var(--accent-fg); border-color: transparent; }
+.btn.ghost { background: transparent; } .btn.ghost:hover { background: var(--bg2); }
+.btn.primary { background: var(--fg); color: var(--bg); } .btn.primary:hover { opacity: .9; }
 .btn.danger { color: var(--bad); }
-.icon-btn { display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; border: 0; background: transparent; color: var(--fg2); }
-.icon-btn:hover { background: var(--bg3); color: var(--fg); }
-.icon-btn.on { color: var(--accent); }
-.input { height: 30px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); font: inherit; outline: none; width: 100%; }
-.input:focus, textarea.input:focus { border-color: var(--accent); }
-textarea.input { height: auto; padding: 8px 10px; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
-.switch { position: relative; width: 34px; height: 20px; flex: none; border-radius: 10px; border: 0; background: var(--bg3); padding: 0; transition: background .15s; }
-.switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.3); transition: transform .15s; }
+.btn:disabled { opacity: .45; cursor: default; }
+.icon-btn { display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: var(--radius); border: 0; background: transparent; color: var(--fg3); }
+.icon-btn:hover { background: var(--bg2); color: var(--fg); }
+.icon-btn.on { color: var(--fg); }
+.input { height: var(--h); padding: 0 10px; border-radius: var(--radius); border: 0; box-shadow: inset 0 0 0 1px var(--field-ring); background: var(--field); color: var(--fg); font: inherit; outline: none; width: 100%; }
+.input::placeholder { color: var(--fg3); }
+.input:focus, textarea.input:focus { box-shadow: var(--focus); }
+textarea.input { height: auto; padding: 8px 10px; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; line-height: 1.5; }
+select.input { padding-right: 6px; }
+/* Same proportions as claude.ai's Switch: height h, width 1.8h, 2px inset knob. */
+.switch { --sh: var(--cds-switch-h, 20px); position: relative; width: calc(var(--sh) * 1.8); height: var(--sh); flex: none; border-radius: 999px; border: 0; padding: 0; background: var(--cds-switch-track, rgba(127,127,127,.35)); transition: background .15s; }
+.switch:hover { background: var(--cds-switch-track-hover, rgba(127,127,127,.45)); }
+.switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: calc(var(--sh) - 4px); height: calc(var(--sh) - 4px); border-radius: 50%; background: var(--cds-switch-knob, #fff); box-shadow: 0 1px 2px rgba(0,0,0,.2); transition: transform .18s cubic-bezier(.3,1.4,.6,1); }
 .switch[aria-checked="true"] { background: var(--accent); }
-.switch[aria-checked="true"]::after { transform: translateX(14px); }
-.switch:disabled { opacity: .5; cursor: not-allowed; }
+.switch[aria-checked="true"]::after { transform: translateX(calc(var(--sh) * .8)); }
+.switch:disabled { opacity: .45; cursor: default; }
 .muted { color: var(--fg3); }
-.badge { display: inline-block; padding: 0 6px; border-radius: 6px; font-size: 11px; line-height: 18px; background: var(--bg3); color: var(--fg2); }
-.badge.accent { background: var(--accent); color: var(--accent-fg); }
-.badge.bad { background: var(--bad); color: #fff; }
+.badge { display: inline-flex; align-items: center; height: 18px; padding: 0 6px; border-radius: 6px; font-size: 11px; font-weight: 500; background: var(--bg3); color: var(--fg2); }
+.badge.accent { background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent); }
+.badge.bad { background: color-mix(in srgb, var(--bad) 16%, transparent); color: var(--bad); }
 @media (prefers-reduced-motion: reduce) { .ccpp * { transition: none !important; animation: none !important; } }
 `;
 
@@ -58,7 +77,11 @@ export function createHost(scope: Scope, id: string, css: string, options: { fix
     root.appendChild(h("style", { text: BASE_CSS + css }));
     const box = h("div", { class: "ccpp" });
     root.appendChild(box);
-    const sync = () => box.classList.toggle("dark", isDark());
+    const sync = () => {
+        box.classList.toggle("dark", isDark());
+        // Use claude.ai's own UI font.
+        if (document.body) box.style.fontFamily = getComputedStyle(document.body).fontFamily;
+    };
     sync();
     scope.observe(document.documentElement, { attributes: true, attributeFilter: ["data-mode", "class"] }, sync);
     const attach = () => {

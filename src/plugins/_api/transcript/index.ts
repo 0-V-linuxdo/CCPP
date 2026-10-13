@@ -24,10 +24,43 @@ export interface RowInfo {
     turnKey: string | null;
 }
 
-export const getScroller = () => document.querySelector<HTMLElement>(SEL.scroller);
+/**
+ * Chat pages have one transcript. Claude Code project pages can show two (the project chat
+ * and a thread in the side pane); the active one is the last the user scrolled or pointed
+ * at, else the side pane, else the main one.
+ */
+const FEEDS = `${SEL.scroller}, [data-testid="epitaxy-virtual-transcript"], [role="feed"][data-autoscroll-container]`;
+let lastFeed: HTMLElement | null = null;
 
-export function getRows(): RowInfo[] {
-    return [...document.querySelectorAll<HTMLElement>(SEL.transcriptRow)]
+export function getScrollers(): HTMLElement[] {
+    return [...document.querySelectorAll<HTMLElement>(FEEDS)].filter(el => el.isConnected && el.clientHeight > 0);
+}
+
+export function getScroller(): HTMLElement | null {
+    const all = getScrollers();
+    if (!all.length) return null;
+    if (lastFeed && all.includes(lastFeed)) return lastFeed;
+    return all.find(el => el.closest('[data-perf-region="side_pane"]')) ?? all[0];
+}
+
+/** Remembers which transcript the user is reading (call from scroll / pointer events). */
+export function noteFeedActivity(target: EventTarget | null) {
+    if (!(target instanceof Element)) return;
+    const feed = target.closest<HTMLElement>(FEEDS);
+    if (feed) lastFeed = feed;
+}
+
+/** Strips the screen-reader prefixes claude.ai puts in project transcripts. */
+const SR_PREFIX = /^(?:You said|Claude responded|你说|Claude 回复)[:：]\s*/;
+
+export function rowText(el: HTMLElement) {
+    const body = el.querySelector<HTMLElement>(`${SEL.userMessageBody}, ${SEL.userMessage}, ${SEL.prose}`) ?? el;
+    return (body.innerText || "").replace(SR_PREFIX, "").trim();
+}
+
+export function getRows(root: ParentNode | null = getScroller()): RowInfo[] {
+    if (!root) return [];
+    return [...root.querySelectorAll<HTMLElement>(SEL.transcriptRow)]
         .map(el => {
             const index = Number(el.dataset.index);
             const message = el.querySelector<HTMLElement>(`${SEL.userMessage}, ${SEL.assistantMessage}`);
@@ -39,9 +72,9 @@ export function getRows(): RowInfo[] {
         .sort((a, b) => a.index - b.index);
 }
 
-/** Total messages on the branch according to claude.ai's own aria-setsize. */
-export function totalMessages(): number | null {
-    const article = document.querySelector<HTMLElement>(`${SEL.transcriptRow} [role="article"][aria-setsize]`);
+/** Total messages according to claude.ai's own aria-setsize. */
+export function totalMessages(root: ParentNode | null = getScroller()): number | null {
+    const article = root?.querySelector<HTMLElement>("[aria-setsize]");
     const size = Number(article?.getAttribute("aria-setsize"));
     return Number.isFinite(size) && size > 0 ? size : null;
 }
@@ -60,11 +93,11 @@ function scrollRowIntoView(scroller: HTMLElement, row: HTMLElement, behavior: Sc
  * Scrolls message `index` into view, stepping through the virtual list when that row is
  * not mounted yet. Resolves with the row element, or null if it never appeared.
  */
-export async function jumpTo(index: number, options: { behavior?: ScrollBehavior; flash?: boolean } = {}): Promise<HTMLElement | null> {
-    const scroller = getScroller();
+export async function jumpTo(index: number, options: { behavior?: ScrollBehavior; flash?: boolean; scroller?: HTMLElement | null } = {}): Promise<HTMLElement | null> {
+    const scroller = options.scroller ?? getScroller();
     if (!scroller) return null;
-    for (let attempt = 0; attempt < 16; attempt++) {
-        const rows = getRows();
+    for (let attempt = 0; attempt < 24; attempt++) {
+        const rows = getRows(scroller);
         const row = rows.find(r => r.index === index);
         if (row) {
             scrollRowIntoView(scroller, row.el, options.behavior ?? "smooth");
@@ -88,19 +121,19 @@ export async function jumpTo(index: number, options: { behavior?: ScrollBehavior
 }
 
 export function flash(el: HTMLElement) {
-    el.classList.remove("ccpp-flash");
-    void el.offsetWidth;
-    el.classList.add("ccpp-flash");
-    setTimeout(() => el.classList.remove("ccpp-flash"), 1600);
+    const target = el.querySelector<HTMLElement>(`${SEL.userMessage}, ${SEL.assistantMessage}, [role="article"]`) ?? el;
+    target.classList.remove("ccpp-flash");
+    void target.offsetWidth;
+    target.classList.add("ccpp-flash");
+    setTimeout(() => target.classList.remove("ccpp-flash"), 1600);
 }
 
 /** Index of the message nearest the top of the viewport. */
-export function currentIndex(): number | null {
-    const scroller = getScroller();
+export function currentIndex(scroller: HTMLElement | null = getScroller()): number | null {
     if (!scroller) return null;
     const top = scroller.getBoundingClientRect().top + JUMP_OFFSET + 8;
     let best: RowInfo | null = null;
-    for (const row of getRows()) {
+    for (const row of getRows(scroller)) {
         const rect = row.el.getBoundingClientRect();
         if (rect.height === 0) continue;
         if (rect.top <= top) best = row;
@@ -152,8 +185,8 @@ export function onMarksChange(scope: { defer(fn: () => void): unknown }, fn: () 
 }
 
 const CSS = `
-@keyframes ccpp-flash { 0% { box-shadow: 0 0 0 2px rgba(217,119,87,.9); } 100% { box-shadow: 0 0 0 2px rgba(217,119,87,0); } }
-.ccpp-flash { border-radius: 12px; animation: ccpp-flash 1.6s ease-out; }
+@keyframes ccpp-flash { 0%, 70% { outline-color: var(--cds-text-primary, currentColor); } 100% { outline-color: transparent; } }
+.ccpp-flash { outline: 2px solid transparent; outline-offset: 4px; border-radius: 12px; animation: ccpp-flash 1.6s ease-out; }
 `;
 
 export default definePlugin({
@@ -167,6 +200,9 @@ export default definePlugin({
     start(scope) {
         addStyle(scope, CSS, "transcript");
         scope.on("reply:end", ({ chatId }) => invalidateConversation(chatId));
+        const note = (event: Event) => noteFeedActivity(event.target);
+        scope.listen(document, "pointerdown", note, { capture: true, passive: true });
+        scope.listen(document, "wheel", note, { capture: true, passive: true });
         scope.defer(() => cache.clear());
     },
 });

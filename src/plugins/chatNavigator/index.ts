@@ -9,28 +9,37 @@ import { Logger } from "@kernel/logger";
 import { definePlugin } from "@kernel/plugins";
 import type { Scope } from "@kernel/scope";
 import { definePluginSettings } from "@kernel/settings";
-import { clear, h } from "@lib/dom";
+import { clear, h, isEditable } from "@lib/dom";
 import { snippet } from "@lib/format";
 import { createHost } from "@lib/ui";
+import { chatPhase } from "@api/chatState";
 import { onRoute } from "@api/router";
-import { bindKey } from "@api/hotkeys";
-import { currentIndex, getMarks, getRows, getScroller, jumpTo, loadConversation, onMarksChange, totalMessages } from "@api/transcript";
+import { currentIndex, getMarks, getRows, getScroller, jumpTo, loadConversation, onMarksChange, rowText, totalMessages } from "@api/transcript";
 
 const logger = new Logger("ChatNavigator");
 
 const settings = definePluginSettings({
-    showAssistant: { type: "boolean", label: { zh: "列出 Claude 的回复", en: "List Claude's replies" }, description: { zh: "关闭后只列出你的提问。", en: "Off lists only your prompts." }, default: true },
-    minMessages: { type: "number", label: { zh: "至少几条消息才显示", en: "Show from this many messages" }, default: 3, min: 1, max: 20 },
-    flash: { type: "boolean", label: { zh: "跳转后高亮目标消息", en: "Highlight the message after jumping" }, default: true },
-    keys: { type: "boolean", label: { zh: "Alt + ↑ / ↓ 在消息间跳转", en: "Alt + ↑ / ↓ steps between messages" }, default: true },
+    showAssistant: { type: "boolean", label: { zh: "列出 Claude 的回复", en: "List Claude's replies" }, description: { zh: "关闭后目录里只有你的提问。", en: "Off lists only your prompts." }, default: true },
+    minMessages: { type: "number", label: { zh: "至少几条消息才显示", en: "Show from this many messages" }, description: { zh: "默认一问一答就显示。", en: "By default one prompt and reply is enough." }, default: 2, min: 1, max: 20 },
+    jumpEffect: {
+        type: "select",
+        label: { zh: "跳转效果", en: "Jump effect" },
+        description: { zh: "跳到一条消息后怎样提示它的位置。", en: "How the message is marked after jumping to it." },
+        default: "border",
+        options: [
+            { value: "border", label: { zh: "高亮边框", en: "Highlight border" } },
+            { value: "none", label: { zh: "无", en: "None" } },
+        ],
+    },
+    keys: { type: "boolean", label: { zh: "键盘跳转", en: "Keyboard" }, description: { zh: "不在输入框里时：↑ / ↓ 逐条跳转，Home / End 到首尾，Esc 收起目录。", en: "Outside the input: ↑ / ↓ step through messages, Home / End go to the ends, Esc closes the outline." }, default: true },
 });
 
 const L = {
-    you: { zh: "你", en: "You" },
-    claude: "Claude",
-    streaming: { zh: "（正在回复…）", en: "(replying…)" },
-    empty: { zh: "（空消息）", en: "(empty)" },
     title: { zh: "对话目录", en: "Outline" },
+    streaming: { zh: "正在回复…", en: "Replying…" },
+    unloaded: { zh: "（滚动到这里后显示）", en: "(shown once scrolled into view)" },
+    empty: { zh: "（空消息）", en: "(empty)" },
+    goTo: { zh: "跳到第 {n} 条，共 {total} 条", en: "Go to message {n} of {total}" },
 };
 
 interface Item {
@@ -39,65 +48,99 @@ interface Item {
     text: string;
 }
 
+/*
+ * Layout follows a thin rail at the right edge of the transcript: short ticks for your
+ * prompts, longer ones for replies, the current one longest and full-contrast. Hovering the
+ * rail opens an outline card to its left.
+ */
 const CSS = `
-.rail { position: fixed; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; align-items: flex-end; gap: var(--gap, 6px); padding: 10px 6px; pointer-events: auto; border-radius: 10px; max-height: 70vh; }
-.tick { display: block; height: 2px; border-radius: 1px; background: var(--fg3); opacity: .45; border: 0; padding: 0; cursor: pointer; transition: width .12s, opacity .12s, background .12s; }
-.tick.user { width: 16px; } .tick.assistant { width: 9px; }
-.tick.current { opacity: 1; background: var(--fg); width: 20px; }
-.tick.marked { background: #e8a33d; opacity: 1; }
-.rail:hover .tick { opacity: .8; }
-.list { position: fixed; top: 50%; transform: translateY(-50%); width: 300px; max-height: 70vh; overflow: auto; padding: 6px; border-radius: 14px; background: var(--bg); border: 1px solid var(--line); box-shadow: var(--shadow); pointer-events: auto; display: none; }
-.list.show { display: block; animation: in .12s ease-out; }
-@keyframes in { from { opacity: 0; transform: translate(6px, -50%); } }
-.head { padding: 4px 8px 6px; font-weight: 600; color: var(--fg2); font-size: 12px; }
-.row { display: flex; gap: 8px; width: 100%; padding: 6px 8px; border: 0; border-radius: 8px; background: transparent; text-align: left; align-items: baseline; }
-.row:hover { background: var(--bg2); } .row.current { background: var(--bg3); }
-.row .who { flex: none; width: 44px; font-size: 11px; color: var(--fg3); } .row.user .who { color: var(--accent); }
-.row .txt { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.row.assistant .txt { color: var(--fg2); }
-.row .star { color: #e8a33d; flex: none; }
+.rail { position: fixed; display: flex; align-items: center; pointer-events: none; }
+.ticks { display: flex; flex-direction: column; align-items: flex-end; max-height: 100%; overflow: hidden; pointer-events: auto; scrollbar-width: none; }
+.ticks::-webkit-scrollbar { display: none; }
+.tick { display: flex; align-items: center; justify-content: flex-end; flex: none; width: 40px; height: 12px; padding: 0 4px; border: 0; background: transparent; }
+.dense .tick { height: 7px; }
+.tick::after { content: ""; display: block; height: 1px; width: 6px; border-radius: 999px; background: color-mix(in srgb, var(--fg3) 60%, transparent); transition: width .15s ease, background-color .15s ease; }
+.tick.assistant::after { width: 12px; }
+.tick.current::after { width: 16px; background: var(--fg); }
+.tick.marked::after { background: var(--clay); }
+.tick.live::after { height: 0; background: none; border-top: 1px dashed color-mix(in srgb, var(--fg3) 70%, transparent); }
+.tick.live.current::after { border-top-color: var(--fg); }
+.rail:hover .tick::after { background: color-mix(in srgb, var(--fg3) 85%, transparent); }
+.rail:hover .tick.current::after { background: var(--fg); }
+.rail:hover .tick.marked::after { background: var(--clay); }
+.menu { position: absolute; top: 50%; right: calc(100% + 4px); width: min(288px, 70vw); max-height: var(--menu-h, 70vh); overflow: auto; padding: 6px; border-radius: 20px; background: var(--bg); box-shadow: var(--shadow); color: var(--fg); pointer-events: auto;
+  opacity: 0; visibility: hidden; transform: translate(8px, -50%); transition: opacity .2s ease, visibility .2s ease, transform .2s ease; scrollbar-width: thin; overscroll-behavior: contain; }
+.rail.open .menu { opacity: 1; visibility: visible; transform: translate(0, -50%); }
+.meta { padding: 4px 10px 6px; color: var(--fg2); font-size: var(--fs-xs); letter-spacing: -.2px; font-variant-numeric: tabular-nums; }
+.list { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.item { display: flex; align-items: center; gap: 6px; width: 100%; padding: 6px 8px; border: 1px solid transparent; border-radius: 12px; background: transparent; color: var(--fg2); font-size: var(--fs); line-height: 1.4; letter-spacing: -.2px; text-align: start; }
+.item:hover, .item:focus-visible, .item.aim { background: var(--bg2); color: var(--fg); box-shadow: none; }
+.item.active { color: var(--fg); border-color: var(--line); }
+.emoji { flex: none; font-size: 15px; line-height: 1; }
+.label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.label.dim { color: var(--fg3); font-style: italic; }
+.star { flex: none; color: var(--clay); font-size: 12px; }
+@media (prefers-reduced-motion: reduce) { .menu, .tick::after { transition: none; } }
 `;
+
+/** Per transcript (chat id, or project page + pane), what each mounted row said, so unmounted rows keep a label. */
+const seen = new Map<string, Map<number, Item>>();
 
 export default definePlugin({
     name: "ChatNavigator",
     title: { zh: "对话目录", en: "Chat navigator" },
     description: {
-        zh: "对话右侧的刻度目录：悬停展开全部提问与回复（包括长对话里尚未渲染的部分），点击跳转；Alt+↑/↓ 逐条跳转；收藏的消息标成橙色。",
-        en: "A tick outline on the right of the chat: hover to list every prompt and reply (also ones not rendered yet in long chats), click to jump, Alt+↑/↓ to step; starred messages show in orange.",
+        zh: "把对话右侧做成 Notion 式目录：细刻度标出每条提问和回复，悬停展开全部消息（包括长对话里还没渲染的），点击跳转；正在输出的回复显示为虚线。普通对话和 Claude Code 项目页（项目聊天、线程侧栏）都能用。",
+        en: "A Notion-style outline on the right of the chat: thin ticks for every prompt and reply, hover to list them all (also ones not rendered yet), click to jump; a reply still streaming shows as a dashed tick. Works in chats and on Claude Code project pages (project chat and thread pane).",
     },
     category: "messages",
     icon: "list",
     enabledByDefault: true,
-    dependencies: ["TranscriptApi", "RouterApi", "HotkeysApi"],
+    updatedAt: "2026-10-13",
+    dependencies: ["TranscriptApi", "RouterApi", "ChatStateApi"],
     settings,
     start(scope: Scope) {
         const { box } = createHost(scope, "navigator", CSS);
-        const rail = h("nav", { class: "rail", "aria-label": t(L.title) });
-        const list = h("div", { class: "list", role: "menu", "aria-label": t(L.title) });
-        box.append(rail, list);
+        const ticks = h("div", { class: "ticks", role: "navigation", "aria-label": t(L.title) });
+        const meta = h("div", { class: "meta" });
+        const list = h("ul", { class: "list", role: "menu", "aria-label": t(L.title) });
+        const menu = h("div", { class: "menu" }, meta, list);
+        const rail = h("div", { class: "rail" }, menu, ticks);
+        box.append(rail);
 
         let items: Item[] = [];
         let chatId: string | null = null;
+        let scroller: HTMLElement | null = null;
         let current: number | null = null;
+        let aim = -1;
         let loadToken = 0;
         let hideTimer: ReturnType<typeof setTimeout> | undefined;
 
         const shown = () => (settings.store.showAssistant ? items : items.filter(i => i.role === "user"));
+        const feedKey = () => chatId ?? `${location.pathname}${location.search}|${scroller?.closest('[data-perf-region="side_pane"]') ? "side" : "main"}`;
+
+        /** Rows on screen, remembered by index for when they scroll out of the virtual list. */
+        const harvest = (): Map<number, Item> => {
+            const key = feedKey();
+            let memo = seen.get(key);
+            if (!memo) seen.set(key, (memo = new Map()));
+            for (const row of getRows(scroller)) {
+                const text = rowText(row.el);
+                if (text || !memo.has(row.index)) memo.set(row.index, { index: row.index, role: row.role, text });
+            }
+            return memo;
+        };
 
         const fromDom = (): Item[] => {
-            const total = totalMessages() ?? 0;
-            const rows = new Map(getRows().map(r => [r.index, r]));
-            return Array.from({ length: total }, (_, index) => {
-                const row = rows.get(index);
-                const role = row?.role ?? (index % 2 === 0 ? "user" : "assistant");
-                return { index, role, text: row?.el.innerText ?? "" };
-            });
+            const memo = harvest();
+            const total = Math.max(totalMessages(scroller) ?? 0, memo.size ? Math.max(...memo.keys()) + 1 : 0);
+            return Array.from({ length: total }, (_, index) => memo.get(index) ?? { index, role: index % 2 === 0 ? "user" : "assistant", text: "" });
         };
 
         const load = async (force = false) => {
             const token = ++loadToken;
             if (!chatId) {
-                items = [];
+                items = fromDom();
                 draw();
                 return;
             }
@@ -111,90 +154,130 @@ export default definePlugin({
                 items = fromDom();
             }
             // The API lags behind a message that was just sent; pad with what the page shows.
-            const total = totalMessages();
+            const total = totalMessages(scroller);
             if (total && total > items.length) items = [...items, ...fromDom().slice(items.length)];
             draw();
         };
 
+        const visible = () => !!scroller?.isConnected && shown().length >= settings.store.minMessages;
+
         const place = () => {
-            const scroller = getScroller();
-            const visible = !!scroller && !!chatId && shown().length >= settings.store.minMessages;
-            rail.style.display = visible ? "" : "none";
-            if (!visible) {
-                list.classList.remove("show");
+            if (!visible()) {
+                rail.style.display = "none";
+                setOpen(false);
                 return;
             }
+            rail.style.display = "";
             const rect = scroller!.getBoundingClientRect();
-            const right = Math.max(4, window.innerWidth - rect.right + 14);
-            rail.style.right = `${right}px`;
-            list.style.right = `${right + 30}px`;
+            const height = Math.max(120, rect.height - 48);
+            rail.style.right = `${Math.max(4, window.innerWidth - rect.right + 10)}px`;
+            rail.style.top = `${rect.top + rect.height / 2 - height / 2}px`;
+            rail.style.height = `${height}px`;
+            rail.style.setProperty("--menu-h", `${Math.min(window.innerHeight * 0.7, height)}px`);
+            rail.classList.toggle("dense", shown().length * 12 > height);
+        };
+
+        const isLive = (item: Item) => chatPhase() === "streaming" && item.role === "assistant" && item.index === items.length - 1;
+
+        const label = (item: Item) => {
+            if (item.text.trim()) return { text: snippet(item.text, 120), dim: false };
+            if (isLive(item)) return { text: t(L.streaming), dim: true };
+            return { text: chatId ? t(L.empty) : t(L.unloaded), dim: true };
+        };
+
+        /** The shown item the reader is at: the last one at or above the current row. */
+        const activePos = () => {
+            const entries = shown();
+            if (current === null) return -1;
+            let pos = -1;
+            entries.forEach((item, i) => item.index <= current! && (pos = i));
+            return pos;
         };
 
         const draw = () => {
-            clear(rail);
+            clear(ticks);
             const entries = shown();
             const stars = getMarks("stars");
-            const gap = entries.length > 60 ? 2 : entries.length > 30 ? 4 : 7;
-            rail.style.setProperty("--gap", `${gap}px`);
-            for (const item of entries) {
-                const tick = h("button", { type: "button", class: `tick ${item.role}${item.index === current ? " current" : ""}${stars.has(item.index) ? " marked" : ""}`, "aria-label": `${item.role === "user" ? t(L.you) : L.claude}: ${snippet(item.text, 60)}` });
-                tick.addEventListener("click", () => go(item.index));
-                rail.appendChild(tick);
-            }
-            if (list.classList.contains("show")) drawList();
+            const active = activePos();
+            entries.forEach((item, i) => {
+                const tick = h("button", {
+                    type: "button",
+                    class: `tick ${item.role}${i === active ? " current" : ""}${stars.has(item.index) ? " marked" : ""}${isLive(item) ? " live" : ""}`,
+                    "aria-label": t(L.goTo).replace("{n}", String(i + 1)).replace("{total}", String(entries.length)),
+                });
+                tick.addEventListener("click", () => go(i));
+                ticks.appendChild(tick);
+            });
+            ticks.children[active]?.scrollIntoView({ block: "nearest" });
+            if (rail.classList.contains("open")) drawMenu();
             place();
         };
 
-        const drawList = () => {
-            clear(list);
+        const drawMenu = () => {
+            const entries = shown();
             const stars = getMarks("stars");
-            list.appendChild(h("div", { class: "head", text: `${t(L.title)} · ${shown().length}` }));
-            for (const item of shown()) {
-                const text = item.text.trim() ? snippet(item.text, 90) : item.role === "assistant" && item.index === items.length - 1 ? t(L.streaming) : t(L.empty);
+            const active = activePos();
+            meta.textContent = `${Math.max(active, 0) + 1} / ${entries.length}`;
+            clear(list);
+            entries.forEach((item, i) => {
+                const { text, dim } = label(item);
                 const row = h(
                     "button",
-                    { type: "button", role: "menuitem", class: `row ${item.role}${item.index === current ? " current" : ""}` },
-                    h("span", { class: "who", text: item.role === "user" ? t(L.you) : L.claude }),
-                    h("span", { class: "txt", text }),
+                    { type: "button", role: "menuitem", class: `item${i === active ? " active" : ""}${i === aim ? " aim" : ""}` },
+                    h("span", { class: "emoji", text: item.role === "user" ? "❓" : "🤖" }),
+                    h("span", { class: `label${dim ? " dim" : ""}`, text }),
                     stars.has(item.index) ? h("span", { class: "star", text: "★" }) : null,
                 );
-                row.addEventListener("click", () => go(item.index));
-                list.appendChild(row);
-            }
-            list.querySelector(".row.current")?.scrollIntoView({ block: "nearest" });
+                row.addEventListener("click", () => go(i));
+                list.appendChild(h("li", {}, row));
+            });
+            (list.children[aim >= 0 ? aim : active] as HTMLElement | undefined)?.scrollIntoView({ block: "nearest" });
         };
 
-        const go = (index: number) => {
-            current = index;
+        const go = (pos: number) => {
+            const item = shown()[pos];
+            if (!item) return;
+            current = item.index;
+            aim = pos;
             draw();
-            void jumpTo(index, { flash: settings.store.flash });
+            void jumpTo(item.index, { flash: settings.store.jumpEffect === "border", scroller });
         };
 
-        const showList = () => {
+        const setOpen = (open: boolean) => {
             clearTimeout(hideTimer);
-            if (!list.classList.contains("show")) {
-                list.classList.add("show");
-                drawList();
-            }
+            if (open === rail.classList.contains("open")) return;
+            rail.classList.toggle("open", open);
+            if (open) drawMenu();
+            else aim = -1;
         };
-        const hideList = () => {
-            clearTimeout(hideTimer);
-            hideTimer = setTimeout(() => list.classList.remove("show"), 250);
-        };
-        for (const el of [rail, list]) {
-            el.addEventListener("mouseenter", showList);
-            el.addEventListener("mouseleave", hideList);
+        for (const el of [ticks, menu]) {
+            el.addEventListener("mouseenter", () => setOpen(true));
+            el.addEventListener("mouseleave", () => {
+                clearTimeout(hideTimer);
+                hideTimer = setTimeout(() => setOpen(false), 200);
+            });
         }
         scope.defer(() => clearTimeout(hideTimer));
 
         const syncCurrent = () => {
-            const next = currentIndex();
+            const next = currentIndex(scroller);
             if (next === current) return;
             current = next;
-            for (const tick of rail.children) tick.classList.remove("current");
-            const index = shown().findIndex(item => item.index === current);
-            rail.children[index]?.classList.add("current");
-            if (list.classList.contains("show")) drawList();
+            const active = activePos();
+            [...ticks.children].forEach((tick, i) => tick.classList.toggle("current", i === active));
+            ticks.children[active]?.scrollIntoView({ block: "nearest" });
+            if (rail.classList.contains("open")) drawMenu();
+        };
+
+        /** Follows the transcript the user is reading; on project pages that can change without a route change. */
+        const syncScroller = () => {
+            const next = getScroller();
+            if (next === scroller) return false;
+            scroller = next;
+            current = null;
+            items = [];
+            void load();
+            return true;
         };
 
         let scrollQueued = false;
@@ -203,39 +286,65 @@ export default definePlugin({
             scrollQueued = true;
             requestAnimationFrame(() => {
                 scrollQueued = false;
-                syncCurrent();
+                if (!syncScroller()) syncCurrent();
+                if (!chatId) {
+                    // Project pages: learn rows as they mount.
+                    const before = items.filter(i => i.text).length;
+                    const next = fromDom();
+                    if (next.length !== items.length || next.filter(i => i.text).length !== before) {
+                        items = next;
+                        draw();
+                    }
+                }
             });
         }, { capture: true, passive: true });
         scope.listen(window, "resize", place);
 
         onRoute(scope, route => {
             chatId = route.chatId;
+            scroller = getScroller();
             current = null;
             items = [];
             draw();
-            if (chatId) scope.timeout(() => load(), 300);
+            scope.timeout(() => {
+                scroller = getScroller();
+                void load();
+            }, 300);
         });
         scope.on("reply:end", () => scope.timeout(() => load(true), 800));
         onMarksChange(scope, draw);
 
-        // Messages added on screen (a new prompt, a retry) or layout shifts (side panel) show up here.
+        // New messages, a pane opening, or layout shifts show up here.
         scope.interval(() => {
+            if (syncScroller()) return;
             place();
-            const total = totalMessages();
-            if (chatId && total && total !== items.length) load(total > items.length);
+            const total = totalMessages(scroller);
+            if (total && total !== items.length) void load(total > items.length);
             syncCurrent();
         }, 1200);
 
         if (settings.store.keys) {
-            const step = (dir: 1 | -1) => {
+            scope.listen(document, "keydown", (event: KeyboardEvent) => {
+                if (!visible() || event.altKey || event.isComposing) return;
+                if (isEditable(event.target) || isEditable(document.activeElement)) return;
                 const entries = shown();
-                if (!entries.length) return;
-                const at = current ?? currentIndex() ?? 0;
-                const target = dir > 0 ? entries.find(i => i.index > at) : [...entries].reverse().find(i => i.index < at);
-                if (target) go(target.index);
-            };
-            bindKey(scope, "alt+arrowdown", () => step(1), { inInputs: false });
-            bindKey(scope, "alt+arrowup", () => step(-1), { inInputs: false });
+                if (event.key === "Escape") {
+                    if (rail.classList.contains("open")) {
+                        event.preventDefault();
+                        setOpen(false);
+                    }
+                    return;
+                }
+                let target: number | null = null;
+                const at = activePos();
+                if (event.key === "Home" || ((event.metaKey || event.ctrlKey) && event.key === "ArrowUp")) target = 0;
+                else if (event.key === "End" || ((event.metaKey || event.ctrlKey) && event.key === "ArrowDown")) target = entries.length - 1;
+                else if (event.key === "ArrowUp" && !event.shiftKey) target = Math.max(0, at - 1);
+                else if (event.key === "ArrowDown" && !event.shiftKey) target = Math.min(entries.length - 1, at + 1);
+                if (target === null || target === at) return;
+                event.preventDefault();
+                go(target);
+            });
         }
     },
 });

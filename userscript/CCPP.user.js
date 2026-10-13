@@ -1346,31 +1346,50 @@
   // src/lib/ui.ts
   var BASE_CSS = `
 :host { all: initial; }
-.ccpp { --bg: #ffffff; --bg2: #f5f4ef; --bg3: #ebe9e1; --fg: #1f1e1d; --fg2: #5e5d59; --fg3: #8f8d86; --line: rgba(31,30,29,.12);
-  --accent: #d97757; --accent-fg: #fff; --ok: #3f9a5b; --warn: #c98a12; --bad: #d1453b; --shadow: 0 8px 32px rgba(0,0,0,.18);
-  font: 13px/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; color: var(--fg); }
-.ccpp.dark { --bg: #262624; --bg2: #30302e; --bg3: #3a3a37; --fg: #f5f4ef; --fg2: #c2c0b6; --fg3: #8f8d86; --line: rgba(255,255,255,.1); --shadow: 0 8px 32px rgba(0,0,0,.5); }
+/* claude.ai's own design tokens (--cds-*) cascade into shadow roots, so CC++ looks and themes
+   like the page. The literals are fallbacks for when claude.ai renames a token. */
+.ccpp { --bg: var(--cds-surface-2, #ffffff); --bg-nav: var(--cds-surface-1, #f5f4ef); --bg2: var(--cds-fill-ghost-hover, #f0eee6); --bg3: var(--cds-fill-ghost-selected, #e8e6dc);
+  --fg: var(--cds-text-primary, #1f1e1d); --fg2: var(--cds-text-secondary, #5e5d59); --fg3: var(--cds-text-muted, #8f8d86);
+  --line: var(--cds-alpha-2, rgba(31,30,29,.12)); --line-soft: var(--cds-alpha-1, rgba(31,30,29,.06));
+  --accent: var(--cds-fill-accent, #2a78d6); --accent-fg: #fff; --clay: #d97757; --ok: #3f9a5b; --warn: var(--cds-fill-warning, #c98a12); --bad: #d03b3b;
+  --field: var(--cds-fill-field, transparent); --field-ring: var(--cds-fill-field-ring, rgba(31,30,29,.15));
+  --radius: var(--cds-radius, 8px); --radius-card: calc(var(--cds-radius, 8px) + 4px); --h: var(--cds-h-control, 32px);
+  --shadow: inset 0 0 0 var(--cds-ring-inner, 0) var(--cds-ring-color, transparent), 0 0 0 var(--cds-ring-outer, 1px) var(--cds-ring-color, rgba(31,30,29,.1)), var(--cds-shadow-lg, 0 8px 24px rgba(0,0,0,.14));
+  --focus: var(--cds-focus-shadow, 0 0 0 2px #2a78d6);
+  --fs: var(--cds-font-size-body, 14px); --fs-sm: var(--cds-font-size-footnote, 13px); --fs-xs: var(--cds-font-size-caption, 12px);
+  font-size: var(--fs); line-height: 1.45; color: var(--fg); -webkit-font-smoothing: antialiased; }
+.ccpp:not(.dark) { color-scheme: light; } .ccpp.dark { color-scheme: dark;
+  --bg: var(--cds-surface-2, #262624); --bg-nav: var(--cds-surface-1, #1f1e1d); --bg2: var(--cds-fill-ghost-hover, rgba(255,255,255,.06)); --bg3: var(--cds-fill-ghost-selected, rgba(255,255,255,.1));
+  --fg: var(--cds-text-primary, #f5f4ef); --fg2: var(--cds-text-secondary, #c2c0b6); --fg3: var(--cds-text-muted, #8f8d86);
+  --line: var(--cds-alpha-2, rgba(255,255,255,.1)); --line-soft: var(--cds-alpha-1, rgba(255,255,255,.05)); --field-ring: var(--cds-fill-field-ring, rgba(255,255,255,.15)); }
 .ccpp * { box-sizing: border-box; }
 .ccpp button { font: inherit; color: inherit; cursor: pointer; }
-.btn { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg2); }
+.ccpp :focus-visible { outline: none; box-shadow: var(--focus); }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: var(--h); padding: 0 12px; border-radius: var(--radius); border: 0; background: var(--bg2); color: var(--fg); white-space: nowrap; }
 .btn:hover { background: var(--bg3); }
-.btn.primary { background: var(--accent); color: var(--accent-fg); border-color: transparent; }
+.btn.ghost { background: transparent; } .btn.ghost:hover { background: var(--bg2); }
+.btn.primary { background: var(--fg); color: var(--bg); } .btn.primary:hover { opacity: .9; }
 .btn.danger { color: var(--bad); }
-.icon-btn { display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; border: 0; background: transparent; color: var(--fg2); }
-.icon-btn:hover { background: var(--bg3); color: var(--fg); }
-.icon-btn.on { color: var(--accent); }
-.input { height: 30px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); font: inherit; outline: none; width: 100%; }
-.input:focus, textarea.input:focus { border-color: var(--accent); }
-textarea.input { height: auto; padding: 8px 10px; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
-.switch { position: relative; width: 34px; height: 20px; flex: none; border-radius: 10px; border: 0; background: var(--bg3); padding: 0; transition: background .15s; }
-.switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.3); transition: transform .15s; }
+.btn:disabled { opacity: .45; cursor: default; }
+.icon-btn { display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: var(--radius); border: 0; background: transparent; color: var(--fg3); }
+.icon-btn:hover { background: var(--bg2); color: var(--fg); }
+.icon-btn.on { color: var(--fg); }
+.input { height: var(--h); padding: 0 10px; border-radius: var(--radius); border: 0; box-shadow: inset 0 0 0 1px var(--field-ring); background: var(--field); color: var(--fg); font: inherit; outline: none; width: 100%; }
+.input::placeholder { color: var(--fg3); }
+.input:focus, textarea.input:focus { box-shadow: var(--focus); }
+textarea.input { height: auto; padding: 8px 10px; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; line-height: 1.5; }
+select.input { padding-right: 6px; }
+/* Same proportions as claude.ai's Switch: height h, width 1.8h, 2px inset knob. */
+.switch { --sh: var(--cds-switch-h, 20px); position: relative; width: calc(var(--sh) * 1.8); height: var(--sh); flex: none; border-radius: 999px; border: 0; padding: 0; background: var(--cds-switch-track, rgba(127,127,127,.35)); transition: background .15s; }
+.switch:hover { background: var(--cds-switch-track-hover, rgba(127,127,127,.45)); }
+.switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: calc(var(--sh) - 4px); height: calc(var(--sh) - 4px); border-radius: 50%; background: var(--cds-switch-knob, #fff); box-shadow: 0 1px 2px rgba(0,0,0,.2); transition: transform .18s cubic-bezier(.3,1.4,.6,1); }
 .switch[aria-checked="true"] { background: var(--accent); }
-.switch[aria-checked="true"]::after { transform: translateX(14px); }
-.switch:disabled { opacity: .5; cursor: not-allowed; }
+.switch[aria-checked="true"]::after { transform: translateX(calc(var(--sh) * .8)); }
+.switch:disabled { opacity: .45; cursor: default; }
 .muted { color: var(--fg3); }
-.badge { display: inline-block; padding: 0 6px; border-radius: 6px; font-size: 11px; line-height: 18px; background: var(--bg3); color: var(--fg2); }
-.badge.accent { background: var(--accent); color: var(--accent-fg); }
-.badge.bad { background: var(--bad); color: #fff; }
+.badge { display: inline-flex; align-items: center; height: 18px; padding: 0 6px; border-radius: 6px; font-size: 11px; font-weight: 500; background: var(--bg3); color: var(--fg2); }
+.badge.accent { background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent); }
+.badge.bad { background: color-mix(in srgb, var(--bad) 16%, transparent); color: var(--bad); }
 @media (prefers-reduced-motion: reduce) { .ccpp * { transition: none !important; animation: none !important; } }
 `;
   function createHost(scope, id, css, options = {}) {
@@ -1381,7 +1400,11 @@ textarea.input { height: auto; padding: 8px 10px; resize: vertical; font-family:
     root.appendChild(h("style", { text: BASE_CSS + css }));
     const box = h("div", { class: "ccpp" });
     root.appendChild(box);
-    const sync = () => box.classList.toggle("dark", isDark());
+    const sync = () => {
+      box.classList.toggle("dark", isDark());
+      if (document.body)
+        box.style.fontFamily = getComputedStyle(document.body).fontFamily;
+    };
     sync();
     scope.observe(document.documentElement, { attributes: true, attributeFilter: ["data-mode", "class"] }, sync);
     const attach = () => {
@@ -1585,9 +1608,35 @@ textarea.input { height: auto; padding: 8px 10px; resize: vertical; font-family:
   });
 
   // src/plugins/_api/transcript/index.ts
-  var getScroller = () => document.querySelector(SEL.scroller);
-  function getRows() {
-    return [...document.querySelectorAll(SEL.transcriptRow)].map((el) => {
+  var FEEDS = `${SEL.scroller}, [data-testid="epitaxy-virtual-transcript"], [role="feed"][data-autoscroll-container]`;
+  var lastFeed = null;
+  function getScrollers() {
+    return [...document.querySelectorAll(FEEDS)].filter((el) => el.isConnected && el.clientHeight > 0);
+  }
+  function getScroller() {
+    const all = getScrollers();
+    if (!all.length)
+      return null;
+    if (lastFeed && all.includes(lastFeed))
+      return lastFeed;
+    return all.find((el) => el.closest('[data-perf-region="side_pane"]')) ?? all[0];
+  }
+  function noteFeedActivity(target) {
+    if (!(target instanceof Element))
+      return;
+    const feed = target.closest(FEEDS);
+    if (feed)
+      lastFeed = feed;
+  }
+  var SR_PREFIX = /^(?:You said|Claude responded|你说|Claude 回复)[:：]\s*/;
+  function rowText(el) {
+    const body = el.querySelector(`${SEL.userMessageBody}, ${SEL.userMessage}, ${SEL.prose}`) ?? el;
+    return (body.innerText || "").replace(SR_PREFIX, "").trim();
+  }
+  function getRows(root = getScroller()) {
+    if (!root)
+      return [];
+    return [...root.querySelectorAll(SEL.transcriptRow)].map((el) => {
       const index = Number(el.dataset.index);
       const message = el.querySelector(`${SEL.userMessage}, ${SEL.assistantMessage}`);
       const role = message?.matches(SEL.userMessage) || el.dataset.perfRow === "human" ? "user" : "assistant";
@@ -1595,8 +1644,8 @@ textarea.input { height: auto; padding: 8px 10px; resize: vertical; font-family:
       return { index, el, role, turnKey: keyed?.dataset.turnKey ?? null };
     }).filter((row) => Number.isFinite(row.index)).sort((a, b) => a.index - b.index);
   }
-  function totalMessages() {
-    const article = document.querySelector(`${SEL.transcriptRow} [role="article"][aria-setsize]`);
+  function totalMessages(root = getScroller()) {
+    const article = root?.querySelector("[aria-setsize]");
     const size = Number(article?.getAttribute("aria-setsize"));
     return Number.isFinite(size) && size > 0 ? size : null;
   }
@@ -1607,11 +1656,11 @@ textarea.input { height: auto; padding: 8px 10px; resize: vertical; font-family:
     scroller.scrollBy({ top: delta, behavior });
   }
   async function jumpTo(index, options = {}) {
-    const scroller = getScroller();
+    const scroller = options.scroller ?? getScroller();
     if (!scroller)
       return null;
-    for (let attempt = 0;attempt < 16; attempt++) {
-      const rows = getRows();
+    for (let attempt = 0;attempt < 24; attempt++) {
+      const rows = getRows(scroller);
       const row = rows.find((r) => r.index === index);
       if (row) {
         scrollRowIntoView(scroller, row.el, options.behavior ?? "smooth");
@@ -1635,18 +1684,18 @@ textarea.input { height: auto; padding: 8px 10px; resize: vertical; font-family:
     return null;
   }
   function flash(el) {
-    el.classList.remove("ccpp-flash");
-    el.offsetWidth;
-    el.classList.add("ccpp-flash");
-    setTimeout(() => el.classList.remove("ccpp-flash"), 1600);
+    const target = el.querySelector(`${SEL.userMessage}, ${SEL.assistantMessage}, [role="article"]`) ?? el;
+    target.classList.remove("ccpp-flash");
+    target.offsetWidth;
+    target.classList.add("ccpp-flash");
+    setTimeout(() => target.classList.remove("ccpp-flash"), 1600);
   }
-  function currentIndex() {
-    const scroller = getScroller();
+  function currentIndex(scroller = getScroller()) {
     if (!scroller)
       return null;
     const top = scroller.getBoundingClientRect().top + JUMP_OFFSET + 8;
     let best = null;
-    for (const row of getRows()) {
+    for (const row of getRows(scroller)) {
       const rect = row.el.getBoundingClientRect();
       if (rect.height === 0)
         continue;
@@ -1686,8 +1735,8 @@ textarea.input { height: auto; padding: 8px 10px; resize: vertical; font-family:
     scope.defer(() => markListeners.delete(fn));
   }
   var CSS3 = `
-@keyframes ccpp-flash { 0% { box-shadow: 0 0 0 2px rgba(217,119,87,.9); } 100% { box-shadow: 0 0 0 2px rgba(217,119,87,0); } }
-.ccpp-flash { border-radius: 12px; animation: ccpp-flash 1.6s ease-out; }
+@keyframes ccpp-flash { 0%, 70% { outline-color: var(--cds-text-primary, currentColor); } 100% { outline-color: transparent; } }
+.ccpp-flash { outline: 2px solid transparent; outline-offset: 4px; border-radius: 12px; animation: ccpp-flash 1.6s ease-out; }
 `;
   var transcript_default = definePlugin({
     name: "TranscriptApi",
@@ -1700,6 +1749,9 @@ textarea.input { height: auto; padding: 8px 10px; resize: vertical; font-family:
     start(scope) {
       addStyle(scope, CSS3, "transcript");
       scope.on("reply:end", ({ chatId }) => invalidateConversation(chatId));
+      const note = (event) => noteFeedActivity(event.target);
+      scope.listen(document, "pointerdown", note, { capture: true, passive: true });
+      scope.listen(document, "wheel", note, { capture: true, passive: true });
       scope.defer(() => cache.clear());
     }
   });
@@ -2559,72 +2611,108 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
   // src/plugins/chatNavigator/index.ts
   var logger8 = new Logger("ChatNavigator");
   var settings3 = definePluginSettings({
-    showAssistant: { type: "boolean", label: { zh: "列出 Claude 的回复", en: "List Claude's replies" }, description: { zh: "关闭后只列出你的提问。", en: "Off lists only your prompts." }, default: true },
-    minMessages: { type: "number", label: { zh: "至少几条消息才显示", en: "Show from this many messages" }, default: 3, min: 1, max: 20 },
-    flash: { type: "boolean", label: { zh: "跳转后高亮目标消息", en: "Highlight the message after jumping" }, default: true },
-    keys: { type: "boolean", label: { zh: "Alt + ↑ / ↓ 在消息间跳转", en: "Alt + ↑ / ↓ steps between messages" }, default: true }
+    showAssistant: { type: "boolean", label: { zh: "列出 Claude 的回复", en: "List Claude's replies" }, description: { zh: "关闭后目录里只有你的提问。", en: "Off lists only your prompts." }, default: true },
+    minMessages: { type: "number", label: { zh: "至少几条消息才显示", en: "Show from this many messages" }, description: { zh: "默认一问一答就显示。", en: "By default one prompt and reply is enough." }, default: 2, min: 1, max: 20 },
+    jumpEffect: {
+      type: "select",
+      label: { zh: "跳转效果", en: "Jump effect" },
+      description: { zh: "跳到一条消息后怎样提示它的位置。", en: "How the message is marked after jumping to it." },
+      default: "border",
+      options: [
+        { value: "border", label: { zh: "高亮边框", en: "Highlight border" } },
+        { value: "none", label: { zh: "无", en: "None" } }
+      ]
+    },
+    keys: { type: "boolean", label: { zh: "键盘跳转", en: "Keyboard" }, description: { zh: "不在输入框里时：↑ / ↓ 逐条跳转，Home / End 到首尾，Esc 收起目录。", en: "Outside the input: ↑ / ↓ step through messages, Home / End go to the ends, Esc closes the outline." }, default: true }
   });
   var L5 = {
-    you: { zh: "你", en: "You" },
-    claude: "Claude",
-    streaming: { zh: "（正在回复…）", en: "(replying…)" },
+    title: { zh: "对话目录", en: "Outline" },
+    streaming: { zh: "正在回复…", en: "Replying…" },
+    unloaded: { zh: "（滚动到这里后显示）", en: "(shown once scrolled into view)" },
     empty: { zh: "（空消息）", en: "(empty)" },
-    title: { zh: "对话目录", en: "Outline" }
+    goTo: { zh: "跳到第 {n} 条，共 {total} 条", en: "Go to message {n} of {total}" }
   };
   var CSS4 = `
-.rail { position: fixed; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; align-items: flex-end; gap: var(--gap, 6px); padding: 10px 6px; pointer-events: auto; border-radius: 10px; max-height: 70vh; }
-.tick { display: block; height: 2px; border-radius: 1px; background: var(--fg3); opacity: .45; border: 0; padding: 0; cursor: pointer; transition: width .12s, opacity .12s, background .12s; }
-.tick.user { width: 16px; } .tick.assistant { width: 9px; }
-.tick.current { opacity: 1; background: var(--fg); width: 20px; }
-.tick.marked { background: #e8a33d; opacity: 1; }
-.rail:hover .tick { opacity: .8; }
-.list { position: fixed; top: 50%; transform: translateY(-50%); width: 300px; max-height: 70vh; overflow: auto; padding: 6px; border-radius: 14px; background: var(--bg); border: 1px solid var(--line); box-shadow: var(--shadow); pointer-events: auto; display: none; }
-.list.show { display: block; animation: in .12s ease-out; }
-@keyframes in { from { opacity: 0; transform: translate(6px, -50%); } }
-.head { padding: 4px 8px 6px; font-weight: 600; color: var(--fg2); font-size: 12px; }
-.row { display: flex; gap: 8px; width: 100%; padding: 6px 8px; border: 0; border-radius: 8px; background: transparent; text-align: left; align-items: baseline; }
-.row:hover { background: var(--bg2); } .row.current { background: var(--bg3); }
-.row .who { flex: none; width: 44px; font-size: 11px; color: var(--fg3); } .row.user .who { color: var(--accent); }
-.row .txt { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.row.assistant .txt { color: var(--fg2); }
-.row .star { color: #e8a33d; flex: none; }
+.rail { position: fixed; display: flex; align-items: center; pointer-events: none; }
+.ticks { display: flex; flex-direction: column; align-items: flex-end; max-height: 100%; overflow: hidden; pointer-events: auto; scrollbar-width: none; }
+.ticks::-webkit-scrollbar { display: none; }
+.tick { display: flex; align-items: center; justify-content: flex-end; flex: none; width: 40px; height: 12px; padding: 0 4px; border: 0; background: transparent; }
+.dense .tick { height: 7px; }
+.tick::after { content: ""; display: block; height: 1px; width: 6px; border-radius: 999px; background: color-mix(in srgb, var(--fg3) 60%, transparent); transition: width .15s ease, background-color .15s ease; }
+.tick.assistant::after { width: 12px; }
+.tick.current::after { width: 16px; background: var(--fg); }
+.tick.marked::after { background: var(--clay); }
+.tick.live::after { height: 0; background: none; border-top: 1px dashed color-mix(in srgb, var(--fg3) 70%, transparent); }
+.tick.live.current::after { border-top-color: var(--fg); }
+.rail:hover .tick::after { background: color-mix(in srgb, var(--fg3) 85%, transparent); }
+.rail:hover .tick.current::after { background: var(--fg); }
+.rail:hover .tick.marked::after { background: var(--clay); }
+.menu { position: absolute; top: 50%; right: calc(100% + 4px); width: min(288px, 70vw); max-height: var(--menu-h, 70vh); overflow: auto; padding: 6px; border-radius: 20px; background: var(--bg); box-shadow: var(--shadow); color: var(--fg); pointer-events: auto;
+  opacity: 0; visibility: hidden; transform: translate(8px, -50%); transition: opacity .2s ease, visibility .2s ease, transform .2s ease; scrollbar-width: thin; overscroll-behavior: contain; }
+.rail.open .menu { opacity: 1; visibility: visible; transform: translate(0, -50%); }
+.meta { padding: 4px 10px 6px; color: var(--fg2); font-size: var(--fs-xs); letter-spacing: -.2px; font-variant-numeric: tabular-nums; }
+.list { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.item { display: flex; align-items: center; gap: 6px; width: 100%; padding: 6px 8px; border: 1px solid transparent; border-radius: 12px; background: transparent; color: var(--fg2); font-size: var(--fs); line-height: 1.4; letter-spacing: -.2px; text-align: start; }
+.item:hover, .item:focus-visible, .item.aim { background: var(--bg2); color: var(--fg); box-shadow: none; }
+.item.active { color: var(--fg); border-color: var(--line); }
+.emoji { flex: none; font-size: 15px; line-height: 1; }
+.label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.label.dim { color: var(--fg3); font-style: italic; }
+.star { flex: none; color: var(--clay); font-size: 12px; }
+@media (prefers-reduced-motion: reduce) { .menu, .tick::after { transition: none; } }
 `;
+  var seen2 = new Map;
   var chatNavigator_default = definePlugin({
     name: "ChatNavigator",
     title: { zh: "对话目录", en: "Chat navigator" },
     description: {
-      zh: "对话右侧的刻度目录：悬停展开全部提问与回复（包括长对话里尚未渲染的部分），点击跳转；Alt+↑/↓ 逐条跳转；收藏的消息标成橙色。",
-      en: "A tick outline on the right of the chat: hover to list every prompt and reply (also ones not rendered yet in long chats), click to jump, Alt+↑/↓ to step; starred messages show in orange."
+      zh: "把对话右侧做成 Notion 式目录：细刻度标出每条提问和回复，悬停展开全部消息（包括长对话里还没渲染的），点击跳转；正在输出的回复显示为虚线。普通对话和 Claude Code 项目页（项目聊天、线程侧栏）都能用。",
+      en: "A Notion-style outline on the right of the chat: thin ticks for every prompt and reply, hover to list them all (also ones not rendered yet), click to jump; a reply still streaming shows as a dashed tick. Works in chats and on Claude Code project pages (project chat and thread pane)."
     },
     category: "messages",
     icon: "list",
     enabledByDefault: true,
-    dependencies: ["TranscriptApi", "RouterApi", "HotkeysApi"],
+    updatedAt: "2026-10-13",
+    dependencies: ["TranscriptApi", "RouterApi", "ChatStateApi"],
     settings: settings3,
     start(scope) {
       const { box } = createHost(scope, "navigator", CSS4);
-      const rail = h("nav", { class: "rail", "aria-label": t(L5.title) });
-      const list = h("div", { class: "list", role: "menu", "aria-label": t(L5.title) });
-      box.append(rail, list);
+      const ticks = h("div", { class: "ticks", role: "navigation", "aria-label": t(L5.title) });
+      const meta = h("div", { class: "meta" });
+      const list = h("ul", { class: "list", role: "menu", "aria-label": t(L5.title) });
+      const menu = h("div", { class: "menu" }, meta, list);
+      const rail = h("div", { class: "rail" }, menu, ticks);
+      box.append(rail);
       let items = [];
       let chatId = null;
+      let scroller = null;
       let current = null;
+      let aim = -1;
       let loadToken = 0;
       let hideTimer;
       const shown = () => settings3.store.showAssistant ? items : items.filter((i) => i.role === "user");
+      const feedKey = () => chatId ?? `${location.pathname}${location.search}|${scroller?.closest('[data-perf-region="side_pane"]') ? "side" : "main"}`;
+      const harvest = () => {
+        const key = feedKey();
+        let memo = seen2.get(key);
+        if (!memo)
+          seen2.set(key, memo = new Map);
+        for (const row of getRows(scroller)) {
+          const text = rowText(row.el);
+          if (text || !memo.has(row.index))
+            memo.set(row.index, { index: row.index, role: row.role, text });
+        }
+        return memo;
+      };
       const fromDom = () => {
-        const total = totalMessages() ?? 0;
-        const rows = new Map(getRows().map((r) => [r.index, r]));
-        return Array.from({ length: total }, (_, index) => {
-          const row = rows.get(index);
-          const role = row?.role ?? (index % 2 === 0 ? "user" : "assistant");
-          return { index, role, text: row?.el.innerText ?? "" };
-        });
+        const memo = harvest();
+        const total = Math.max(totalMessages(scroller) ?? 0, memo.size ? Math.max(...memo.keys()) + 1 : 0);
+        return Array.from({ length: total }, (_, index) => memo.get(index) ?? { index, role: index % 2 === 0 ? "user" : "assistant", text: "" });
       };
       const load = async (force = false) => {
         const token = ++loadToken;
         if (!chatId) {
-          items = [];
+          items = fromDom();
           draw();
           return;
         }
@@ -2639,83 +2727,123 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
             return;
           items = fromDom();
         }
-        const total = totalMessages();
+        const total = totalMessages(scroller);
         if (total && total > items.length)
           items = [...items, ...fromDom().slice(items.length)];
         draw();
       };
+      const visible = () => !!scroller?.isConnected && shown().length >= settings3.store.minMessages;
       const place = () => {
-        const scroller = getScroller();
-        const visible = !!scroller && !!chatId && shown().length >= settings3.store.minMessages;
-        rail.style.display = visible ? "" : "none";
-        if (!visible) {
-          list.classList.remove("show");
+        if (!visible()) {
+          rail.style.display = "none";
+          setOpen(false);
           return;
         }
+        rail.style.display = "";
         const rect = scroller.getBoundingClientRect();
-        const right = Math.max(4, window.innerWidth - rect.right + 14);
-        rail.style.right = `${right}px`;
-        list.style.right = `${right + 30}px`;
+        const height = Math.max(120, rect.height - 48);
+        rail.style.right = `${Math.max(4, window.innerWidth - rect.right + 10)}px`;
+        rail.style.top = `${rect.top + rect.height / 2 - height / 2}px`;
+        rail.style.height = `${height}px`;
+        rail.style.setProperty("--menu-h", `${Math.min(window.innerHeight * 0.7, height)}px`);
+        rail.classList.toggle("dense", shown().length * 12 > height);
+      };
+      const isLive = (item) => chatPhase() === "streaming" && item.role === "assistant" && item.index === items.length - 1;
+      const label = (item) => {
+        if (item.text.trim())
+          return { text: snippet(item.text, 120), dim: false };
+        if (isLive(item))
+          return { text: t(L5.streaming), dim: true };
+        return { text: chatId ? t(L5.empty) : t(L5.unloaded), dim: true };
+      };
+      const activePos = () => {
+        const entries = shown();
+        if (current === null)
+          return -1;
+        let pos = -1;
+        entries.forEach((item, i) => item.index <= current && (pos = i));
+        return pos;
       };
       const draw = () => {
-        clear(rail);
+        clear(ticks);
         const entries = shown();
         const stars = getMarks("stars");
-        const gap = entries.length > 60 ? 2 : entries.length > 30 ? 4 : 7;
-        rail.style.setProperty("--gap", `${gap}px`);
-        for (const item of entries) {
-          const tick = h("button", { type: "button", class: `tick ${item.role}${item.index === current ? " current" : ""}${stars.has(item.index) ? " marked" : ""}`, "aria-label": `${item.role === "user" ? t(L5.you) : L5.claude}: ${snippet(item.text, 60)}` });
-          tick.addEventListener("click", () => go(item.index));
-          rail.appendChild(tick);
-        }
-        if (list.classList.contains("show"))
-          drawList();
+        const active = activePos();
+        entries.forEach((item, i) => {
+          const tick = h("button", {
+            type: "button",
+            class: `tick ${item.role}${i === active ? " current" : ""}${stars.has(item.index) ? " marked" : ""}${isLive(item) ? " live" : ""}`,
+            "aria-label": t(L5.goTo).replace("{n}", String(i + 1)).replace("{total}", String(entries.length))
+          });
+          tick.addEventListener("click", () => go(i));
+          ticks.appendChild(tick);
+        });
+        ticks.children[active]?.scrollIntoView({ block: "nearest" });
+        if (rail.classList.contains("open"))
+          drawMenu();
         place();
       };
-      const drawList = () => {
-        clear(list);
+      const drawMenu = () => {
+        const entries = shown();
         const stars = getMarks("stars");
-        list.appendChild(h("div", { class: "head", text: `${t(L5.title)} · ${shown().length}` }));
-        for (const item of shown()) {
-          const text = item.text.trim() ? snippet(item.text, 90) : item.role === "assistant" && item.index === items.length - 1 ? t(L5.streaming) : t(L5.empty);
-          const row = h("button", { type: "button", role: "menuitem", class: `row ${item.role}${item.index === current ? " current" : ""}` }, h("span", { class: "who", text: item.role === "user" ? t(L5.you) : L5.claude }), h("span", { class: "txt", text }), stars.has(item.index) ? h("span", { class: "star", text: "★" }) : null);
-          row.addEventListener("click", () => go(item.index));
-          list.appendChild(row);
-        }
-        list.querySelector(".row.current")?.scrollIntoView({ block: "nearest" });
+        const active = activePos();
+        meta.textContent = `${Math.max(active, 0) + 1} / ${entries.length}`;
+        clear(list);
+        entries.forEach((item, i) => {
+          const { text, dim } = label(item);
+          const row = h("button", { type: "button", role: "menuitem", class: `item${i === active ? " active" : ""}${i === aim ? " aim" : ""}` }, h("span", { class: "emoji", text: item.role === "user" ? "❓" : "\uD83E\uDD16" }), h("span", { class: `label${dim ? " dim" : ""}`, text }), stars.has(item.index) ? h("span", { class: "star", text: "★" }) : null);
+          row.addEventListener("click", () => go(i));
+          list.appendChild(h("li", {}, row));
+        });
+        list.children[aim >= 0 ? aim : active]?.scrollIntoView({ block: "nearest" });
       };
-      const go = (index) => {
-        current = index;
+      const go = (pos) => {
+        const item = shown()[pos];
+        if (!item)
+          return;
+        current = item.index;
+        aim = pos;
         draw();
-        jumpTo(index, { flash: settings3.store.flash });
+        jumpTo(item.index, { flash: settings3.store.jumpEffect === "border", scroller });
       };
-      const showList = () => {
+      const setOpen = (open) => {
         clearTimeout(hideTimer);
-        if (!list.classList.contains("show")) {
-          list.classList.add("show");
-          drawList();
-        }
+        if (open === rail.classList.contains("open"))
+          return;
+        rail.classList.toggle("open", open);
+        if (open)
+          drawMenu();
+        else
+          aim = -1;
       };
-      const hideList = () => {
-        clearTimeout(hideTimer);
-        hideTimer = setTimeout(() => list.classList.remove("show"), 250);
-      };
-      for (const el of [rail, list]) {
-        el.addEventListener("mouseenter", showList);
-        el.addEventListener("mouseleave", hideList);
+      for (const el of [ticks, menu]) {
+        el.addEventListener("mouseenter", () => setOpen(true));
+        el.addEventListener("mouseleave", () => {
+          clearTimeout(hideTimer);
+          hideTimer = setTimeout(() => setOpen(false), 200);
+        });
       }
       scope.defer(() => clearTimeout(hideTimer));
       const syncCurrent = () => {
-        const next = currentIndex();
+        const next = currentIndex(scroller);
         if (next === current)
           return;
         current = next;
-        for (const tick of rail.children)
-          tick.classList.remove("current");
-        const index = shown().findIndex((item) => item.index === current);
-        rail.children[index]?.classList.add("current");
-        if (list.classList.contains("show"))
-          drawList();
+        const active = activePos();
+        [...ticks.children].forEach((tick, i) => tick.classList.toggle("current", i === active));
+        ticks.children[active]?.scrollIntoView({ block: "nearest" });
+        if (rail.classList.contains("open"))
+          drawMenu();
+      };
+      const syncScroller = () => {
+        const next = getScroller();
+        if (next === scroller)
+          return false;
+        scroller = next;
+        current = null;
+        items = [];
+        load();
+        return true;
       };
       let scrollQueued = false;
       scope.listen(document, "scroll", () => {
@@ -2724,39 +2852,70 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
         scrollQueued = true;
         requestAnimationFrame(() => {
           scrollQueued = false;
-          syncCurrent();
+          if (!syncScroller())
+            syncCurrent();
+          if (!chatId) {
+            const before = items.filter((i) => i.text).length;
+            const next = fromDom();
+            if (next.length !== items.length || next.filter((i) => i.text).length !== before) {
+              items = next;
+              draw();
+            }
+          }
         });
       }, { capture: true, passive: true });
       scope.listen(window, "resize", place);
       onRoute(scope, (route) => {
         chatId = route.chatId;
+        scroller = getScroller();
         current = null;
         items = [];
         draw();
-        if (chatId)
-          scope.timeout(() => load(), 300);
+        scope.timeout(() => {
+          scroller = getScroller();
+          load();
+        }, 300);
       });
       scope.on("reply:end", () => scope.timeout(() => load(true), 800));
       onMarksChange(scope, draw);
       scope.interval(() => {
+        if (syncScroller())
+          return;
         place();
-        const total = totalMessages();
-        if (chatId && total && total !== items.length)
+        const total = totalMessages(scroller);
+        if (total && total !== items.length)
           load(total > items.length);
         syncCurrent();
       }, 1200);
       if (settings3.store.keys) {
-        const step = (dir) => {
-          const entries = shown();
-          if (!entries.length)
+        scope.listen(document, "keydown", (event) => {
+          if (!visible() || event.altKey || event.isComposing)
             return;
-          const at = current ?? currentIndex() ?? 0;
-          const target = dir > 0 ? entries.find((i) => i.index > at) : [...entries].reverse().find((i) => i.index < at);
-          if (target)
-            go(target.index);
-        };
-        bindKey(scope, "alt+arrowdown", () => step(1), { inInputs: false });
-        bindKey(scope, "alt+arrowup", () => step(-1), { inInputs: false });
+          if (isEditable(event.target) || isEditable(document.activeElement))
+            return;
+          const entries = shown();
+          if (event.key === "Escape") {
+            if (rail.classList.contains("open")) {
+              event.preventDefault();
+              setOpen(false);
+            }
+            return;
+          }
+          let target = null;
+          const at = activePos();
+          if (event.key === "Home" || (event.metaKey || event.ctrlKey) && event.key === "ArrowUp")
+            target = 0;
+          else if (event.key === "End" || (event.metaKey || event.ctrlKey) && event.key === "ArrowDown")
+            target = entries.length - 1;
+          else if (event.key === "ArrowUp" && !event.shiftKey)
+            target = Math.max(0, at - 1);
+          else if (event.key === "ArrowDown" && !event.shiftKey)
+            target = Math.min(entries.length - 1, at + 1);
+          if (target === null || target === at)
+            return;
+          event.preventDefault();
+          go(target);
+        });
       }
     }
   });
