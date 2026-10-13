@@ -201,14 +201,27 @@ export default definePlugin({
 
         scope.on("reply:start", () => go("start"));
         scope.on("reply:end", () => go("end"));
+        // Only a switch to another chat resets the icon. Sending from /new gives the chat its id
+        // mid-reply, and claude.ai rewrites the URL of the same chat; neither counts.
+        let chatId = currentRoute().chatId ?? null;
         scope.on("route", () => {
-            state = "idle";
-            go("route");
+            const next = currentRoute().chatId ?? null;
+            const switched = next !== chatId && chatId !== null;
+            chatId = next;
+            if (switched && state !== "streaming") {
+                state = "idle";
+                go("route");
+            }
             paint();
         });
+        // The editor updates its own state after the input event, so read the draft a moment later.
+        let inputTimer: ReturnType<typeof setTimeout> | undefined;
         scope.listen(document, "input", (event: Event) => {
-            if ((event.target as Element | null)?.closest?.(SEL.editor)) go("input");
+            if (!(event.target as Element | null)?.closest?.(SEL.editor)) return;
+            clearTimeout(inputTimer);
+            inputTimer = setTimeout(() => scope.alive && go("input"), 60);
         }, { capture: true });
+        scope.defer(() => clearTimeout(inputTimer));
         // A failed send, or an error event inside the reply stream, turns the icon red.
         onResponse(scope, req => sameOrigin(req) && req.method === "POST" && isCompletion(req.url.pathname), async response => {
             if (!response.ok) return go("error");
@@ -217,8 +230,8 @@ export default definePlugin({
                 if (/^event:\s*error\s*$/m.test(text) || /"type"\s*:\s*"error"/.test(text)) go("error");
             } catch {}
         });
-        // claude.ai may put its icon back; take the slot again.
-        if (document.head) scope.observe(document.head, { childList: true }, () => link.isConnected && [...document.head.querySelectorAll("link")].some(isIconLink) && paint());
+        // claude.ai (or another script) may put its icon back or drop ours; take the slot again.
+        if (document.head) scope.observe(document.head, { childList: true }, () => onChatSurface() && (!link.isConnected || [...document.head.querySelectorAll("link")].some(isIconLink)) && paint());
         scope.defer(release);
         paint();
     },

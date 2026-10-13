@@ -22,6 +22,8 @@ export interface RowInfo {
     role: "user" | "assistant";
     /** claude.ai's per-turn key; stable across reloads. */
     turnKey: string | null;
+    /** The message id of a Claude Code project-chat row ([data-epitaxy-entry]). */
+    entry: string | null;
 }
 
 /**
@@ -66,7 +68,8 @@ export function getRows(root: ParentNode | null = getScroller()): RowInfo[] {
             const message = el.querySelector<HTMLElement>(`${SEL.userMessage}, ${SEL.assistantMessage}`);
             const role: RowInfo["role"] = message?.matches(SEL.userMessage) || el.dataset.perfRow === "human" ? "user" : "assistant";
             const keyed = el.querySelector<HTMLElement>("[data-turn-key]");
-            return { index, el, role, turnKey: keyed?.dataset.turnKey ?? null };
+            const entry = el.querySelector<HTMLElement>("[data-epitaxy-entry]")?.dataset.epitaxyEntry ?? null;
+            return { index, el, role, turnKey: keyed?.dataset.turnKey ?? null, entry };
         })
         .filter(row => Number.isFinite(row.index))
         .sort((a, b) => a.index - b.index);

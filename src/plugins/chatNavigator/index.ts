@@ -49,6 +49,8 @@ interface Item {
     text: string;
     /** A project-chat card row (thread started, error…), left out of the outline. */
     notice?: boolean;
+    /** The project-chat message id the row shows. */
+    entry?: string | null;
 }
 
 /*
@@ -143,6 +145,27 @@ export function alignWithApi(items: Item[], api: Pick<ChannelMessage, "role" | "
     });
 }
 
+/**
+ * The outline of a project chat or thread, built from its messages. Rendered rows carry their message
+ * id, which pins each message to its row; messages whose row isn't rendered take the row at the same
+ * distance from the nearest pinned one (card rows keep their place in `api`, so distances hold).
+ * Rows newer than the messages (just sent) are added from the page. Null when no row is pinned.
+ */
+export function outlineFromApi(api: Pick<ChannelMessage, "id" | "role" | "text" | "notice">[], rows: Item[]): Item[] | null {
+    const pos = new Map(api.map((m, i) => [m.id, i]));
+    const anchors = rows.filter(r => r.entry && pos.has(r.entry)).map(r => [pos.get(r.entry!)!, r.index] as const);
+    if (!anchors.length) return null;
+    const rowFor = (i: number) => {
+        let best = anchors[0];
+        for (const anchor of anchors) if (Math.abs(anchor[0] - i) < Math.abs(best[0] - i)) best = anchor;
+        return i + best[1] - best[0];
+    };
+    const out: Item[] = api.flatMap((m, i) => (m.notice ? [] : [{ index: rowFor(i), role: m.role, text: m.text, entry: m.id }]));
+    const lastRow = Math.max(...anchors.map(a => a[1]));
+    for (const row of rows) if (row.entry && !pos.has(row.entry) && row.text && row.index > lastRow) out.push(row);
+    return out.sort((a, b) => a.index - b.index);
+}
+
 const paneOf = (scroller: HTMLElement) => (scroller.closest('[data-perf-region="side_pane"]') ? "side" : "main");
 
 /** Which conversation a transcript shows: the chat, the project chat, or the open thread. */
@@ -218,7 +241,7 @@ export default definePlugin({
                 if (!memo) seen.set(key, (memo = new Map()));
                 for (const row of getRows(scroller)) {
                     const text = rowText(row.el);
-                    if (text || !memo.has(row.index)) memo.set(row.index, { index: row.index, role: row.role, text });
+                    if (text || !memo.has(row.index)) memo.set(row.index, { index: row.index, role: row.role, text, entry: row.entry });
                 }
                 return memo;
             };
@@ -227,7 +250,8 @@ export default definePlugin({
                 const memo = harvest();
                 const total = Math.max(totalMessages(scroller) ?? 0, memo.size ? Math.max(...memo.keys()) + 1 : 0);
                 const rows = Array.from({ length: total }, (_, index) => memo.get(index) ?? { index, role: (index % 2 === 0 ? "user" : "assistant") as Item["role"], text: "" });
-                return channelId ? alignWithApi(rows, api) : rows;
+                if (!channelId) return rows;
+                return outlineFromApi(api, [...memo.values()]) ?? alignWithApi(rows, api);
             };
 
             const load = async (force = false) => {

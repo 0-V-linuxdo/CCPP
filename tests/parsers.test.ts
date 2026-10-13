@@ -16,7 +16,7 @@ import { splitLinks } from "../src/plugins/betterLinks";
 import { isTelemetry } from "../src/plugins/noTelemetry";
 import { toggleStar } from "../src/plugins/messageStars/store";
 import { faviconFor, nextState, parseMark } from "../src/plugins/chatFavicon";
-import { alignWithApi } from "../src/plugins/chatNavigator";
+import { alignWithApi, outlineFromApi } from "../src/plugins/chatNavigator";
 import { parseChannelMessages } from "../src/plugins/_api/claude";
 
 const ID = "2e8860cc-f63c-4514-931c-14080b0aa61e";
@@ -221,5 +221,23 @@ describe("project outline", () => {
         expect(alignWithApi(cardRows, withCard).map(r => r.text)).toEqual(["q1 hello there", "a1 answer text", "You said: q2 second question", "a2 second answer"]);
         // No rendered row: the newest message lines up with the last row.
         expect(alignWithApi(rows.slice(0, 2).map(r => ({ ...r, text: "" })), api).map(r => r.text)).toEqual(["q2 second question", "a2 second answer"]);
+    });
+    test("project outline pins messages to rows by message id", () => {
+        const api = [
+            { id: "m1", role: "user" as const, text: "q1" },
+            { id: "m2", role: "assistant" as const, text: "a1" },
+            { id: "c1", role: "assistant" as const, text: "", notice: true },
+            { id: "m3", role: "user" as const, text: "q2" },
+            { id: "m4", role: "assistant" as const, text: "a2" },
+        ];
+        // Two header rows before the first message; only the last rows are rendered, plus a just-sent one and a tool row.
+        const rows = [
+            { index: 5, role: "user" as const, text: "You said: q2", entry: "m3" },
+            { index: 6, role: "assistant" as const, text: "a2", entry: "m4" },
+            { index: 7, role: "user" as const, text: "You said: q3", entry: "m5" },
+            { index: 8, role: "assistant" as const, text: "Using tools…", entry: null },
+        ];
+        expect(outlineFromApi(api, rows)!.map(r => `${r.index}:${r.text}`)).toEqual(["2:q1", "3:a1", "5:q2", "6:a2", "7:You said: q3"]);
+        expect(outlineFromApi(api, [{ index: 0, role: "user", text: "" }])).toBeNull();
     });
 });

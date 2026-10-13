@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.7
+// @version      20261013.0.3.8
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -1714,7 +1714,8 @@ select.input { padding-right: 6px; }
       const message = el.querySelector(`${SEL.userMessage}, ${SEL.assistantMessage}`);
       const role = message?.matches(SEL.userMessage) || el.dataset.perfRow === "human" ? "user" : "assistant";
       const keyed = el.querySelector("[data-turn-key]");
-      return { index, el, role, turnKey: keyed?.dataset.turnKey ?? null };
+      const entry = el.querySelector("[data-epitaxy-entry]")?.dataset.epitaxyEntry ?? null;
+      return { index, el, role, turnKey: keyed?.dataset.turnKey ?? null, entry };
     }).filter((row) => Number.isFinite(row.index)).sort((a, b) => a.index - b.index);
   }
   function totalMessages(root = getScroller()) {
@@ -2044,7 +2045,7 @@ select.input { padding-right: 6px; }
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.7";
+  var version = "0.3.8";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -2665,7 +2666,9 @@ select.input { padding-right: 6px; }
     { hash: "settings/usage", label: { zh: "用量", en: "Usage" } },
     { hash: "settings/capabilities", label: { zh: "功能", en: "Capabilities" } },
     { hash: "settings/memory", label: { zh: "记忆", en: "Memory" } },
+    { hash: "settings/design-systems", label: { zh: "设计系统", en: "Design systems" } },
     { hash: "settings/claude-code", label: { zh: "Claude Code", en: "Claude Code" } },
+    { hash: "settings/browser-extension", label: { zh: "Claude in Chrome", en: "Claude in Chrome" } },
     { hash: "customize/skills/yours", label: { zh: "技能", en: "Skills" } },
     { hash: "customize/connectors/yours", label: { zh: "连接器", en: "Connectors" } },
     { hash: "customize/plugins/yours", label: { zh: "插件（claude.ai）", en: "Plugins (claude.ai)" } }
@@ -3798,6 +3801,25 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
       return [{ index: item.index, role: message.role, text: item.text || message.text }];
     });
   }
+  function outlineFromApi(api, rows) {
+    const pos = new Map(api.map((m, i) => [m.id, i]));
+    const anchors = rows.filter((r) => r.entry && pos.has(r.entry)).map((r) => [pos.get(r.entry), r.index]);
+    if (!anchors.length)
+      return null;
+    const rowFor = (i) => {
+      let best = anchors[0];
+      for (const anchor of anchors)
+        if (Math.abs(anchor[0] - i) < Math.abs(best[0] - i))
+          best = anchor;
+      return i + best[1] - best[0];
+    };
+    const out = api.flatMap((m, i) => m.notice ? [] : [{ index: rowFor(i), role: m.role, text: m.text, entry: m.id }]);
+    const lastRow = Math.max(...anchors.map((a) => a[1]));
+    for (const row of rows)
+      if (row.entry && !pos.has(row.entry) && row.text && row.index > lastRow)
+        out.push(row);
+    return out.sort((a, b) => a.index - b.index);
+  }
   var paneOf = (scroller) => scroller.closest('[data-perf-region="side_pane"]') ? "side" : "main";
   function keyFor(scroller) {
     if (paneOf(scroller) === "main")
@@ -3862,7 +3884,7 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
           for (const row of getRows(scroller)) {
             const text = rowText(row.el);
             if (text || !memo.has(row.index))
-              memo.set(row.index, { index: row.index, role: row.role, text });
+              memo.set(row.index, { index: row.index, role: row.role, text, entry: row.entry });
           }
           return memo;
         };
@@ -3870,7 +3892,9 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
           const memo = harvest();
           const total = Math.max(totalMessages(scroller) ?? 0, memo.size ? Math.max(...memo.keys()) + 1 : 0);
           const rows = Array.from({ length: total }, (_, index) => memo.get(index) ?? { index, role: index % 2 === 0 ? "user" : "assistant", text: "" });
-          return channelId ? alignWithApi(rows, api) : rows;
+          if (!channelId)
+            return rows;
+          return outlineFromApi(api, [...memo.values()]) ?? alignWithApi(rows, api);
         };
         const load = async (force = false) => {
           const token = ++loadToken;
@@ -4978,15 +5002,25 @@ ${t(L15.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
       };
       scope.on("reply:start", () => go("start"));
       scope.on("reply:end", () => go("end"));
+      let chatId = currentRoute().chatId ?? null;
       scope.on("route", () => {
-        state = "idle";
-        go("route");
+        const next = currentRoute().chatId ?? null;
+        const switched = next !== chatId && chatId !== null;
+        chatId = next;
+        if (switched && state !== "streaming") {
+          state = "idle";
+          go("route");
+        }
         paint();
       });
+      let inputTimer;
       scope.listen(document, "input", (event) => {
-        if (event.target?.closest?.(SEL.editor))
-          go("input");
+        if (!event.target?.closest?.(SEL.editor))
+          return;
+        clearTimeout(inputTimer);
+        inputTimer = setTimeout(() => scope.alive && go("input"), 60);
       }, { capture: true });
+      scope.defer(() => clearTimeout(inputTimer));
       onResponse(scope, (req) => sameOrigin(req) && req.method === "POST" && isCompletion(req.url.pathname), async (response) => {
         if (!response.ok)
           return go("error");
@@ -4997,7 +5031,7 @@ ${t(L15.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
         } catch {}
       });
       if (document.head)
-        scope.observe(document.head, { childList: true }, () => link.isConnected && [...document.head.querySelectorAll("link")].some(isIconLink) && paint());
+        scope.observe(document.head, { childList: true }, () => onChatSurface() && (!link.isConnected || [...document.head.querySelectorAll("link")].some(isIconLink)) && paint());
       scope.defer(release);
       paint();
     }
@@ -5826,7 +5860,7 @@ ${m.text.trim()}`).join(`
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.7",
+      version: "0.3.8",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -5843,7 +5877,7 @@ ${m.text.trim()}`).join(`
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.7";
+    win[FLAG] = "0.3.8";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     startPhase("document-start");
@@ -5859,7 +5893,7 @@ ${m.text.trim()}`).join(`
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.7"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.8"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();
