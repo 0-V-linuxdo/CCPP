@@ -337,6 +337,17 @@
     return dependentsOf(plugin.name).some((p) => isActive(p, seen));
   }
   var activeDependents = (name) => dependentsOf(name).filter((p) => isActive(p));
+  var pluginInfo = (plugin) => ({
+    name: plugin.name,
+    category: plugin.category,
+    enabled: isEnabled(plugin),
+    active: isActive(plugin),
+    running: !!plugin.scope,
+    required: !!plugin.required,
+    hidden: !!plugin.hidden,
+    dependencies: [...plugin.dependencies ?? []],
+    error: pluginError(plugin.name)
+  });
   var bootActive = new Map;
   function registerPlugins(list) {
     for (const plugin of list) {
@@ -2885,19 +2896,6 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
           row.classList.remove("ccpp-starred-row");
         };
       });
-      scope.defer(book.subscribe(() => {
-        paint();
-        if (headerItem)
-          refreshSlotItem(headerItem);
-        list.update();
-      }));
-      scope.defer(() => setMarks("stars", []));
-      onRoute(scope, () => {
-        paint();
-        if (headerItem)
-          refreshSlotItem(headerItem);
-        list.close();
-      });
       const list = createPopover(scope, "stars-list", LIST_CSS, 340);
       const renderList = (panel, close) => {
         const chatId = currentRoute().chatId;
@@ -2938,6 +2936,19 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
           return btn;
         }, 10);
       }
+      scope.defer(book.subscribe(() => {
+        paint();
+        if (headerItem)
+          refreshSlotItem(headerItem);
+        list.update();
+      }));
+      scope.defer(() => setMarks("stars", []));
+      onRoute(scope, () => {
+        paint();
+        if (headerItem)
+          refreshSlotItem(headerItem);
+        list.close();
+      });
       paint();
     }
   });
@@ -2958,6 +2969,9 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
   var CSS6 = `
 [data-ccpp-status] { position: absolute; top: 50%; right: 8px; transform: translateY(-50%); display: flex; align-items: center; justify-content: center; width: 20px; height: 20px; pointer-events: none; transition: opacity .12s; }
 [data-row]:hover > [data-ccpp-status], [data-row]:focus-within > [data-ccpp-status] { opacity: 0; }
+/* Keep long project names clear of the dot (the label fades out at its end). */
+[data-row]:has(> [data-ccpp-status]) [data-row-label] { padding-inline-end: 22px; }
+[data-row]:has(> [data-ccpp-status]):hover [data-row-label] { padding-inline-end: 0; }
 [data-ccpp-status] .status-dot { width: 6px; height: 6px; border-radius: 50%; display: block; }
 [data-ccpp-status] .status-dot[data-kind="clay"] { background-color: #d97757; animation: ccpp-breathe 3s ease-in-out infinite; }
 [data-ccpp-status] .status-dot[data-kind="awaiting"] { background-color: var(--cds-fill-warning, #c98a12); }
@@ -4162,13 +4176,30 @@ ${m.text.trim()}`).join(`
 
   // src/index.ts
   var FLAG = "__ccpp";
+  var GLOBAL = "CCPP";
   var logger11 = new Logger("Kernel");
+  function exposeRuntime(win) {
+    const runtime = Object.freeze({
+      version: "[20261013] v0.1.0",
+      get plugins() {
+        return allPlugins().map(pluginInfo);
+      },
+      plugin(name) {
+        const found = allPlugins().find((p) => p.name === name);
+        return found ? pluginInfo(found) : null;
+      }
+    });
+    try {
+      Object.defineProperty(win, GLOBAL, { value: runtime, enumerable: false, configurable: false, writable: false });
+    } catch {}
+  }
   function boot() {
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
     win[FLAG] = "[20261013] v0.1.0";
     registerPlugins(PLUGINS);
+    exposeRuntime(win);
     startPhase("document-start");
     const ready = () => startPhase("dom-ready");
     if (document.readyState === "loading")

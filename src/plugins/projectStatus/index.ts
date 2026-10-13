@@ -33,6 +33,9 @@ const NATIVE_STATUS = '[data-row-decoration]:not([data-ccpp-status]) [role="stat
 const CSS = `
 [data-ccpp-status] { position: absolute; top: 50%; right: 8px; transform: translateY(-50%); display: flex; align-items: center; justify-content: center; width: 20px; height: 20px; pointer-events: none; transition: opacity .12s; }
 [data-row]:hover > [data-ccpp-status], [data-row]:focus-within > [data-ccpp-status] { opacity: 0; }
+/* Keep long project names clear of the dot (the label fades out at its end). */
+[data-row]:has(> [data-ccpp-status]) [data-row-label] { padding-inline-end: 22px; }
+[data-row]:has(> [data-ccpp-status]):hover [data-row-label] { padding-inline-end: 0; }
 [data-ccpp-status] .status-dot { width: 6px; height: 6px; border-radius: 50%; display: block; }
 [data-ccpp-status] .status-dot[data-kind="clay"] { background-color: #d97757; animation: ccpp-breathe 3s ease-in-out infinite; }
 [data-ccpp-status] .status-dot[data-kind="awaiting"] { background-color: var(--cds-fill-warning, #c98a12); }

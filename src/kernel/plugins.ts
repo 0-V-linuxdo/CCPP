@@ -121,6 +121,31 @@ export function isActive(plugin: Plugin, seen = new Set<string>()): boolean {
 /** Running plugins that keep this one alive. */
 export const activeDependents = (name: string) => dependentsOf(name).filter(p => isActive(p));
 
+/** Read-only view of one plugin's state, for the runtime global and debugging. */
+export interface PluginInfo {
+    name: string;
+    category: string;
+    enabled: boolean;
+    active: boolean;
+    running: boolean;
+    required: boolean;
+    hidden: boolean;
+    dependencies: string[];
+    error: PluginError | null;
+}
+
+export const pluginInfo = (plugin: Plugin): PluginInfo => ({
+    name: plugin.name,
+    category: plugin.category,
+    enabled: isEnabled(plugin),
+    active: isActive(plugin),
+    running: !!plugin.scope,
+    required: !!plugin.required,
+    hidden: !!plugin.hidden,
+    dependencies: [...(plugin.dependencies ?? [])],
+    error: pluginError(plugin.name),
+});
+
 /* ---------- registration ---------- */
 
 const bootActive = new Map<string, boolean>();

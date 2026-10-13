@@ -143,18 +143,6 @@ export default definePlugin({
             };
         });
 
-        scope.defer(book.subscribe(() => {
-            paint();
-            if (headerItem) refreshSlotItem(headerItem);
-            list.update();
-        }));
-        scope.defer(() => setMarks("stars", []));
-        onRoute(scope, () => {
-            paint();
-            if (headerItem) refreshSlotItem(headerItem);
-            list.close();
-        });
-
         /* ---------- list ---------- */
 
         const list = createPopover(scope, "stars-list", LIST_CSS, 340);
@@ -200,6 +188,18 @@ export default definePlugin({
                 return btn;
             }, 10);
         }
+
+        scope.defer(book.subscribe(() => {
+            paint();
+            if (headerItem) refreshSlotItem(headerItem);
+            list.update();
+        }));
+        scope.defer(() => setMarks("stars", []));
+        onRoute(scope, () => {
+            paint();
+            if (headerItem) refreshSlotItem(headerItem);
+            list.close();
+        });
         paint();
     },
 });
