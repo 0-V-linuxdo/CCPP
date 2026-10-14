@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.10
+// @version      20261013.0.3.11
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -2077,7 +2077,7 @@ select.input { padding-right: 6px; }
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.10";
+  var version = "0.3.11";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -3851,6 +3851,33 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
         out.push(row);
     return out.sort((a, b) => a.index - b.index);
   }
+  function paneRight(scroller) {
+    const side = scroller.closest('[data-perf-region="side_pane"]');
+    let right = scroller.getBoundingClientRect().right;
+    if (side)
+      right = side.getBoundingClientRect().right;
+    else {
+      const otherSide = document.querySelector('[data-perf-region="side_pane"]');
+      const limit = otherSide && otherSide.getBoundingClientRect().width > 0 ? otherSide.getBoundingClientRect().left : window.innerWidth;
+      for (let el = scroller.parentElement;el && el !== document.body; el = el.parentElement) {
+        const r = el.getBoundingClientRect();
+        if (r.right > limit + 1 || el.contains(otherSide))
+          break;
+        right = Math.max(right, r.right);
+        if (el.tagName === "MAIN")
+          break;
+      }
+    }
+    for (let el = scroller;el && el !== document.body; el = el.parentElement) {
+      const bar = el.offsetWidth - el.clientWidth;
+      if (bar > 0 && /auto|scroll/.test(getComputedStyle(el).overflowY)) {
+        if (Math.abs(el.getBoundingClientRect().right - right) <= 1)
+          right -= bar;
+        break;
+      }
+    }
+    return right;
+  }
   var paneOf = (scroller) => scroller.closest('[data-perf-region="side_pane"]') ? "side" : "main";
   function keyFor(scroller) {
     if (paneOf(scroller) === "main")
@@ -3962,8 +3989,7 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
           rail.style.display = "";
           const rect = scroller.getBoundingClientRect();
           const height = Math.max(120, rect.height - 48);
-          const scrollbar = Math.max(0, scroller.offsetWidth - scroller.clientWidth);
-          rail.style.right = `${Math.max(0, window.innerWidth - rect.right + scrollbar)}px`;
+          rail.style.right = `${Math.max(0, window.innerWidth - paneRight(scroller))}px`;
           rail.style.top = `${rect.top + rect.height / 2 - height / 2}px`;
           rail.style.height = `${height}px`;
           rail.style.setProperty("--menu-h", `${Math.min(window.innerHeight * 0.7, height)}px`);
@@ -5892,7 +5918,7 @@ ${m.text.trim()}`).join(`
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.10",
+      version: "0.3.11",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -5909,7 +5935,7 @@ ${m.text.trim()}`).join(`
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.10";
+    win[FLAG] = "0.3.11";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     startPhase("document-start");
@@ -5925,7 +5951,7 @@ ${m.text.trim()}`).join(`
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.10"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.11"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();

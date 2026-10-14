@@ -165,6 +165,36 @@ export function outlineFromApi(api: Pick<ChannelMessage, "id" | "role" | "text" 
     return out.sort((a, b) => a.index - b.index);
 }
 
+/**
+ * Where the rail's right edge goes: the right edge of the transcript's pane (the whole chat area, or on
+ * project pages the main chat or the thread pane), minus the scrollbar when it sits at that edge.
+ */
+function paneRight(scroller: HTMLElement) {
+    const side = scroller.closest<HTMLElement>('[data-perf-region="side_pane"]');
+    let right = scroller.getBoundingClientRect().right;
+    if (side) right = side.getBoundingClientRect().right;
+    else {
+        // Climb to <main>, stopping before an ancestor that reaches past the thread pane.
+        const otherSide = document.querySelector<HTMLElement>('[data-perf-region="side_pane"]');
+        const limit = otherSide && otherSide.getBoundingClientRect().width > 0 ? otherSide.getBoundingClientRect().left : window.innerWidth;
+        for (let el = scroller.parentElement; el && el !== document.body; el = el.parentElement) {
+            const r = el.getBoundingClientRect();
+            if (r.right > limit + 1 || el.contains(otherSide)) break;
+            right = Math.max(right, r.right);
+            if (el.tagName === "MAIN") break;
+        }
+    }
+    // The scroll container's own scrollbar, when it runs along that edge.
+    for (let el: HTMLElement | null = scroller; el && el !== document.body; el = el.parentElement) {
+        const bar = el.offsetWidth - el.clientWidth;
+        if (bar > 0 && /auto|scroll/.test(getComputedStyle(el).overflowY)) {
+            if (Math.abs(el.getBoundingClientRect().right - right) <= 1) right -= bar;
+            break;
+        }
+    }
+    return right;
+}
+
 const paneOf = (scroller: HTMLElement) => (scroller.closest('[data-perf-region="side_pane"]') ? "side" : "main");
 
 /** Which conversation a transcript shows: the chat, the project chat, or the open thread. */
@@ -290,9 +320,8 @@ export default definePlugin({
                 rail.style.display = "";
                 const rect = scroller.getBoundingClientRect();
                 const height = Math.max(120, rect.height - 48);
-                // Flush with the transcript's right edge, just inside its scrollbar.
-                const scrollbar = Math.max(0, scroller.offsetWidth - scroller.clientWidth);
-                rail.style.right = `${Math.max(0, window.innerWidth - rect.right + scrollbar)}px`;
+                // Flush with the right edge of the pane the transcript lives in, leaving only its scrollbar.
+                rail.style.right = `${Math.max(0, window.innerWidth - paneRight(scroller))}px`;
                 rail.style.top = `${rect.top + rect.height / 2 - height / 2}px`;
                 rail.style.height = `${height}px`;
                 rail.style.setProperty("--menu-h", `${Math.min(window.innerHeight * 0.7, height)}px`);
