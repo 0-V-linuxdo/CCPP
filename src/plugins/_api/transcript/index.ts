@@ -96,7 +96,7 @@ function scrollRowIntoView(scroller: HTMLElement, row: HTMLElement, behavior: Sc
  * Scrolls message `index` into view, stepping through the virtual list when that row is
  * not mounted yet. Resolves with the row element, or null if it never appeared.
  */
-export async function jumpTo(index: number, options: { behavior?: ScrollBehavior; flash?: boolean; scroller?: HTMLElement | null } = {}): Promise<HTMLElement | null> {
+export async function jumpTo(index: number, options: { behavior?: ScrollBehavior; flash?: boolean; scroller?: HTMLElement | null; entry?: string | null } = {}): Promise<HTMLElement | null> {
     const scroller = options.scroller ?? getScroller();
     if (!scroller) return null;
     // A newer jump, or the reader scrolling by hand, ends this one: never fight the reader.
@@ -115,11 +115,13 @@ export async function jumpTo(index: number, options: { behavior?: ScrollBehavior
 
 const jumpTokens = new WeakMap<HTMLElement, number>();
 
-async function stepTo(scroller: HTMLElement, index: number, options: { behavior?: ScrollBehavior; flash?: boolean }, stopped: () => boolean): Promise<HTMLElement | null> {
+async function stepTo(scroller: HTMLElement, index: number, options: { behavior?: ScrollBehavior; flash?: boolean; entry?: string | null }, stopped: () => boolean): Promise<HTMLElement | null> {
     for (let attempt = 0; attempt < 24; attempt++) {
         if (stopped()) return null;
         const rows = getRows(scroller);
-        const row = rows.find(r => r.index === index);
+        // A message id is exact; the index may only be an estimate (project pages), so it just gets us close.
+        const byEntry = options.entry ? rows.find(r => r.entry === options.entry) : undefined;
+        const row = byEntry ?? rows.find(r => r.index === index);
         if (row) {
             scrollRowIntoView(scroller, row.el, options.behavior ?? "smooth");
             if (options.flash !== false) flash(row.el);

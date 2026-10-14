@@ -444,7 +444,7 @@ export default definePlugin({
                 aim = pos;
                 draw();
                 if (rail.classList.contains("open")) drawMenu(true);
-                void jumpTo(item.index, { flash: settings.store.jumpEffect === "border", scroller });
+                void jumpTo(item.index, { flash: settings.store.jumpEffect === "border", scroller, entry: item.entry });
             };
 
             const setOpen = (open: boolean) => {

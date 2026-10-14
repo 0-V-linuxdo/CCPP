@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.21
+// @version      20261013.0.3.22
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -1769,7 +1769,8 @@ select.input { padding-right: 6px; }
       if (stopped())
         return null;
       const rows = getRows(scroller);
-      const row = rows.find((r) => r.index === index);
+      const byEntry = options.entry ? rows.find((r) => r.entry === options.entry) : undefined;
+      const row = byEntry ?? rows.find((r) => r.index === index);
       if (row) {
         scrollRowIntoView(scroller, row.el, options.behavior ?? "smooth");
         if (options.flash !== false)
@@ -2079,7 +2080,7 @@ select.input { padding-right: 6px; }
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.21";
+  var version = "0.3.22";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -4111,7 +4112,7 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
           draw();
           if (rail.classList.contains("open"))
             drawMenu(true);
-          jumpTo(item.index, { flash: settings5.store.jumpEffect === "border", scroller });
+          jumpTo(item.index, { flash: settings5.store.jumpEffect === "border", scroller, entry: item.entry });
         };
         const setOpen = (open) => {
           clearTimeout(hideTimer);
@@ -6068,7 +6069,7 @@ ${m.text.trim()}`).join(`
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.21",
+      version: "0.3.22",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -6085,7 +6086,7 @@ ${m.text.trim()}`).join(`
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.21";
+    win[FLAG] = "0.3.22";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     startPhase("document-start");
@@ -6101,7 +6102,7 @@ ${m.text.trim()}`).join(`
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.21"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.22"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();
