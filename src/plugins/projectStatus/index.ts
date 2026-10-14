@@ -81,12 +81,17 @@ export default definePlugin({
     start(scope) {
         addStyle(scope, CSS, "project-status");
         const activity = new Map<string, ProjectActivity>();
-        const rows = new Map<string, HTMLElement>();
+        // One project can be listed twice (the hidden Chat sidebar list and the visible Code one), so each id
+        // keeps every group it appears in.
+        const rows = new Map<string, Set<HTMLElement>>();
         let busy = false;
 
         const paint = (id: string) => {
-            const group = rows.get(id);
-            const row = group?.querySelector<HTMLElement>(ROW);
+            for (const group of rows.get(id) ?? []) paintGroup(id, group);
+        };
+
+        const paintGroup = (id: string, group: HTMLElement) => {
+            const row = group.querySelector<HTMLElement>(ROW);
             if (!row) return;
             const info = activity.get(id);
             // claude.ai draws its own dot on the selected project; never draw a second one.
@@ -132,16 +137,19 @@ export default definePlugin({
         let pollSoon: ReturnType<typeof setTimeout> | undefined;
         watch(scope, PROJECT_ROW, group => {
             const id = group.dataset.groupList!;
-            rows.set(id, group);
-            paint(id);
+            let groups = rows.get(id);
+            if (!groups) rows.set(id, (groups = new Set()));
+            groups.add(group);
+            paintGroup(id, group);
             clearTimeout(pollSoon);
             pollSoon = setTimeout(poll, 300);
             // React re-renders the row (selection, hover menu); repaint when it does.
-            const observer = new MutationObserver(() => paint(id));
+            const observer = new MutationObserver(() => paintGroup(id, group));
             observer.observe(group, { childList: true, subtree: true });
             return () => {
                 observer.disconnect();
-                if (rows.get(id) === group) rows.delete(id);
+                groups.delete(group);
+                if (!groups.size && rows.get(id) === groups) rows.delete(id);
                 group.querySelector("[data-ccpp-status]")?.remove();
                 group.querySelector("[data-ccpp-corner]")?.remove();
             };
