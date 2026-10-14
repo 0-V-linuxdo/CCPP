@@ -196,6 +196,9 @@ function paneRight(scroller: HTMLElement) {
     return right;
 }
 
+/** Identity of an outline, to skip rebuilding when nothing changed. */
+const outlineKey = (items: Item[]) => items.map(i => `${i.index}:${i.role}:${i.text.length}`).join("|");
+
 const paneOf = (scroller: HTMLElement) => (scroller.closest('[data-perf-region="side_pane"]') ? "side" : "main");
 
 /** Which conversation a transcript shows: the chat, the project chat, or the open thread. */
@@ -248,7 +251,9 @@ export default definePlugin({
                 getChannelMessages(channelId, threadId, force)
                     .then(messages => {
                         api = messages;
-                        items = fromDom();
+                        const next = fromDom();
+                        if (outlineKey(next) === outlineKey(items)) return;
+                        items = next;
                         draw();
                     })
                     .catch(error => logger.debug("Project messages unavailable:", error))
@@ -290,8 +295,11 @@ export default definePlugin({
             const load = async (force = false) => {
                 const token = ++loadToken;
                 if (!chatId) {
-                    items = fromDom();
-                    draw();
+                    const next = fromDom();
+                    if (outlineKey(next) !== outlineKey(items)) {
+                        items = next;
+                        draw();
+                    }
                     loadApi(force);
                     return;
                 }
@@ -361,11 +369,14 @@ export default definePlugin({
                     ticks.appendChild(tick);
                 });
                 ticks.children[active]?.scrollIntoView({ block: "nearest" });
-                if (rail.classList.contains("open")) drawMenu();
+                if (rail.classList.contains("open")) drawMenu(false);
                 place();
             };
 
-            const drawMenu = () => {
+            /** Rebuilds the open list. `reveal` scrolls it to the current item (on open or a jump); otherwise
+             * the reader's own scroll position in the list is kept. */
+            const drawMenu = (reveal: boolean) => {
+                const keep = list.scrollTop;
                 const entries = shown();
                 const stars = getMarks("stars");
                 const active = activePos();
@@ -383,7 +394,8 @@ export default definePlugin({
                     row.addEventListener("click", () => go(i));
                     list.appendChild(h("li", {}, row));
                 });
-                (list.children[aim >= 0 ? aim : active] as HTMLElement | undefined)?.scrollIntoView({ block: "nearest" });
+                if (reveal) (list.children[aim >= 0 ? aim : active] as HTMLElement | undefined)?.scrollIntoView({ block: "nearest" });
+                else list.scrollTop = keep;
             };
 
             const go = (pos: number) => {
@@ -392,6 +404,7 @@ export default definePlugin({
                 current = item.index;
                 aim = pos;
                 draw();
+                if (rail.classList.contains("open")) drawMenu(true);
                 void jumpTo(item.index, { flash: settings.store.jumpEffect === "border", scroller });
             };
 
@@ -399,7 +412,7 @@ export default definePlugin({
                 clearTimeout(hideTimer);
                 if (open === rail.classList.contains("open")) return;
                 rail.classList.toggle("open", open);
-                if (open) drawMenu();
+                if (open) drawMenu(true);
                 else aim = -1;
             };
             for (const el of [ticks, menu]) {
@@ -417,7 +430,9 @@ export default definePlugin({
                 const active = activePos();
                 [...ticks.children].forEach((tick, i) => tick.classList.toggle("current", i === active));
                 ticks.children[active]?.scrollIntoView({ block: "nearest" });
-                if (rail.classList.contains("open")) drawMenu();
+                // Only the highlight moves; rebuilding the list would undo the reader's scrolling in it.
+                [...list.querySelectorAll(".item")].forEach((row, i) => row.classList.toggle("active", i === active));
+                if (rail.classList.contains("open")) meta.textContent = `${Math.max(active, 0) + 1} / ${shown().length}`;
             };
 
             const onScroll = () => {
@@ -432,10 +447,17 @@ export default definePlugin({
                 }
             };
 
+            // Project pages count card and tool rows in aria-setsize, so it never equals the outline's length;
+            // reload only when the page's own total moves.
+            let seenTotal: number | null = null;
             const tick = () => {
                 place();
                 const total = totalMessages(scroller);
-                if (total && total !== items.length) void load(total > items.length);
+                if (total && total !== seenTotal && (channelId ? true : total !== items.length)) {
+                    const grew = seenTotal !== null && total > seenTotal;
+                    seenTotal = total;
+                    void load(grew || total > items.length);
+                }
                 syncCurrent();
             };
 
