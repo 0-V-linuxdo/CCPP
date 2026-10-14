@@ -188,7 +188,8 @@ function paneRight(scroller: HTMLElement) {
     for (let el: HTMLElement | null = scroller; el && el !== document.body; el = el.parentElement) {
         const bar = el.offsetWidth - el.clientWidth;
         if (bar > 0 && /auto|scroll/.test(getComputedStyle(el).overflowY)) {
-            if (Math.abs(el.getBoundingClientRect().right - right) <= 1) right -= bar;
+            // claude.ai draws a thin overlay thumb inside a wider gutter; leave room for the thumb only.
+            if (Math.abs(el.getBoundingClientRect().right - right) <= 1) right -= Math.min(bar, 8);
             break;
         }
     }

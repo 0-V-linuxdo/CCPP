@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.11
+// @version      20261013.0.3.12
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -2077,7 +2077,7 @@ select.input { padding-right: 6px; }
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.11";
+  var version = "0.3.12";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -3872,7 +3872,7 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
       const bar = el.offsetWidth - el.clientWidth;
       if (bar > 0 && /auto|scroll/.test(getComputedStyle(el).overflowY)) {
         if (Math.abs(el.getBoundingClientRect().right - right) <= 1)
-          right -= bar;
+          right -= Math.min(bar, 8);
         break;
       }
     }
@@ -5016,7 +5016,12 @@ ${t(L15.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
       };
       const onChatSurface = () => ["chat", "new", "project"].includes(currentRoute().kind);
       let state = chatPhase() === "streaming" ? "streaming" : "idle";
-      const draft = () => !!getText().trim();
+      let sent = "";
+      let sentAt = 0;
+      const draft = () => {
+        const text = getText().trim();
+        return !!text && text !== sent && Date.now() - sentAt > 500;
+      };
       const link = document.createElement("link");
       link.id = ICON_ID;
       link.rel = "icon";
@@ -5058,7 +5063,14 @@ ${t(L15.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
         state = next;
         paint();
       };
-      scope.on("reply:start", () => go("start"));
+      onSubmit(scope, (text) => {
+        sent = text.trim();
+        sentAt = Date.now();
+      });
+      scope.on("reply:start", () => {
+        sentAt = Date.now();
+        go("start");
+      });
       scope.on("reply:end", () => go("end"));
       let chatId = currentRoute().chatId ?? null;
       scope.on("route", () => {
@@ -5918,7 +5930,7 @@ ${m.text.trim()}`).join(`
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.11",
+      version: "0.3.12",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -5935,7 +5947,7 @@ ${m.text.trim()}`).join(`
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.11";
+    win[FLAG] = "0.3.12";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     startPhase("document-start");
@@ -5951,7 +5963,7 @@ ${m.text.trim()}`).join(`
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.11"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.12"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();

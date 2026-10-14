@@ -7,7 +7,7 @@
 import { definePlugin } from "@kernel/plugins";
 import { definePluginSettings } from "@kernel/settings";
 import { chatPhase } from "@api/chatState";
-import { getText } from "@api/composer";
+import { getText, onSubmit } from "@api/composer";
 import { SEL } from "@api/dom";
 import { onResponse, sameOrigin } from "@api/network";
 import { currentRoute } from "@api/router";
@@ -161,7 +161,14 @@ export default definePlugin({
         // Only chat pages get a state icon; elsewhere claude.ai's own icon comes back.
         const onChatSurface = () => ["chat", "new", "project"].includes(currentRoute().kind);
         let state: FaviconState = chatPhase() === "streaming" ? "streaming" : "idle";
-        const draft = () => !!getText().trim();
+        // What was just sent: claude.ai clears (and may briefly restore) the composer after a send,
+        // and that text is not a new draft.
+        let sent = "";
+        let sentAt = 0;
+        const draft = () => {
+            const text = getText().trim();
+            return !!text && text !== sent && Date.now() - sentAt > 500;
+        };
 
         const link = document.createElement("link");
         link.id = ICON_ID;
@@ -199,7 +206,14 @@ export default definePlugin({
             paint();
         };
 
-        scope.on("reply:start", () => go("start"));
+        onSubmit(scope, text => {
+            sent = text.trim();
+            sentAt = Date.now();
+        });
+        scope.on("reply:start", () => {
+            sentAt = Date.now();
+            go("start");
+        });
         scope.on("reply:end", () => go("end"));
         // Only a switch to another chat resets the icon. Sending from /new gives the chat its id
         // mid-reply, and claude.ai rewrites the URL of the same chat; neither counts.
