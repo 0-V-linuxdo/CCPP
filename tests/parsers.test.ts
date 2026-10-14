@@ -6,7 +6,7 @@ import { matches, parseCombo } from "../src/plugins/_api/hotkeys";
 import { titleFrom } from "../src/plugins/_api/chatState";
 import { recordVisit, renameVisit } from "../src/plugins/recentChats";
 import { level } from "../src/plugins/usageDisplay";
-import { cornerKind, dotKind } from "../src/plugins/projectStatus";
+import { cornerKind, dotKind, projectKind } from "../src/plugins/projectStatus";
 import { remember } from "../src/plugins/inputHistory";
 import { parsePresets } from "../src/plugins/promptPresets";
 import { withPrefix } from "../src/plugins/tabStatus";
@@ -304,5 +304,16 @@ describe("outlineFromApi estimates", () => {
         expect(idx[0]).toBe(0);
         expect(idx[9]).toBe(5);
         expect(idx.every(n => n >= 0 && n <= 5)).toBe(true);
+    });
+});
+
+describe("projectKind", () => {
+    const a = (o: object) => ({ channelId: "chan_x", working: 0, blocked: 0, own: null, ...o }) as any;
+    test("running beats waiting, own session counts when enabled", () => {
+        expect(projectKind(a({ blocked: 1, own: "working" }), true, true)).toBe("clay");
+        expect(projectKind(a({ own: "working" }), true, false)).toBe(null);
+        expect(projectKind(a({ blocked: 2 }), true, true)).toBe("awaiting");
+        expect(projectKind(a({ blocked: 2 }), false, true)).toBe(null);
+        expect(projectKind(undefined, true, true)).toBe(null);
     });
 });
