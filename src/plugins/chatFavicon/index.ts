@@ -206,40 +206,35 @@ export default definePlugin({
             const href = faviconFor(settings.store.style as FaviconStyle, state, official, mark);
             if (link.getAttribute("href") !== href) link.setAttribute("href", href);
         };
+        // Replying = a completion request in flight, a send not yet answered, or claude.ai's own streaming
+        // mark. Short replies can finish between two DOM checks, so the request itself is the main signal.
+        let inflight = 0;
+        let pendingUntil = 0;
+        const live = () => inflight > 0 || Date.now() < pendingUntil || chatPhase() === "streaming";
         const update = () => {
+            const now = live();
+            if (now && !streaming) {
+                errored = false;
+                finished = false;
+            } else if (!now && streaming) finished = true;
+            streaming = now;
             const next = computeState({ streaming, errored, finished, draft: draft() });
             if (next === state) return;
             state = next;
             paint();
-        };
-        const begin = () => {
-            sentAt = Date.now();
-            errored = false;
-            finished = false;
-            streaming = true;
-            update();
-        };
-        const end = () => {
-            if (streaming) finished = true;
-            streaming = false;
-            update();
         };
 
         onSubmit(scope, text => {
             sent = norm(text);
             sentAt = Date.now();
             errored = false;
-            finished = false;
+            // Blue right away; the completion request (or claude.ai's streaming mark) takes over from here.
+            pendingUntil = Date.now() + 8000;
             update();
         });
-        scope.on("reply:start", begin);
-        scope.on("reply:end", end);
-        scope.interval(() => {
-            const live = chatPhase() === "streaming";
-            if (live && !streaming) begin();
-            else if (!live && streaming) end();
-            else update();
-        }, 500);
+        scope.on("reply:start", update);
+        scope.on("reply:end", update);
+        scope.interval(update, 500);
         // Only a switch to another chat clears the finished and error marks. Sending from /new gives
         // the chat its id mid-reply, and claude.ai rewrites the URL of the same chat; neither counts.
         let chatId = currentRoute().chatId ?? null;
@@ -267,11 +262,23 @@ export default definePlugin({
             update();
         };
         onResponse(scope, req => sameOrigin(req) && req.method === "POST" && isCompletion(req.url.pathname), async response => {
-            if (!response.ok) return fail();
+            inflight++;
+            pendingUntil = 0;
+            update();
             try {
+                if (!response.ok) return fail();
                 const text = await response.text();
                 if (/^event:\s*error\s*$/m.test(text) || /"type"\s*:\s*"error"/.test(text)) fail();
-            } catch {}
+            } catch {
+            } finally {
+                inflight = Math.max(0, inflight - 1);
+                update();
+            }
+        });
+        // claude.ai sets the href of every icon link while it replies, ours included; put ours back.
+        scope.observe(link, { attributes: true, attributeFilter: ["href"] }, () => {
+            const want = faviconFor(settings.store.style as FaviconStyle, state, official, mark);
+            if (onChatSurface() && link.getAttribute("href") !== want) link.setAttribute("href", want);
         });
         // claude.ai (or another script) may put its icon back or drop ours; take the slot again.
         if (document.head) scope.observe(document.head, { childList: true }, () => onChatSurface() && (!link.isConnected || [...document.head.querySelectorAll("link")].some(isIconLink)) && paint());
