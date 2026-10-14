@@ -62,12 +62,11 @@ export function insertText(text: string, editor = getEditor()) {
 /** Replaces everything in the editor. An empty string clears it. */
 export function setText(text: string, editor = getEditor()) {
     if (!editor) return false;
+    // Delete first: ProseMirror only picks up a DOM selection on selectionchange, so a paste right
+    // after selecting would land at the old caret and append. execCommand goes through its input path.
     selectAll(editor);
-    if (!text) {
-        document.execCommand("delete");
-        return true;
-    }
-    return insertText(text, editor);
+    document.execCommand("delete");
+    return text ? insertText(text, editor) : true;
 }
 
 /**

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.22
+// @version      20261013.0.3.23
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -1129,11 +1129,8 @@
     if (!editor)
       return false;
     selectAll(editor);
-    if (!text) {
-      document.execCommand("delete");
-      return true;
-    }
-    return insertText(text, editor);
+    document.execCommand("delete");
+    return text ? insertText(text, editor) : true;
   }
   function onSubmit(scope, fn) {
     scope.listen(document, "keydown", (event) => {
@@ -2080,7 +2077,7 @@ select.input { padding-right: 6px; }
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.22";
+  var version = "0.3.23";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -6069,7 +6066,7 @@ ${m.text.trim()}`).join(`
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.22",
+      version: "0.3.23",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -6086,7 +6083,7 @@ ${m.text.trim()}`).join(`
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.22";
+    win[FLAG] = "0.3.23";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     startPhase("document-start");
@@ -6102,7 +6099,7 @@ ${m.text.trim()}`).join(`
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.22"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.23"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();
