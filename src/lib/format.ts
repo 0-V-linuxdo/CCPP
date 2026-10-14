@@ -47,6 +47,9 @@ export function dateTimeText(at: number, now = Date.now()) {
     return `${date} ${time}`;
 }
 
+/** A full date and time in CC++'s interface language, not the browser's locale. */
+export const fullDateText = (at: number) => new Date(at).toLocaleString(zh() ? "zh-CN" : "en-US");
+
 export const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
 export const snippet = (text: string, max = 80) => {

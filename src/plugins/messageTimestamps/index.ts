@@ -6,7 +6,7 @@
 
 import { definePlugin } from "@kernel/plugins";
 import { definePluginSettings } from "@kernel/settings";
-import { dateTimeText } from "@lib/format";
+import { dateTimeText, fullDateText } from "@lib/format";
 import { SEL, watch } from "@api/dom";
 import { addStyle } from "@api/styles";
 
@@ -33,7 +33,7 @@ export default definePlugin({
                 if (!Number.isFinite(at)) return;
                 const text = dateTimeText(at);
                 if (el.textContent !== text) el.textContent = text;
-                el.setAttribute("data-ccpp-tip", new Date(at).toLocaleString());
+                el.setAttribute("data-ccpp-tip", fullDateText(at));
             };
             paint();
             const observer = new MutationObserver(paint);

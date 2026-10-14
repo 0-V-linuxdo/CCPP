@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.38
+// @version      20261013.0.3.39
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -1961,11 +1961,23 @@ select.input { padding-right: 6px; }
   });
 
   // src/kernel/i18n.ts
-  var detect = () => /^zh/i.test(globalThis.navigator?.language ?? "") ? "zh" : "en";
+  function claudeLocale() {
+    try {
+      const stored = globalThis.localStorage?.getItem("spa:locale");
+      if (stored)
+        return stored.replace(/^"|"$/g, "");
+    } catch {}
+    return globalThis.document?.documentElement?.lang ?? "";
+  }
+  var detect = () => /^zh/i.test(claudeLocale()) ? "zh" : "en";
+  var mode = "auto";
   var lang = detect();
   var getLang = () => lang;
-  var setLang = (next) => void (lang = next === "auto" ? detect() : next);
+  var setLang = (next) => void (mode = next, lang = next === "auto" ? detect() : next);
   var t = (text) => typeof text === "string" ? text : text[lang];
+  try {
+    new MutationObserver(() => mode === "auto" && (lang = detect())).observe(document.documentElement, { attributes: true, attributeFilter: ["lang"] });
+  } catch {}
 
   // src/plugins/_core/settings/styles.ts
   var PANEL_CSS = `
@@ -2175,7 +2187,7 @@ select.input { padding-right: 6px; }
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.38";
+  var version = "0.3.39";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -2719,7 +2731,7 @@ select.input { padding-right: 6px; }
     if (pending.length) {
       const reload = h("button", { type: "button", class: "btn primary", text: t(L3.reload) });
       reload.addEventListener("click", () => location.reload());
-      container.appendChild(h("div", { class: "banner" }, icon("alert", 16), h("span", { text: t(L3.reloadBanner) + pending.map((p) => t(p.title)).join("、") }), reload));
+      container.appendChild(h("div", { class: "banner" }, icon("alert", 16), h("span", { text: t(L3.reloadBanner) + pending.map((p) => t(p.title)).join(t({ zh: "、", en: ", " })) }), reload));
     }
     const list = h("div");
     container.appendChild(list);
@@ -3020,7 +3032,7 @@ select.input { padding-right: 6px; }
       label: { zh: "界面语言", en: "Language" },
       default: "auto",
       options: [
-        { value: "auto", label: { zh: "跟随浏览器", en: "Follow browser" } },
+        { value: "auto", label: { zh: "跟随 claude.ai", en: "Follow claude.ai" } },
         { value: "zh", label: "中文" },
         { value: "en", label: "English" }
       ]
@@ -3605,6 +3617,7 @@ ${x.css}`)].join(`
     const date = d.getFullYear() === today.getFullYear() ? `${d.getMonth() + 1}/${d.getDate()}` : `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`;
     return `${date} ${time}`;
   }
+  var fullDateText = (at) => new Date(at).toLocaleString(zh() ? "zh-CN" : "en-US");
   var snippet = (text, max = 80) => {
     const flat = text.replace(/\s+/g, " ").trim();
     return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat;
@@ -4862,14 +4875,24 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
       label: { zh: "预设", en: "Presets" },
       description: { zh: "每段一个预设，段与段之间空一行；第一行是标题。正文里的 \\n 会换行。", en: "One preset per block, blocks separated by a blank line; the first line is the title." },
       rows: 10,
-      default: `翻译成中文
+      default: t({
+        zh: `翻译成中文
 把下面的内容翻译成自然流畅的中文：
 
 逐行解释代码
 逐行解释下面的代码，指出潜在问题：
 
 总结要点
-用 5 条以内的要点总结：`
+用 5 条以内的要点总结：`,
+        en: `Translate to English
+Translate the following into natural, fluent English:
+
+Explain code line by line
+Explain the following code line by line and point out potential problems:
+
+Summarize
+Summarize in at most 5 bullet points:`
+      })
     },
     mode: {
       type: "select",
@@ -5425,9 +5448,11 @@ ${composer ? `[data-composer-card-holder], [data-cds="ChatComposer"] { max-width
       label: { zh: "问候语（每行一条）", en: "Greetings (one per line)" },
       description: { zh: "{name} 会替换成你的显示名，{time} 替换成早上好 / 下午好 / 晚上好。", en: "{name} becomes your display name, {time} becomes morning / afternoon / evening." },
       rows: 5,
-      default: `{time}，{name}
+      default: t({ zh: `{time}，{name}
 今天想做点什么？
-灵感来了就写下来`
+灵感来了就写下来`, en: `{time}, {name}
+What shall we work on today?
+Write it down while the idea is fresh` })
     },
     order: {
       type: "select",
@@ -5810,7 +5835,7 @@ ${targets.map((t) => `${t}:hover`).join(`,
     failed: { zh: "导出失败：{e}", en: "Export failed: {e}" },
     note: { zh: "导出当前显示的分支，内容来自 claude.ai 接口。", en: "Exports the branch on screen, read from claude.ai's API." }
   };
-  var stamp = (at) => at ? new Date(at).toLocaleString() : "";
+  var stamp = (at) => at ? fullDateText(at) : "";
   function toMarkdown(chat, timestamps) {
     const head = [`# ${chat.name || "Claude chat"}`, "", `- URL: https://claude.ai/chat/${chat.uuid}`, chat.model ? `- Model: ${chat.model}` : "", chat.createdAt ? `- Created: ${stamp(chat.createdAt)}` : ""].filter((line) => line !== "");
     const body = chat.messages.map((m) => {
@@ -5916,7 +5941,7 @@ ${m.text.trim()}`).join(`
           const text = dateTimeText(at);
           if (el.textContent !== text)
             el.textContent = text;
-          el.setAttribute("data-ccpp-tip", new Date(at).toLocaleString());
+          el.setAttribute("data-ccpp-tip", fullDateText(at));
         };
         paint();
         const observer = new MutationObserver(paint);
@@ -6188,7 +6213,7 @@ ${m.text.trim()}`).join(`
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.38",
+      version: "0.3.39",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -6205,7 +6230,7 @@ ${m.text.trim()}`).join(`
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.38";
+    win[FLAG] = "0.3.39";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -6222,7 +6247,7 @@ ${m.text.trim()}`).join(`
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.38"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.39"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();

@@ -20,7 +20,10 @@ const settings = definePluginSettings({
         label: { zh: "预设", en: "Presets" },
         description: { zh: "每段一个预设，段与段之间空一行；第一行是标题。正文里的 \\n 会换行。", en: "One preset per block, blocks separated by a blank line; the first line is the title." },
         rows: 10,
-        default: "翻译成中文\n把下面的内容翻译成自然流畅的中文：\n\n逐行解释代码\n逐行解释下面的代码，指出潜在问题：\n\n总结要点\n用 5 条以内的要点总结：",
+        default: t({
+            zh: "翻译成中文\n把下面的内容翻译成自然流畅的中文：\n\n逐行解释代码\n逐行解释下面的代码，指出潜在问题：\n\n总结要点\n用 5 条以内的要点总结：",
+            en: "Translate to English\nTranslate the following into natural, fluent English:\n\nExplain code line by line\nExplain the following code line by line and point out potential problems:\n\nSummarize\nSummarize in at most 5 bullet points:",
+        }),
     },
     mode: {
         type: "select",

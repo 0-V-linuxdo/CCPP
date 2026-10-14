@@ -223,7 +223,7 @@ export function renderPluginsTab(container: HTMLElement) {
     if (pending.length) {
         const reload = h("button", { type: "button", class: "btn primary", text: t(L.reload) });
         reload.addEventListener("click", () => location.reload());
-        container.appendChild(h("div", { class: "banner" }, icon("alert", 16), h("span", { text: t(L.reloadBanner) + pending.map(p => t(p.title)).join("、") }), reload));
+        container.appendChild(h("div", { class: "banner" }, icon("alert", 16), h("span", { text: t(L.reloadBanner) + pending.map(p => t(p.title)).join(t({ zh: "、", en: ", " })) }), reload));
     }
 
     const list = h("div");

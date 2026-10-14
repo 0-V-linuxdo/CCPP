@@ -10,6 +10,7 @@ import { definePluginSettings } from "@kernel/settings";
 import { download, fileSafe, h } from "@lib/dom";
 import { icon } from "@lib/icons";
 import { createPopover } from "@lib/popover";
+import { fullDateText } from "@lib/format";
 import type { Conversation } from "@api/claude";
 import { toast } from "@api/notices";
 import { currentRoute } from "@api/router";
@@ -31,7 +32,7 @@ const L = {
     note: { zh: "导出当前显示的分支，内容来自 claude.ai 接口。", en: "Exports the branch on screen, read from claude.ai's API." },
 };
 
-const stamp = (at: number | null) => (at ? new Date(at).toLocaleString() : "");
+const stamp = (at: number | null) => (at ? fullDateText(at) : "");
 
 export function toMarkdown(chat: Conversation, timestamps: boolean) {
     const head = [`# ${chat.name || "Claude chat"}`, "", `- URL: https://claude.ai/chat/${chat.uuid}`, chat.model ? `- Model: ${chat.model}` : "", chat.createdAt ? `- Created: ${stamp(chat.createdAt)}` : ""].filter(line => line !== "");

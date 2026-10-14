@@ -115,3 +115,26 @@ describe("scope", () => {
         expect(child.alive).toBe(false);
     });
 });
+
+describe("i18n", () => {
+    test("follows claude.ai's locale, not the browser's, and falls back to English", async () => {
+        const { getLang, setLang } = await import("../src/kernel/i18n");
+        try {
+            localStorage.setItem("spa:locale", "en-US");
+            setLang("auto");
+            expect(getLang()).toBe("en");
+            localStorage.setItem("spa:locale", "zh-CN");
+            setLang("auto");
+            expect(getLang()).toBe("zh");
+            localStorage.removeItem("spa:locale");
+            document.documentElement.lang = "";
+            setLang("auto");
+            expect(getLang()).toBe("en");
+            setLang("zh");
+            expect(getLang()).toBe("zh");
+        } finally {
+            localStorage.removeItem("spa:locale");
+            setLang("auto");
+        }
+    });
+});

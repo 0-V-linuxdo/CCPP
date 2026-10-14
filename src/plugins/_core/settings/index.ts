@@ -44,7 +44,7 @@ const settings = definePluginSettings({
         label: { zh: "界面语言", en: "Language" },
         default: "auto",
         options: [
-            { value: "auto", label: { zh: "跟随浏览器", en: "Follow browser" } },
+            { value: "auto", label: { zh: "跟随 claude.ai", en: "Follow claude.ai" } },
             { value: "zh", label: "中文" },
             { value: "en", label: "English" },
         ],
