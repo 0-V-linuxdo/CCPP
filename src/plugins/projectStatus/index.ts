@@ -18,7 +18,6 @@ const logger = new Logger("ProjectStatus");
 const settings = definePluginSettings({
     showCode: { type: "boolean", label: { zh: "也算上项目自身的 Code 会话", en: "Include the project's own Code session" }, description: { zh: "图标右上角的圆点汇总项目里线程和项目总控 Code 会话的状态；关闭后只看线程。", en: "The icon-corner dot sums up the project's threads and its own Code session; off counts threads only." }, default: true },
     showWaiting: { type: "boolean", label: { zh: "也标出「等你回复」的项目", en: "Also mark projects waiting on you" }, description: { zh: "有线程在等你时显示黄色圆点。", en: "A yellow dot when a thread is waiting for you." }, default: true },
-    hideNative: { type: "boolean", label: { zh: "去掉当前项目行尾的原生圆点", en: "Hide the native dot at the end of the open project's row" }, description: { zh: "claude.ai 会在当前打开的项目行尾画一个运行圆点；状态已经显示在图标右上角，这个可以去掉。", en: "claude.ai draws a running dot at the end of the open project's row; the icon corner already shows it." }, default: true },
     refreshSec: { type: "number", label: { zh: "刷新间隔", en: "Refresh every" }, default: 30, min: 10, max: 300, step: 5, unit: "s" },
 });
 
@@ -42,7 +41,6 @@ const CSS = `
 @media (prefers-reduced-motion: reduce) { [data-ccpp-corner] .status-dot { animation: none !important; } }
 `;
 
-const HIDE_NATIVE_CSS = `[data-group-list^="chan_"] [data-row] > [data-row-decoration]:has([role="status"]) { display: none !important; }`;
 
 export type DotKind = "clay" | "awaiting" | null;
 
@@ -82,7 +80,7 @@ export default definePlugin({
     dependencies: ["ClaudeApi", "DomApi", "StylesApi"],
     settings,
     start(scope) {
-        addStyle(scope, CSS + (settings.store.hideNative ? `\n${HIDE_NATIVE_CSS}` : ""), "project-status");
+        addStyle(scope, CSS, "project-status");
         const activity = new Map<string, ProjectActivity>();
         // One project can be listed twice (the hidden Chat sidebar list and the visible Code one), so each id
         // keeps every group it appears in.

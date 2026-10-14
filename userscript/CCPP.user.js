@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.26
+// @version      20261013.0.3.27
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -2087,7 +2087,7 @@ select.input { padding-right: 6px; }
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.26";
+  var version = "0.3.27";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -4480,7 +4480,6 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
   var settings7 = definePluginSettings({
     showCode: { type: "boolean", label: { zh: "也算上项目自身的 Code 会话", en: "Include the project's own Code session" }, description: { zh: "图标右上角的圆点汇总项目里线程和项目总控 Code 会话的状态；关闭后只看线程。", en: "The icon-corner dot sums up the project's threads and its own Code session; off counts threads only." }, default: true },
     showWaiting: { type: "boolean", label: { zh: "也标出「等你回复」的项目", en: "Also mark projects waiting on you" }, description: { zh: "有线程在等你时显示黄色圆点。", en: "A yellow dot when a thread is waiting for you." }, default: true },
-    hideNative: { type: "boolean", label: { zh: "去掉当前项目行尾的原生圆点", en: "Hide the native dot at the end of the open project's row" }, description: { zh: "claude.ai 会在当前打开的项目行尾画一个运行圆点；状态已经显示在图标右上角，这个可以去掉。", en: "claude.ai draws a running dot at the end of the open project's row; the icon corner already shows it." }, default: true },
     refreshSec: { type: "number", label: { zh: "刷新间隔", en: "Refresh every" }, default: 30, min: 10, max: 300, step: 5, unit: "s" }
   });
   var L12 = {
@@ -4498,7 +4497,6 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
 @keyframes ccpp-breathe { 0%, 100% { transform: scale(.86); opacity: .75; } 50% { transform: scale(1); opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { [data-ccpp-corner] .status-dot { animation: none !important; } }
 `;
-  var HIDE_NATIVE_CSS = `[data-group-list^="chan_"] [data-row] > [data-row-decoration]:has([role="status"]) { display: none !important; }`;
   function cornerKind(activity, showWaiting) {
     if (activity?.own === "working")
       return "clay";
@@ -4538,8 +4536,7 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
     dependencies: ["ClaudeApi", "DomApi", "StylesApi"],
     settings: settings7,
     start(scope) {
-      addStyle(scope, CSS6 + (settings7.store.hideNative ? `
-${HIDE_NATIVE_CSS}` : ""), "project-status");
+      addStyle(scope, CSS6, "project-status");
       const activity = new Map;
       const rows = new Map;
       let busy = false;
@@ -6078,7 +6075,7 @@ ${m.text.trim()}`).join(`
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.26",
+      version: "0.3.27",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -6095,7 +6092,7 @@ ${m.text.trim()}`).join(`
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.26";
+    win[FLAG] = "0.3.27";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     startPhase("document-start");
@@ -6111,7 +6108,7 @@ ${m.text.trim()}`).join(`
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.26"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.27"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();
