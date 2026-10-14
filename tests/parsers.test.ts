@@ -15,7 +15,7 @@ import { toMarkdown } from "../src/plugins/exportChat";
 import { splitLinks } from "../src/plugins/betterLinks";
 import { isTelemetry } from "../src/plugins/noTelemetry";
 import { toggleStar } from "../src/plugins/messageStars/store";
-import { faviconFor, nextState, parseMark } from "../src/plugins/chatFavicon";
+import { computeState, faviconFor, parseMark } from "../src/plugins/chatFavicon";
 import { alignWithApi, outlineFromApi } from "../src/plugins/chatNavigator";
 import { parseChannelMessages } from "../src/plugins/_api/claude";
 
@@ -168,16 +168,13 @@ describe("recent chats", () => {
 
 describe("chat favicon", () => {
     test("state follows replies, drafts and errors", () => {
-        expect(nextState("idle", "start", false)).toBe("streaming");
-        expect(nextState("streaming", "end", false)).toBe("done");
-        expect(nextState("done", "input", false)).toBe("done");
-        expect(nextState("done", "input", true)).toBe("ready");
-        expect(nextState("ready", "input", false)).toBe("idle");
-        expect(nextState("streaming", "error", false)).toBe("error");
-        expect(nextState("error", "end", false)).toBe("error");
-        expect(nextState("error", "input", true)).toBe("error");
-        expect(nextState("error", "start", false)).toBe("streaming");
-        expect(nextState("done", "route", false)).toBe("idle");
+        const f = { streaming: false, errored: false, finished: false, draft: false };
+        expect(computeState(f)).toBe("idle");
+        expect(computeState({ ...f, streaming: true })).toBe("streaming");
+        expect(computeState({ ...f, finished: true })).toBe("done");
+        expect(computeState({ ...f, finished: true, draft: true })).toBe("ready");
+        expect(computeState({ ...f, streaming: true, draft: true })).toBe("streaming");
+        expect(computeState({ ...f, errored: true, streaming: true })).toBe("error");
     });
     test("five styles, emoji mode keeps the official icon when idle", () => {
         expect(faviconFor("hole", "idle", "https://claude.ai/favicon.ico")).toBe("https://claude.ai/favicon.ico");
@@ -192,6 +189,11 @@ describe("chat favicon", () => {
         expect(tinted).toContain('fill="#EF4444"');
         expect(tinted).not.toContain("#D97757");
         expect(decodeURIComponent(faviconFor("dot", "done", "x", mark))).toContain('fill="#D97757"');
+        // Colours set through a style block or inline style are tinted too.
+        const styled = parseMark('<svg viewBox="0 0 10 10"><style>.a{fill:#D97757}.b{fill:#8f8d89}</style><path class="a" d="M0 0h5"/><path style="fill:#8f8d89" d="M5 5h5"/></svg>')!;
+        const blue = decodeURIComponent(faviconFor("hole", "streaming", "x", styled));
+        expect(blue).not.toMatch(/#D97757|#8f8d89/i);
+        expect(blue).toContain("#3B82F6");
     });
 });
 

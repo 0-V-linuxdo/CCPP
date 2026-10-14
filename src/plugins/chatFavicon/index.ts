@@ -73,8 +73,9 @@ export function parseMark(svgText: string): Mark | null {
     return viewBox && inner.trim() ? { viewBox, inner } : null;
 }
 
-/** Recolours every filled or stroked shape of the mark. */
-const recolor = (inner: string, color: string) => inner.replace(/\b(fill|stroke)="(?!none)[^"]*"/g, `$1="${color}"`);
+/** Recolours the whole mark: every colour it names, in attributes, inline styles or a style block. */
+const recolor = (inner: string, color: string) =>
+    inner.replace(/\b(fill|stroke)="(?!none)[^"]*"/g, `$1="${color}"`).replace(/#[0-9a-f]{3,8}\b|rgba?\([^)]*\)/gi, color);
 const place = (mark: Mark, inner: string, x = 0, y = 0, size = 64) => `<svg x="${x}" y="${y}" width="${size}" height="${size}" viewBox="${mark.viewBox}">${inner}</svg>`;
 const svgUrl = (inner: string) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">${inner}</svg>`)}`;
 
@@ -104,22 +105,24 @@ export function faviconFor(style: FaviconStyle, state: FaviconState, official: s
     return svgUrl(place(m, m.inner) + badge);
 }
 
-/** What the tab shows next: replies win, an error sticks until the next send, a finished reply stays until you type. */
-export function nextState(current: FaviconState, event: "start" | "end" | "error" | "input" | "route", hasDraft: boolean): FaviconState {
-    switch (event) {
-        case "start":
-            return "streaming";
-        case "error":
-            return "error";
-        case "end":
-            return current === "error" ? "error" : "done";
-        case "route":
-            return hasDraft ? "ready" : "idle";
-        case "input":
-            if (current === "streaming" || current === "error") return current;
-            if (hasDraft) return "ready";
-            return current === "done" ? "done" : "idle";
-    }
+/** Facts the tab icon is drawn from. */
+export interface ChatFacts {
+    streaming: boolean;
+    /** The last reply failed; sticks until the next send. */
+    errored: boolean;
+    /** The last reply finished in this chat; cleared by the next send or a chat switch. */
+    finished: boolean;
+    /** The composer holds new text (not what was just sent). */
+    draft: boolean;
+}
+
+/** An error wins, then a reply in progress, then a draft waiting to be sent, then a finished reply. */
+export function computeState(facts: ChatFacts): FaviconState {
+    if (facts.errored) return "error";
+    if (facts.streaming) return "streaming";
+    if (facts.draft) return "ready";
+    if (facts.finished) return "done";
+    return "idle";
 }
 
 const ICON_ID = "ccpp-favicon";
@@ -160,16 +163,20 @@ export default definePlugin({
         };
         // Only chat pages get a state icon; elsewhere claude.ai's own icon comes back.
         const onChatSurface = () => ["chat", "new", "project"].includes(currentRoute().kind);
-        let state: FaviconState = chatPhase() === "streaming" ? "streaming" : "idle";
-        // What was just sent: claude.ai clears (and may briefly restore) the composer after a send,
-        // and that text is not a new draft.
+        // The icon is recomputed from facts on every event and on a short timer, so a missed event
+        // (claude.ai changes its streams and routes often) can't leave it stuck in a stale state.
+        let errored = false;
+        let finished = false;
+        let streaming = chatPhase() === "streaming";
+        // What was just sent: claude.ai clears and briefly restores the composer after a send.
         let sent = "";
         let sentAt = 0;
+        const norm = (text: string) => text.replace(/\s+/g, " ").trim();
         const draft = () => {
-            const text = getText().trim();
-            return !!text && text !== sent && Date.now() - sentAt > 500;
+            const text = norm(getText());
+            return !!text && text !== sent && Date.now() - sentAt > 1500;
         };
-
+        let state: FaviconState = "idle";
         const link = document.createElement("link");
         link.id = ICON_ID;
         link.rel = "icon";
@@ -199,33 +206,51 @@ export default definePlugin({
             const href = faviconFor(settings.store.style as FaviconStyle, state, official, mark);
             if (link.getAttribute("href") !== href) link.setAttribute("href", href);
         };
-        const go = (event: Parameters<typeof nextState>[1]) => {
-            const next = nextState(state, event, draft());
+        const update = () => {
+            const next = computeState({ streaming, errored, finished, draft: draft() });
             if (next === state) return;
             state = next;
             paint();
         };
+        const begin = () => {
+            sentAt = Date.now();
+            errored = false;
+            finished = false;
+            streaming = true;
+            update();
+        };
+        const end = () => {
+            if (streaming) finished = true;
+            streaming = false;
+            update();
+        };
 
         onSubmit(scope, text => {
-            sent = text.trim();
+            sent = norm(text);
             sentAt = Date.now();
+            errored = false;
+            finished = false;
+            update();
         });
-        scope.on("reply:start", () => {
-            sentAt = Date.now();
-            go("start");
-        });
-        scope.on("reply:end", () => go("end"));
-        // Only a switch to another chat resets the icon. Sending from /new gives the chat its id
-        // mid-reply, and claude.ai rewrites the URL of the same chat; neither counts.
+        scope.on("reply:start", begin);
+        scope.on("reply:end", end);
+        scope.interval(() => {
+            const live = chatPhase() === "streaming";
+            if (live && !streaming) begin();
+            else if (!live && streaming) end();
+            else update();
+        }, 500);
+        // Only a switch to another chat clears the finished and error marks. Sending from /new gives
+        // the chat its id mid-reply, and claude.ai rewrites the URL of the same chat; neither counts.
         let chatId = currentRoute().chatId ?? null;
         scope.on("route", () => {
             const next = currentRoute().chatId ?? null;
-            const switched = next !== chatId && chatId !== null;
-            chatId = next;
-            if (switched && state !== "streaming") {
-                state = "idle";
-                go("route");
+            if (next !== chatId && chatId !== null && !streaming) {
+                finished = false;
+                errored = false;
             }
+            chatId = next;
+            update();
             paint();
         });
         // The editor updates its own state after the input event, so read the draft a moment later.
@@ -233,15 +258,19 @@ export default definePlugin({
         scope.listen(document, "input", (event: Event) => {
             if (!(event.target as Element | null)?.closest?.(SEL.editor)) return;
             clearTimeout(inputTimer);
-            inputTimer = setTimeout(() => scope.alive && go("input"), 60);
+            inputTimer = setTimeout(() => scope.alive && update(), 60);
         }, { capture: true });
         scope.defer(() => clearTimeout(inputTimer));
         // A failed send, or an error event inside the reply stream, turns the icon red.
+        const fail = () => {
+            errored = true;
+            update();
+        };
         onResponse(scope, req => sameOrigin(req) && req.method === "POST" && isCompletion(req.url.pathname), async response => {
-            if (!response.ok) return go("error");
+            if (!response.ok) return fail();
             try {
                 const text = await response.text();
-                if (/^event:\s*error\s*$/m.test(text) || /"type"\s*:\s*"error"/.test(text)) go("error");
+                if (/^event:\s*error\s*$/m.test(text) || /"type"\s*:\s*"error"/.test(text)) fail();
             } catch {}
         });
         // claude.ai (or another script) may put its icon back or drop ours; take the slot again.

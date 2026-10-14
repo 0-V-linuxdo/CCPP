@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.12
+// @version      20261013.0.3.13
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -2077,7 +2077,7 @@ select.input { padding-right: 6px; }
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.12";
+  var version = "0.3.13";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -4936,7 +4936,7 @@ ${t(L15.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
     const inner = svgText.slice(open.index + open[0].length, close).replace(/<script[\s\S]*?<\/script>/gi, "");
     return viewBox && inner.trim() ? { viewBox, inner } : null;
   }
-  var recolor = (inner, color) => inner.replace(/\b(fill|stroke)="(?!none)[^"]*"/g, `$1="${color}"`);
+  var recolor = (inner, color) => inner.replace(/\b(fill|stroke)="(?!none)[^"]*"/g, `$1="${color}"`).replace(/#[0-9a-f]{3,8}\b|rgba?\([^)]*\)/gi, color);
   var place3 = (mark, inner, x = 0, y = 0, size = 64) => `<svg x="${x}" y="${y}" width="${size}" height="${size}" viewBox="${mark.viewBox}">${inner}</svg>`;
   var svgUrl = (inner) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">${inner}</svg>`)}`;
   function glyph(state) {
@@ -4963,23 +4963,16 @@ ${t(L15.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
     const badge = style === "dot" ? `<circle cx="52" cy="52" r="11" fill="#fff"/><circle cx="52" cy="52" r="8" fill="${color}"/>` : `<circle cx="51.5" cy="51.5" r="12.5" fill="#fff"/><circle cx="51.5" cy="51.5" r="10" fill="${color}"/>${glyph(state)}`;
     return svgUrl(place3(m, m.inner) + badge);
   }
-  function nextState(current, event, hasDraft) {
-    switch (event) {
-      case "start":
-        return "streaming";
-      case "error":
-        return "error";
-      case "end":
-        return current === "error" ? "error" : "done";
-      case "route":
-        return hasDraft ? "ready" : "idle";
-      case "input":
-        if (current === "streaming" || current === "error")
-          return current;
-        if (hasDraft)
-          return "ready";
-        return current === "done" ? "done" : "idle";
-    }
+  function computeState(facts) {
+    if (facts.errored)
+      return "error";
+    if (facts.streaming)
+      return "streaming";
+    if (facts.draft)
+      return "ready";
+    if (facts.finished)
+      return "done";
+    return "idle";
   }
   var ICON_ID = "ccpp-favicon";
   var isIconLink = (node) => node instanceof HTMLLinkElement && /\bicon\b/i.test(node.rel) && node.id !== ICON_ID;
@@ -5015,13 +5008,17 @@ ${t(L15.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
         }).catch(() => {});
       };
       const onChatSurface = () => ["chat", "new", "project"].includes(currentRoute().kind);
-      let state = chatPhase() === "streaming" ? "streaming" : "idle";
+      let errored = false;
+      let finished = false;
+      let streaming = chatPhase() === "streaming";
       let sent = "";
       let sentAt = 0;
+      const norm = (text) => text.replace(/\s+/g, " ").trim();
       const draft = () => {
-        const text = getText().trim();
-        return !!text && text !== sent && Date.now() - sentAt > 500;
+        const text = norm(getText());
+        return !!text && text !== sent && Date.now() - sentAt > 1500;
       };
+      let state = "idle";
       const link = document.createElement("link");
       link.id = ICON_ID;
       link.rel = "icon";
@@ -5056,31 +5053,53 @@ ${t(L15.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
         if (link.getAttribute("href") !== href)
           link.setAttribute("href", href);
       };
-      const go = (event) => {
-        const next = nextState(state, event, draft());
+      const update = () => {
+        const next = computeState({ streaming, errored, finished, draft: draft() });
         if (next === state)
           return;
         state = next;
         paint();
       };
+      const begin = () => {
+        sentAt = Date.now();
+        errored = false;
+        finished = false;
+        streaming = true;
+        update();
+      };
+      const end = () => {
+        if (streaming)
+          finished = true;
+        streaming = false;
+        update();
+      };
       onSubmit(scope, (text) => {
-        sent = text.trim();
+        sent = norm(text);
         sentAt = Date.now();
+        errored = false;
+        finished = false;
+        update();
       });
-      scope.on("reply:start", () => {
-        sentAt = Date.now();
-        go("start");
-      });
-      scope.on("reply:end", () => go("end"));
+      scope.on("reply:start", begin);
+      scope.on("reply:end", end);
+      scope.interval(() => {
+        const live = chatPhase() === "streaming";
+        if (live && !streaming)
+          begin();
+        else if (!live && streaming)
+          end();
+        else
+          update();
+      }, 500);
       let chatId = currentRoute().chatId ?? null;
       scope.on("route", () => {
         const next = currentRoute().chatId ?? null;
-        const switched = next !== chatId && chatId !== null;
-        chatId = next;
-        if (switched && state !== "streaming") {
-          state = "idle";
-          go("route");
+        if (next !== chatId && chatId !== null && !streaming) {
+          finished = false;
+          errored = false;
         }
+        chatId = next;
+        update();
         paint();
       });
       let inputTimer;
@@ -5088,16 +5107,20 @@ ${t(L15.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
         if (!event.target?.closest?.(SEL.editor))
           return;
         clearTimeout(inputTimer);
-        inputTimer = setTimeout(() => scope.alive && go("input"), 60);
+        inputTimer = setTimeout(() => scope.alive && update(), 60);
       }, { capture: true });
       scope.defer(() => clearTimeout(inputTimer));
+      const fail = () => {
+        errored = true;
+        update();
+      };
       onResponse(scope, (req) => sameOrigin(req) && req.method === "POST" && isCompletion(req.url.pathname), async (response) => {
         if (!response.ok)
-          return go("error");
+          return fail();
         try {
           const text = await response.text();
           if (/^event:\s*error\s*$/m.test(text) || /"type"\s*:\s*"error"/.test(text))
-            go("error");
+            fail();
         } catch {}
       });
       if (document.head)
@@ -5930,7 +5953,7 @@ ${m.text.trim()}`).join(`
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.12",
+      version: "0.3.13",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -5947,7 +5970,7 @@ ${m.text.trim()}`).join(`
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.12";
+    win[FLAG] = "0.3.13";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     startPhase("document-start");
@@ -5963,7 +5986,7 @@ ${m.text.trim()}`).join(`
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.12"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.13"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();
