@@ -34,8 +34,9 @@ const CSS = `
 .ccpp-slot:empty { display: none; }
 .ccpp-slot-composer { margin-inline-end: 4px; }
 .ccpp-slot-header { margin-inline-end: 4px; }
-.ccpp-slot-btn { display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-width: 32px; height: 32px; padding: 0 8px; border-radius: 8px; border: 0; background: transparent; color: inherit; opacity: .75; font: inherit; font-size: 12px; cursor: pointer; }
-.ccpp-slot-btn:hover { opacity: 1; background: rgba(127,127,127,.14); }
+.ccpp-slot-btn { display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-width: 32px; height: 32px; padding: 0 8px; border-radius: 8px; border: 0; background: transparent; color: var(--cds-text-secondary, inherit); font: inherit; font-size: 12px; cursor: pointer; }
+/* Same colors and hover as claude.ai's ghost buttons next to it. */
+.ccpp-slot-btn:hover { color: var(--cds-text-primary, inherit); background: var(--cds-fill-ghost-hover, rgba(127,127,127,.14)); }
 .ccpp-slot-btn.on { color: #d97757; opacity: 1; }
 `;
 

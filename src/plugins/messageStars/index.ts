@@ -37,8 +37,8 @@ const L = {
 };
 
 const CSS = `
-.ccpp-star-btn { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 8px; border: 0; background: transparent; color: inherit; cursor: pointer; opacity: .7; }
-.ccpp-star-btn:hover { opacity: 1; background: rgba(127,127,127,.14); }
+.ccpp-star-btn:not(.ccpp-native) { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 8px; border: 0; background: transparent; color: var(--cds-text-secondary, inherit); cursor: pointer; }
+.ccpp-star-btn:not(.ccpp-native):hover { color: var(--cds-text-primary, inherit); background: var(--cds-fill-ghost-hover, rgba(127,127,127,.14)); }
 .ccpp-star-btn.on { color: #e8a33d; opacity: 1; }
 .ccpp-star-btn.on svg { fill: currentColor; }
 .ccpp-star-float { position: absolute; top: 4px; inset-inline-start: -34px; opacity: 0; transition: opacity .12s; z-index: 1; }
@@ -99,10 +99,19 @@ export default definePlugin({
             setMarks("stars", starsFor(chatId).map(s => s.index));
         };
 
-        const makeButton = (row: HTMLElement, extra = "") => {
+        /** In a native toolbar the button borrows a neighbour's classes and icon size, so it reads as one of them. */
+        const makeButton = (row: HTMLElement, extra = "", native?: HTMLElement | null) => {
             const info = rowInfo(row);
             const on = !!info && isStarred(info.key);
-            const btn = h("button", { type: "button", class: `ccpp-star-btn${extra}${on ? " on" : ""}`, title: t(on ? L.unstar : L.star), "aria-label": t(L.star), "aria-pressed": String(on) }, icon("star", 15));
+            const glyph = native?.querySelector("svg, [data-cds=\"Icon\"]")?.getBoundingClientRect();
+            const size = glyph && glyph.width >= 12 && glyph.width <= 24 ? Math.round(glyph.width) : 15;
+            const svg = icon("star", size);
+            if (native) svg.setAttribute("stroke-width", "1.5");
+            const btn = h("button", { type: "button", class: `ccpp-star-btn${extra}${on ? " on" : ""}`, title: t(on ? L.unstar : L.star), "aria-label": t(L.star), "aria-pressed": String(on) }, svg);
+            if (native) {
+                btn.className = `${native.className} ccpp-star-btn ccpp-native${extra}${on ? " on" : ""}`;
+                for (const attr of [...native.attributes]) if (attr.name.startsWith("data-cds") || attr.name === "data-size") btn.setAttribute(attr.name, attr.value);
+            }
             btn.addEventListener("click", event => {
                 event.preventDefault();
                 event.stopPropagation();
@@ -117,7 +126,8 @@ export default definePlugin({
                 if (btn?.isConnected) return;
                 const toolbar = row.querySelector<HTMLElement>(SEL.messageActions) ?? row.querySelector<HTMLElement>('[role="toolbar"]');
                 if (toolbar) {
-                    btn = makeButton(row);
+                    const native = [...toolbar.querySelectorAll<HTMLElement>("button:not(.ccpp-star-btn)")].pop();
+                    btn = makeButton(row, "", native);
                     toolbar.appendChild(btn);
                     return;
                 }

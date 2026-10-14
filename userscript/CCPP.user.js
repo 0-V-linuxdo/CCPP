@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.34
+// @version      20261013.0.3.35
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -1630,8 +1630,9 @@ select.input { padding-right: 6px; }
 .ccpp-slot:empty { display: none; }
 .ccpp-slot-composer { margin-inline-end: 4px; }
 .ccpp-slot-header { margin-inline-end: 4px; }
-.ccpp-slot-btn { display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-width: 32px; height: 32px; padding: 0 8px; border-radius: 8px; border: 0; background: transparent; color: inherit; opacity: .75; font: inherit; font-size: 12px; cursor: pointer; }
-.ccpp-slot-btn:hover { opacity: 1; background: rgba(127,127,127,.14); }
+.ccpp-slot-btn { display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-width: 32px; height: 32px; padding: 0 8px; border-radius: 8px; border: 0; background: transparent; color: var(--cds-text-secondary, inherit); font: inherit; font-size: 12px; cursor: pointer; }
+/* Same colors and hover as claude.ai's ghost buttons next to it. */
+.ccpp-slot-btn:hover { color: var(--cds-text-primary, inherit); background: var(--cds-fill-ghost-hover, rgba(127,127,127,.14)); }
 .ccpp-slot-btn.on { color: #d97757; opacity: 1; }
 `;
   function place(item, container) {
@@ -2092,7 +2093,7 @@ select.input { padding-right: 6px; }
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.34";
+  var version = "0.3.35";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -4322,8 +4323,8 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
     you: { zh: "你", en: "You" }
   };
   var CSS5 = `
-.ccpp-star-btn { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 8px; border: 0; background: transparent; color: inherit; cursor: pointer; opacity: .7; }
-.ccpp-star-btn:hover { opacity: 1; background: rgba(127,127,127,.14); }
+.ccpp-star-btn:not(.ccpp-native) { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 8px; border: 0; background: transparent; color: var(--cds-text-secondary, inherit); cursor: pointer; }
+.ccpp-star-btn:not(.ccpp-native):hover { color: var(--cds-text-primary, inherit); background: var(--cds-fill-ghost-hover, rgba(127,127,127,.14)); }
 .ccpp-star-btn.on { color: #e8a33d; opacity: 1; }
 .ccpp-star-btn.on svg { fill: currentColor; }
 .ccpp-star-float { position: absolute; top: 4px; inset-inline-start: -34px; opacity: 0; transition: opacity .12s; z-index: 1; }
@@ -4380,10 +4381,21 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
         }
         setMarks("stars", starsFor(chatId).map((s) => s.index));
       };
-      const makeButton = (row, extra = "") => {
+      const makeButton = (row, extra = "", native) => {
         const info = rowInfo(row);
         const on = !!info && isStarred(info.key);
-        const btn = h("button", { type: "button", class: `ccpp-star-btn${extra}${on ? " on" : ""}`, title: t(on ? L11.unstar : L11.star), "aria-label": t(L11.star), "aria-pressed": String(on) }, icon("star", 15));
+        const glyph = native?.querySelector('svg, [data-cds="Icon"]')?.getBoundingClientRect();
+        const size = glyph && glyph.width >= 12 && glyph.width <= 24 ? Math.round(glyph.width) : 15;
+        const svg = icon("star", size);
+        if (native)
+          svg.setAttribute("stroke-width", "1.5");
+        const btn = h("button", { type: "button", class: `ccpp-star-btn${extra}${on ? " on" : ""}`, title: t(on ? L11.unstar : L11.star), "aria-label": t(L11.star), "aria-pressed": String(on) }, svg);
+        if (native) {
+          btn.className = `${native.className} ccpp-star-btn ccpp-native${extra}${on ? " on" : ""}`;
+          for (const attr of [...native.attributes])
+            if (attr.name.startsWith("data-cds") || attr.name === "data-size")
+              btn.setAttribute(attr.name, attr.value);
+        }
         btn.addEventListener("click", (event) => {
           event.preventDefault();
           event.stopPropagation();
@@ -4398,7 +4410,8 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
             return;
           const toolbar = row.querySelector(SEL.messageActions) ?? row.querySelector('[role="toolbar"]');
           if (toolbar) {
-            btn = makeButton(row);
+            const native = [...toolbar.querySelectorAll("button:not(.ccpp-star-btn)")].pop();
+            btn = makeButton(row, "", native);
             toolbar.appendChild(btn);
             return;
           }
@@ -6085,7 +6098,7 @@ ${m.text.trim()}`).join(`
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.34",
+      version: "0.3.35",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -6102,7 +6115,7 @@ ${m.text.trim()}`).join(`
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.34";
+    win[FLAG] = "0.3.35";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     startPhase("document-start");
@@ -6118,7 +6131,7 @@ ${m.text.trim()}`).join(`
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.34"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.35"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();
