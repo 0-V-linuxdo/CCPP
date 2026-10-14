@@ -266,6 +266,8 @@ describe("declutter selectors match the current claude.ai DOM", () => {
         const css = streamerCss({ identity: true, sidebar: false, title: true, hover: false, amount: 6 });
         expect(hidden(css, `<button data-pane-title aria-label="CC++, rename project">CC++</button>`)).toBe(true);
         expect(hidden(css, `<a data-testid="cowork-computer-link-indicator">MacBook</a>`)).toBe(true);
+        document.body.innerHTML = `<div data-perf-region="side_pane"><div data-top-right><span data-cds="OverflowTooltip">t</span></div></div>`;
+        expect(document.querySelector("[data-cds=OverflowTooltip]")!.matches(css.slice(0, css.lastIndexOf("{")).trim())).toBe(true);
     });
     test("the composer API finds the Claude Code prompt", () => {
         document.body.innerHTML = `<div data-testid="code-prompt-input" contenteditable="true"><p>hello</p></div>`;

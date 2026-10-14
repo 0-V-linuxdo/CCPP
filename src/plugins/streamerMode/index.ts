@@ -20,7 +20,7 @@ export function streamerCss(o: { identity: boolean; sidebar: boolean; title: boo
     const targets = [
         ...(o.identity ? ['[data-testid="user-menu-button"] .df-user-menu-trailing', '[data-testid="user-menu-button"] [data-cds="Avatar"]', "[data-new-page-greeting-text]", '[data-testid="cowork-computer-link-indicator"]'] : []),
         ...(o.sidebar ? ['[data-testid="sidebar"] [data-row-label]', '[data-testid="sidebar"] a[href^="/chat/"]'] : []),
-        ...(o.title ? ['[data-testid="session-title-split"]', "[data-pane-title]"] : []),
+        ...(o.title ? ['[data-testid="session-title-split"]', "[data-pane-title]", '[data-perf-region="side_pane"] [data-top-right] [data-cds="OverflowTooltip"]'] : []),
     ];
     if (!targets.length) return "";
     const list = targets.join(",\n");
