@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.35
+// @version      20261013.0.3.36
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -869,7 +869,7 @@
     composerCard: "[data-composer-card-holder]",
     editor: ':is([data-testid="chat-input"], [data-testid="code-prompt-input"])',
     sendButton: ':is([data-testid="chat-input-send"], [data-testid="code-prompt-send"])',
-    modelSelector: ':is([data-testid="model-selector-dropdown"], [data-testid="epitaxy-cds-model-selector"])',
+    modelSelector: ':is([data-testid="model-selector-dropdown"], [data-testid="epitaxy-cds-model-selector"], [data-testid="environment-row-model"])',
     greeting: "[data-new-page-greeting-text]",
     menu: '[role="menu"]',
     menuItem: '[role="menuitem"]',
@@ -2093,7 +2093,7 @@ select.input { padding-right: 6px; }
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.35";
+  var version = "0.3.36";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -6098,7 +6098,7 @@ ${m.text.trim()}`).join(`
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.35",
+      version: "0.3.36",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -6115,7 +6115,7 @@ ${m.text.trim()}`).join(`
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.35";
+    win[FLAG] = "0.3.36";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     startPhase("document-start");
@@ -6131,7 +6131,7 @@ ${m.text.trim()}`).join(`
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.35"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.36"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();

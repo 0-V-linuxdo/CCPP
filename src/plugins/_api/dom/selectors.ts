@@ -37,7 +37,7 @@ export const SEL = {
     editor: ':is([data-testid="chat-input"], [data-testid="code-prompt-input"])',
     sendButton: ':is([data-testid="chat-input-send"], [data-testid="code-prompt-send"])',
     /** Chat model picker, or the Claude Code one (home, sessions, project threads). */
-    modelSelector: ':is([data-testid="model-selector-dropdown"], [data-testid="epitaxy-cds-model-selector"])',
+    modelSelector: ':is([data-testid="model-selector-dropdown"], [data-testid="epitaxy-cds-model-selector"], [data-testid="environment-row-model"])',
     greeting: "[data-new-page-greeting-text]",
     menu: '[role="menu"]',
     menuItem: '[role="menuitem"]',
