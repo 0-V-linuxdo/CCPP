@@ -156,10 +156,20 @@ export function outlineFromApi(api: Pick<ChannelMessage, "id" | "role" | "text" 
     const pos = new Map(api.map((m, i) => [m.id, i]));
     const anchors = rows.filter(r => r.entry && pos.has(r.entry)).map(r => [pos.get(r.entry!)!, r.index] as const);
     if (!anchors.length) return null;
+    // Between two anchors, interpolate; outside them, step one row per message from the nearest anchor,
+    // squeezed so nothing lands above row 0. Rows stay in message order either way.
+    const sorted = [...anchors].sort((a, b) => a[0] - b[0]);
+    const [p0, r0] = sorted[0];
+    const [pn, rn] = sorted[sorted.length - 1];
     const rowFor = (i: number) => {
-        let best = anchors[0];
-        for (const anchor of anchors) if (Math.abs(anchor[0] - i) < Math.abs(best[0] - i)) best = anchor;
-        return i + best[1] - best[0];
+        if (i < p0) return p0 <= r0 ? r0 - (p0 - i) : Math.floor((r0 * i) / p0);
+        if (i > pn) return rn + (i - pn);
+        let k = 0;
+        while (k < sorted.length - 1 && sorted[k + 1][0] < i) k++;
+        const [pa, ra] = sorted[k];
+        const [pb, rb] = sorted[Math.min(k + 1, sorted.length - 1)];
+        if (pb === pa) return ra;
+        return ra + Math.round(((i - pa) * (rb - ra)) / (pb - pa));
     };
     const out: Item[] = api.flatMap((m, i) => (m.notice ? [] : [{ index: rowFor(i), role: m.role, text: m.text, entry: m.id, seq: i }]));
     const lastRow = Math.max(...anchors.map(a => a[1]));
@@ -350,10 +360,25 @@ export default definePlugin({
 
             /** The message id of the row the reader is at (project pages), read when it was on screen. */
             let currentEntry: string | null = null;
+            /** The item just jumped to stays current until the reader scrolls on their own. */
+            let pinned: { index: number; entry?: string | null } | null = null;
+            const unpin = () => {
+                if (!pinned) return;
+                pinned = null;
+                current = null;
+                syncCurrent();
+            };
+            for (const type of ["wheel", "touchstart", "pointerdown", "keydown"]) scroller.addEventListener(type, unpin, { passive: true });
             /** The shown item the reader is at: the last one at or above the current row. On project pages the
              * row's message id decides, since unrendered rows only have estimated indices. */
             const activePos = () => {
                 const entries = shown();
+                if (pinned) {
+                    const at = entries.findIndex(item => (pinned!.entry ? item.entry === pinned!.entry : item.index === pinned!.index));
+                    if (at >= 0) return at;
+                }
+                // Scrolled to the end, the last message is the current one even if earlier ones are in view too.
+                if (entries.length && scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 4 && scroller.scrollHeight > scroller.clientHeight) return entries.length - 1;
                 if (current === null) return -1;
                 let pos = -1;
                 const seq = currentEntry ? api.findIndex(m => m.id === currentEntry) : -1;
@@ -415,6 +440,7 @@ export default definePlugin({
                 if (!item) return;
                 current = item.index;
                 currentEntry = item.entry ?? null;
+                pinned = { index: item.index, entry: item.entry };
                 aim = pos;
                 draw();
                 if (rail.classList.contains("open")) drawMenu(true);
@@ -436,12 +462,14 @@ export default definePlugin({
                 });
             }
 
+            let lastActive = -2;
             const syncCurrent = () => {
-                const next = currentIndex(scroller);
-                if (next === current) return;
+                const next = pinned ? current : currentIndex(scroller);
+                if (next === current && activePos() === lastActive) return;
                 current = next;
                 currentEntry = next === null ? null : (getRows(scroller).find(row => row.index === next)?.entry ?? null);
                 const active = activePos();
+                lastActive = active;
                 [...ticks.children].forEach((tick, i) => tick.classList.toggle("current", i === active));
                 ticks.children[active]?.scrollIntoView({ block: "nearest" });
                 // Only the highlight moves; rebuilding the list would undo the reader's scrolling in it.
@@ -453,9 +481,9 @@ export default definePlugin({
                 syncCurrent();
                 if (chatId) return;
                 // Project pages: learn rows as they mount.
-                const before = items.filter(i => i.text).length;
+                // Compare whole outlines: a newly mounted row can move estimated positions without changing counts.
                 const next = fromDom();
-                if (next.length !== items.length || next.filter(i => i.text).length !== before) {
+                if (outlineKey(next) !== outlineKey(items)) {
                     items = next;
                     draw();
                 }
@@ -496,6 +524,7 @@ export default definePlugin({
 
             const dispose = () => {
                 clearTimeout(hideTimer);
+                for (const type of ["wheel", "touchstart", "pointerdown", "keydown"]) scroller.removeEventListener(type, unpin);
                 loadToken++;
                 rail.remove();
             };

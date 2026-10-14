@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.20
+// @version      20261013.0.3.21
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -2079,7 +2079,7 @@ select.input { padding-right: 6px; }
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.20";
+  var version = "0.3.21";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -3597,6 +3597,7 @@ ${x.css}`)].join(`
     refresh: { zh: "刷新", en: "Refresh" },
     open: { zh: "打开官方用量页", en: "Open usage page" },
     loading: { zh: "读取中…", en: "Loading…" },
+    timeout: { zh: "读取用量超时，稍后自动重试", en: "Usage request timed out; retrying shortly" },
     error: { zh: "读取用量失败：{e}", en: "Could not read usage: {e}" },
     signedOut: { zh: "未登录或无权读取用量", en: "Not signed in or no access to usage" },
     none: { zh: "当前套餐没有用量窗口", en: "No usage windows on this plan" }
@@ -3606,6 +3607,7 @@ ${x.css}`)].join(`
   var loading = false;
   var lastAttempt = 0;
   var inflight = null;
+  var retryTimer;
   var listeners2 = new Set;
   var changed = () => listeners2.forEach((fn) => fn());
   var MIN_GAP_MS = 5000;
@@ -3616,14 +3618,21 @@ ${x.css}`)].join(`
       return;
     loading = true;
     lastAttempt = Date.now();
-    inflight = new AbortController;
-    const timeout = setTimeout(() => inflight?.abort(), 12000);
+    const controller = inflight = new AbortController;
+    let timedOut = false;
+    const timeout = setTimeout(() => (timedOut = true, controller.abort()), 12000);
+    clearTimeout(retryTimer);
     changed();
     try {
-      usage = await getUsage(inflight.signal);
+      usage = await getUsage(controller.signal);
       error = null;
     } catch (err) {
-      if (err.name === "AbortError" && !inflight)
+      if (timedOut) {
+        error = t(L9.timeout);
+        retryTimer = setTimeout(() => refresh2(true), 8000);
+        return;
+      }
+      if (err.name === "AbortError")
         return;
       error = err instanceof ApiError && (err.status === 401 || err.status === 403) ? t(L9.signedOut) : err.message || String(err);
       logger8.warn("Usage refresh failed:", err);
@@ -3734,7 +3743,7 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
       };
       listeners2.add(update);
       scope.defer(() => listeners2.delete(update));
-      scope.defer(() => inflight?.abort());
+      scope.defer(() => (clearTimeout(retryTimer), inflight?.abort()));
       scope.interval(() => refresh2(), settings4.store.refreshSec * 1000);
       scope.listen(document, "visibilitychange", () => !document.hidden && Date.now() - lastAttempt > settings4.store.refreshSec * 1000 && refresh2());
       scope.on("reply:end", () => scope.timeout(() => refresh2(true), 2500));
@@ -3839,12 +3848,22 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
     const anchors = rows.filter((r) => r.entry && pos.has(r.entry)).map((r) => [pos.get(r.entry), r.index]);
     if (!anchors.length)
       return null;
+    const sorted = [...anchors].sort((a, b) => a[0] - b[0]);
+    const [p0, r0] = sorted[0];
+    const [pn, rn] = sorted[sorted.length - 1];
     const rowFor = (i) => {
-      let best = anchors[0];
-      for (const anchor of anchors)
-        if (Math.abs(anchor[0] - i) < Math.abs(best[0] - i))
-          best = anchor;
-      return i + best[1] - best[0];
+      if (i < p0)
+        return p0 <= r0 ? r0 - (p0 - i) : Math.floor(r0 * i / p0);
+      if (i > pn)
+        return rn + (i - pn);
+      let k = 0;
+      while (k < sorted.length - 1 && sorted[k + 1][0] < i)
+        k++;
+      const [pa, ra] = sorted[k];
+      const [pb, rb] = sorted[Math.min(k + 1, sorted.length - 1)];
+      if (pb === pa)
+        return ra;
+      return ra + Math.round((i - pa) * (rb - ra) / (pb - pa));
     };
     const out = api.flatMap((m, i) => m.notice ? [] : [{ index: rowFor(i), role: m.role, text: m.text, entry: m.id, seq: i }]);
     const lastRow = Math.max(...anchors.map((a) => a[1]));
@@ -4014,8 +4033,25 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
           return { text: t(L10.empty), dim: true };
         };
         let currentEntry = null;
+        let pinned = null;
+        const unpin = () => {
+          if (!pinned)
+            return;
+          pinned = null;
+          current = null;
+          syncCurrent();
+        };
+        for (const type of ["wheel", "touchstart", "pointerdown", "keydown"])
+          scroller.addEventListener(type, unpin, { passive: true });
         const activePos = () => {
           const entries = shown();
+          if (pinned) {
+            const at = entries.findIndex((item) => pinned.entry ? item.entry === pinned.entry : item.index === pinned.index);
+            if (at >= 0)
+              return at;
+          }
+          if (entries.length && scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 4 && scroller.scrollHeight > scroller.clientHeight)
+            return entries.length - 1;
           if (current === null)
             return -1;
           let pos = -1;
@@ -4070,6 +4106,7 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
             return;
           current = item.index;
           currentEntry = item.entry ?? null;
+          pinned = { index: item.index, entry: item.entry };
           aim = pos;
           draw();
           if (rail.classList.contains("open"))
@@ -4093,13 +4130,15 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
             hideTimer = setTimeout(() => setOpen(false), 200);
           });
         }
+        let lastActive = -2;
         const syncCurrent = () => {
-          const next = currentIndex(scroller);
-          if (next === current)
+          const next = pinned ? current : currentIndex(scroller);
+          if (next === current && activePos() === lastActive)
             return;
           current = next;
           currentEntry = next === null ? null : getRows(scroller).find((row) => row.index === next)?.entry ?? null;
           const active = activePos();
+          lastActive = active;
           [...ticks.children].forEach((tick, i) => tick.classList.toggle("current", i === active));
           ticks.children[active]?.scrollIntoView({ block: "nearest" });
           [...list.querySelectorAll(".item")].forEach((row, i) => row.classList.toggle("active", i === active));
@@ -4110,9 +4149,8 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
           syncCurrent();
           if (chatId)
             return;
-          const before = items.filter((i) => i.text).length;
           const next = fromDom();
-          if (next.length !== items.length || next.filter((i) => i.text).length !== before) {
+          if (outlineKey(next) !== outlineKey(items)) {
             items = next;
             draw();
           }
@@ -4153,6 +4191,8 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
         };
         const dispose = () => {
           clearTimeout(hideTimer);
+          for (const type of ["wheel", "touchstart", "pointerdown", "keydown"])
+            scroller.removeEventListener(type, unpin);
           loadToken++;
           rail.remove();
         };
@@ -6028,7 +6068,7 @@ ${m.text.trim()}`).join(`
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.20",
+      version: "0.3.21",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -6045,7 +6085,7 @@ ${m.text.trim()}`).join(`
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.20";
+    win[FLAG] = "0.3.21";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     startPhase("document-start");
@@ -6061,7 +6101,7 @@ ${m.text.trim()}`).join(`
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.20"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.21"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();

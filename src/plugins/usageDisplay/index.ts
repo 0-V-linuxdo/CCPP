@@ -44,6 +44,7 @@ const L = {
     refresh: { zh: "刷新", en: "Refresh" },
     open: { zh: "打开官方用量页", en: "Open usage page" },
     loading: { zh: "读取中…", en: "Loading…" },
+    timeout: { zh: "读取用量超时，稍后自动重试", en: "Usage request timed out; retrying shortly" },
     error: { zh: "读取用量失败：{e}", en: "Could not read usage: {e}" },
     signedOut: { zh: "未登录或无权读取用量", en: "Not signed in or no access to usage" },
     none: { zh: "当前套餐没有用量窗口", en: "No usage windows on this plan" },
@@ -56,6 +57,7 @@ let error: string | null = null;
 let loading = false;
 let lastAttempt = 0;
 let inflight: AbortController | null = null;
+let retryTimer: ReturnType<typeof setTimeout> | undefined;
 const listeners = new Set<() => void>();
 const changed = () => listeners.forEach(fn => fn());
 
@@ -67,14 +69,22 @@ async function refresh(force = false) {
     if (!force && document.hidden) return;
     loading = true;
     lastAttempt = Date.now();
-    inflight = new AbortController();
-    const timeout = setTimeout(() => inflight?.abort(), 12000);
+    const controller = (inflight = new AbortController());
+    let timedOut = false;
+    const timeout = setTimeout(() => ((timedOut = true), controller.abort()), 12000);
+    clearTimeout(retryTimer);
     changed();
     try {
-        usage = await getUsage(inflight.signal);
+        usage = await getUsage(controller.signal);
         error = null;
     } catch (err) {
-        if ((err as Error).name === "AbortError" && !inflight) return;
+        if (timedOut) {
+            error = t(L.timeout);
+            retryTimer = setTimeout(() => refresh(true), 8000);
+            return;
+        }
+        // Aborted because the plugin stopped.
+        if ((err as Error).name === "AbortError") return;
         error = err instanceof ApiError && (err.status === 401 || err.status === 403) ? t(L.signedOut) : (err as Error).message || String(err);
         logger.warn("Usage refresh failed:", err);
     } finally {
@@ -211,7 +221,7 @@ export default definePlugin({
         };
         listeners.add(update);
         scope.defer(() => listeners.delete(update));
-        scope.defer(() => inflight?.abort());
+        scope.defer(() => (clearTimeout(retryTimer), inflight?.abort()));
         scope.interval(() => refresh(), settings.store.refreshSec * 1000);
         scope.listen(document, "visibilitychange", () => !document.hidden && Date.now() - lastAttempt > settings.store.refreshSec * 1000 && refresh());
         scope.on("reply:end", () => scope.timeout(() => refresh(true), 2500));

@@ -276,3 +276,31 @@ describe("declutter selectors match the current claude.ai DOM", () => {
         expect(document.querySelector(SEL.sendButton)).not.toBeNull();
     });
 });
+
+describe("outlineFromApi estimates", () => {
+    test("rows above the anchors never go below 0 and stay in order", () => {
+        const api = Array.from({ length: 20 }, (_, i) => ({ id: `m${i}`, role: (i % 2 ? "assistant" : "user") as "user" | "assistant", text: `t${i}` }));
+        const rows = [
+            { index: 10, role: "user" as const, text: "t18", entry: "m18" },
+            { index: 11, role: "assistant" as const, text: "t19", entry: "m19" },
+        ];
+        const out = outlineFromApi(api, rows)!;
+        expect(out.length).toBe(20);
+        expect(Math.min(...out.map(i => i.index))).toBeGreaterThanOrEqual(0);
+        const bySeq = [...out].sort((a, b) => a.seq! - b.seq!).map(i => i.index);
+        expect(bySeq).toEqual([...bySeq].sort((a, b) => a - b));
+        expect(out.find(i => i.entry === "m18")!.index).toBe(10);
+    });
+    test("between anchors, positions are interpolated", () => {
+        const api = Array.from({ length: 10 }, (_, i) => ({ id: `m${i}`, role: "user" as const, text: `t${i}` }));
+        const rows = [
+            { index: 0, role: "user" as const, text: "t0", entry: "m0" },
+            { index: 5, role: "user" as const, text: "t9", entry: "m9" },
+        ];
+        const out = outlineFromApi(api, rows)!;
+        const idx = out.sort((a, b) => a.seq! - b.seq!).map(i => i.index);
+        expect(idx[0]).toBe(0);
+        expect(idx[9]).toBe(5);
+        expect(idx.every(n => n >= 0 && n <= 5)).toBe(true);
+    });
+});
