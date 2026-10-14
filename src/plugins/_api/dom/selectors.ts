@@ -33,8 +33,9 @@ export const SEL = {
     prose: '[data-cds="Prose"]',
     composer: '[data-cds="ChatComposer"]',
     composerCard: "[data-composer-card-holder]",
-    editor: '[data-testid="chat-input"]',
-    sendButton: '[data-testid="chat-input-send"]',
+    /** Chat input, or the Claude Code prompt (home, sessions and project threads). */
+    editor: ':is([data-testid="chat-input"], [data-testid="code-prompt-input"])',
+    sendButton: ':is([data-testid="chat-input-send"], [data-testid="code-prompt-send"])',
     modelSelector: '[data-testid="model-selector-dropdown"]',
     greeting: "[data-new-page-greeting-text]",
     menu: '[role="menu"]',

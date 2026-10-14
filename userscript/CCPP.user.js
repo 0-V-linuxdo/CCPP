@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.19
+// @version      20261013.0.3.20
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -867,8 +867,8 @@
     prose: '[data-cds="Prose"]',
     composer: '[data-cds="ChatComposer"]',
     composerCard: "[data-composer-card-holder]",
-    editor: '[data-testid="chat-input"]',
-    sendButton: '[data-testid="chat-input-send"]',
+    editor: ':is([data-testid="chat-input"], [data-testid="code-prompt-input"])',
+    sendButton: ':is([data-testid="chat-input-send"], [data-testid="code-prompt-send"])',
     modelSelector: '[data-testid="model-selector-dropdown"]',
     greeting: "[data-new-page-greeting-text]",
     menu: '[role="menu"]',
@@ -2079,7 +2079,7 @@ select.input { padding-right: 6px; }
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.19";
+  var version = "0.3.20";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -5440,12 +5440,14 @@ ${composer ? `[data-composer-card-holder], [data-cds="ChatComposer"] { max-width
   // src/plugins/noDictation/index.ts
   var settings17 = definePluginSettings({
     dictation: { type: "boolean", label: { zh: "隐藏听写按钮", en: "Hide dictation" }, default: true },
-    voice: { type: "boolean", label: { zh: "隐藏语音模式按钮", en: "Hide voice mode" }, default: true }
+    voice: { type: "boolean", label: { zh: "隐藏语音模式按钮", en: "Hide voice mode" }, default: true },
+    readAloud: { type: "boolean", label: { zh: "隐藏回复下方的「朗读」按钮", en: "Hide Read aloud under replies" }, default: true }
   });
-  function noDictationCss(dictation, voice) {
+  function noDictationCss(dictation, voice, readAloud = false) {
     const selectors = [
       ...dictation ? ['button[aria-label="Dictate"]', 'button[aria-label="Microphone"]', '[data-testid="chin-mic"]', 'button[aria-label="Dictation settings"]', 'button[aria-label^="Dictation" i]', 'button[aria-label*="dictat" i]'] : [],
-      ...voice ? ['button[aria-label="Use voice mode"]', 'button[aria-label="Voice input"]', 'button[aria-label*="voice mode" i]'] : []
+      ...voice ? ['button[aria-label="Use voice mode"]', 'button[aria-label="Voice input"]', 'button[aria-label*="voice mode" i]'] : [],
+      ...readAloud ? ['[data-testid="action-bar-read-aloud"]', 'button[aria-label="Read aloud"]'] : []
     ];
     return selectors.length ? `${selectors.join(`,
 `)} { display: none !important; }` : "";
@@ -5453,30 +5455,30 @@ ${composer ? `[data-composer-card-holder], [data-cds="ChatComposer"] { max-width
   var noDictation_default = definePlugin({
     name: "NoDictation",
     title: { zh: "隐藏语音按钮", en: "No voice buttons" },
-    description: { zh: "隐藏输入框里的听写 / 语音模式按钮，以及听写设置（按住录音）入口，普通对话和 Claude Code 都适用。", en: "Hides the dictation and voice-mode buttons and the dictation settings (hold to record) menu, in chats and Claude Code." },
+    description: { zh: "隐藏输入框里的听写 / 语音模式按钮、听写设置（按住录音）入口，以及回复下方的「朗读」按钮，普通对话和 Claude Code 都适用。", en: "Hides the dictation and voice-mode buttons, the dictation settings (hold to record) menu and Read aloud under replies, in chats and Claude Code." },
     category: "declutter",
     icon: "micOff",
     enabledByDefault: false,
     dependencies: ["StylesApi"],
     settings: settings17,
     start(scope) {
-      addStyle(scope, noDictationCss(settings17.store.dictation, settings17.store.voice), "no-dictation");
+      addStyle(scope, noDictationCss(settings17.store.dictation, settings17.store.voice, settings17.store.readAloud), "no-dictation");
     }
   });
 
   // src/plugins/streamerMode/index.ts
   var settings18 = definePluginSettings({
-    identity: { type: "boolean", label: { zh: "模糊你的名字、头像与套餐", en: "Blur your name, avatar and plan" }, default: true },
+    identity: { type: "boolean", label: { zh: "模糊你的名字、头像、套餐与设备名", en: "Blur your name, avatar, plan and device name" }, default: true },
     sidebar: { type: "boolean", label: { zh: "模糊侧栏的对话 / 项目标题", en: "Blur chat and project titles in the sidebar" }, default: true },
-    title: { type: "boolean", label: { zh: "模糊当前对话标题", en: "Blur the current chat title" }, default: false },
+    title: { type: "boolean", label: { zh: "模糊当前对话 / 项目标题", en: "Blur the current chat or project title" }, default: false },
     hover: { type: "boolean", label: { zh: "悬停时显示", en: "Reveal on hover" }, default: true },
     amount: { type: "number", label: { zh: "模糊程度", en: "Blur amount" }, default: 6, min: 2, max: 16, unit: "px" }
   });
   function streamerCss(o) {
     const targets = [
-      ...o.identity ? ['[data-testid="user-menu-button"] .df-user-menu-trailing', '[data-testid="user-menu-button"] [data-cds="Avatar"]', "[data-new-page-greeting-text]"] : [],
+      ...o.identity ? ['[data-testid="user-menu-button"] .df-user-menu-trailing', '[data-testid="user-menu-button"] [data-cds="Avatar"]', "[data-new-page-greeting-text]", '[data-testid="cowork-computer-link-indicator"]'] : [],
       ...o.sidebar ? ['[data-testid="sidebar"] [data-row-label]', '[data-testid="sidebar"] a[href^="/chat/"]'] : [],
-      ...o.title ? ['[data-testid="session-title-split"]'] : []
+      ...o.title ? ['[data-testid="session-title-split"]', "[data-pane-title]"] : []
     ];
     if (!targets.length)
       return "";
@@ -6026,7 +6028,7 @@ ${m.text.trim()}`).join(`
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.19",
+      version: "0.3.20",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -6043,7 +6045,7 @@ ${m.text.trim()}`).join(`
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.19";
+    win[FLAG] = "0.3.20";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     startPhase("document-start");
@@ -6059,7 +6061,7 @@ ${m.text.trim()}`).join(`
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.19"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.20"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();

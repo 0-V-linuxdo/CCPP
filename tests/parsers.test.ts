@@ -244,3 +244,35 @@ describe("project outline", () => {
         expect(outlineFromApi(api, [{ index: 0, role: "user", text: "" }])).toBeNull();
     });
 });
+
+import { noDictationCss } from "../src/plugins/noDictation";
+import { streamerCss } from "../src/plugins/streamerMode";
+import { getText } from "../src/plugins/_api/composer";
+import { SEL } from "../src/plugins/_api/dom/selectors";
+
+describe("declutter selectors match the current claude.ai DOM", () => {
+    const hidden = (css: string, html: string) => {
+        document.body.innerHTML = html;
+        const sel = css.slice(0, css.lastIndexOf("{")).trim();
+        return document.body.firstElementChild!.matches(sel);
+    };
+    test("noDictation hides the Code dictation chevron and Read aloud", () => {
+        const css = noDictationCss(true, true, true);
+        expect(hidden(css, `<button aria-label="Dictation settings"></button>`)).toBe(true);
+        expect(hidden(css, `<button data-testid="action-bar-read-aloud" aria-label="Read aloud"></button>`)).toBe(true);
+        expect(hidden(noDictationCss(true, true, false), `<button data-testid="action-bar-read-aloud"></button>`)).toBe(false);
+    });
+    test("streamerMode blurs the project title and device name", () => {
+        const css = streamerCss({ identity: true, sidebar: false, title: true, hover: false, amount: 6 });
+        expect(hidden(css, `<button data-pane-title aria-label="CC++, rename project">CC++</button>`)).toBe(true);
+        expect(hidden(css, `<a data-testid="cowork-computer-link-indicator">MacBook</a>`)).toBe(true);
+    });
+    test("the composer API finds the Claude Code prompt", () => {
+        document.body.innerHTML = `<div data-testid="code-prompt-input" contenteditable="true"><p>hello</p></div>`;
+        const editor = document.querySelector<HTMLElement>(SEL.editor);
+        expect(editor?.dataset.testid).toBe("code-prompt-input");
+        expect(getText(editor)).toBe("hello");
+        document.body.innerHTML = `<button data-testid="code-prompt-send"></button>`;
+        expect(document.querySelector(SEL.sendButton)).not.toBeNull();
+    });
+});
