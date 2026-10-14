@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.17
+// @version      20261013.0.3.18
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -672,7 +672,7 @@
           card = JSON.parse(body);
         } catch {}
         if (card && typeof card === "object") {
-          if (card.type !== "message_routed")
+          if ((card.kind ?? card.type) !== "message_routed")
             out.push({ ...base, role: "assistant", text: "", notice: true });
           continue;
         }
@@ -2079,7 +2079,7 @@ select.input { padding-right: 6px; }
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.17";
+  var version = "0.3.18";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -3846,11 +3846,12 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
           best = anchor;
       return i + best[1] - best[0];
     };
-    const out = api.flatMap((m, i) => m.notice ? [] : [{ index: rowFor(i), role: m.role, text: m.text, entry: m.id }]);
+    const out = api.flatMap((m, i) => m.notice ? [] : [{ index: rowFor(i), role: m.role, text: m.text, entry: m.id, seq: i }]);
     const lastRow = Math.max(...anchors.map((a) => a[1]));
+    let extra = api.length;
     for (const row of rows)
       if (row.entry && !pos.has(row.entry) && row.text && row.index > lastRow)
-        out.push(row);
+        out.push({ ...row, seq: extra++ });
     return out.sort((a, b) => a.index - b.index);
   }
   function paneRight(scroller) {
@@ -4012,11 +4013,17 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
             return { text: t(L10.streaming), dim: true };
           return { text: t(L10.empty), dim: true };
         };
+        let currentEntry = null;
         const activePos = () => {
           const entries = shown();
           if (current === null)
             return -1;
           let pos = -1;
+          const seq = currentEntry ? api.findIndex((m) => m.id === currentEntry) : -1;
+          if (seq >= 0 && entries.some((item) => item.seq !== undefined)) {
+            entries.forEach((item, i) => item.seq !== undefined && item.seq <= seq && (pos = i));
+            return Math.max(pos, 0);
+          }
           entries.forEach((item, i) => item.index <= current && (pos = i));
           return pos;
         };
@@ -4062,6 +4069,7 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
           if (!item)
             return;
           current = item.index;
+          currentEntry = item.entry ?? null;
           aim = pos;
           draw();
           if (rail.classList.contains("open"))
@@ -4090,6 +4098,7 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
           if (next === current)
             return;
           current = next;
+          currentEntry = next === null ? null : getRows(scroller).find((row) => row.index === next)?.entry ?? null;
           const active = activePos();
           [...ticks.children].forEach((tick, i) => tick.classList.toggle("current", i === active));
           ticks.children[active]?.scrollIntoView({ block: "nearest" });
@@ -6017,7 +6026,7 @@ ${m.text.trim()}`).join(`
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.17",
+      version: "0.3.18",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -6034,7 +6043,7 @@ ${m.text.trim()}`).join(`
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.17";
+    win[FLAG] = "0.3.18";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     startPhase("document-start");
@@ -6050,7 +6059,7 @@ ${m.text.trim()}`).join(`
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.17"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.18"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();

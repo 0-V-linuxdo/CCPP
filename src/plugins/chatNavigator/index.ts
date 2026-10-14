@@ -50,6 +50,8 @@ interface Item {
     notice?: boolean;
     /** The project-chat message id the row shows. */
     entry?: string | null;
+    /** Position in the project's message list (cards included), for ordering against the page's rows. */
+    seq?: number;
 }
 
 /*
@@ -159,9 +161,10 @@ export function outlineFromApi(api: Pick<ChannelMessage, "id" | "role" | "text" 
         for (const anchor of anchors) if (Math.abs(anchor[0] - i) < Math.abs(best[0] - i)) best = anchor;
         return i + best[1] - best[0];
     };
-    const out: Item[] = api.flatMap((m, i) => (m.notice ? [] : [{ index: rowFor(i), role: m.role, text: m.text, entry: m.id }]));
+    const out: Item[] = api.flatMap((m, i) => (m.notice ? [] : [{ index: rowFor(i), role: m.role, text: m.text, entry: m.id, seq: i }]));
     const lastRow = Math.max(...anchors.map(a => a[1]));
-    for (const row of rows) if (row.entry && !pos.has(row.entry) && row.text && row.index > lastRow) out.push(row);
+    let extra = api.length;
+    for (const row of rows) if (row.entry && !pos.has(row.entry) && row.text && row.index > lastRow) out.push({ ...row, seq: extra++ });
     return out.sort((a, b) => a.index - b.index);
 }
 
@@ -345,11 +348,20 @@ export default definePlugin({
                 return { text: t(L.empty), dim: true };
             };
 
-            /** The shown item the reader is at: the last one at or above the current row. */
+            /** The message id of the row the reader is at (project pages), read when it was on screen. */
+            let currentEntry: string | null = null;
+            /** The shown item the reader is at: the last one at or above the current row. On project pages the
+             * row's message id decides, since unrendered rows only have estimated indices. */
             const activePos = () => {
                 const entries = shown();
                 if (current === null) return -1;
                 let pos = -1;
+                const seq = currentEntry ? api.findIndex(m => m.id === currentEntry) : -1;
+                if (seq >= 0 && entries.some(item => item.seq !== undefined)) {
+                    entries.forEach((item, i) => item.seq !== undefined && item.seq <= seq && (pos = i));
+                    // Above the first message (the project's welcome card): the first item.
+                    return Math.max(pos, 0);
+                }
                 entries.forEach((item, i) => item.index <= current! && (pos = i));
                 return pos;
             };
@@ -402,6 +414,7 @@ export default definePlugin({
                 const item = shown()[pos];
                 if (!item) return;
                 current = item.index;
+                currentEntry = item.entry ?? null;
                 aim = pos;
                 draw();
                 if (rail.classList.contains("open")) drawMenu(true);
@@ -427,6 +440,7 @@ export default definePlugin({
                 const next = currentIndex(scroller);
                 if (next === current) return;
                 current = next;
+                currentEntry = next === null ? null : (getRows(scroller).find(row => row.index === next)?.entry ?? null);
                 const active = activePos();
                 [...ticks.children].forEach((tick, i) => tick.classList.toggle("current", i === active));
                 ticks.children[active]?.scrollIntoView({ block: "nearest" });

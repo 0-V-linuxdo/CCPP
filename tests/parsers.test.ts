@@ -207,6 +207,7 @@ describe("project outline", () => {
         expect(list.map(m => `${m.role}:${m.text}:${!!m.notice}`)).toEqual(["user:question:false", "assistant:reply:false", "assistant::true"]);
         // Routing lines have no row in the project chat.
         expect(parseChannelMessages({ data: [{ id: "r", body: '{"type":"message_routed"}', created_at: "2026-10-13T12:00:00Z" }] })).toEqual([]);
+        expect(parseChannelMessages({ data: [{ id: "r", body: '{"kind":"message_routed","to":"x"}', created_at: "2026-10-13T12:00:00Z" }] })).toEqual([]);
     });
     test("unrendered rows get labels from the project messages", () => {
         const api = ["q1 hello there", "a1 answer text", "q2 second question", "a2 second answer"].map((text, i) => ({ role: (i % 2 ? "assistant" : "user") as "user" | "assistant", text }));

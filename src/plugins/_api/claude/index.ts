@@ -191,13 +191,13 @@ export function parseChannelMessages(raw: unknown): ChannelMessage[] {
         if (!body) continue;
         const base = { id: String(m.id ?? ""), role: (m.author_account_id ? "user" : "assistant") as ChannelMessage["role"], at: Date.parse(m.created_at) || 0 };
         if (body.startsWith("{")) {
-            let card: { type?: unknown } | null = null;
+            let card: { type?: unknown; kind?: unknown } | null = null;
             try {
                 card = JSON.parse(body);
             } catch {}
             if (card && typeof card === "object") {
                 // Routing lines never get a row; every other card does, so keep its place in the list.
-                if (card.type !== "message_routed") out.push({ ...base, role: "assistant", text: "", notice: true });
+                if ((card.kind ?? card.type) !== "message_routed") out.push({ ...base, role: "assistant", text: "", notice: true });
                 continue;
             }
         }
