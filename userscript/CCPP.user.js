@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.36
+// @version      20261013.0.3.37
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -2093,7 +2093,7 @@ select.input { padding-right: 6px; }
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.36";
+  var version = "0.3.37";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -3665,27 +3665,75 @@ ${x.css}`)].join(`
       return "warn";
     return "ok";
   }
+  var resetText = (window2) => !window2.resetsAt ? "" : window2.resetsAt - Date.now() < 24 * 3600 * 1000 ? t(L9.resetsIn).replace("{t}", untilText(window2.resetsAt)) : t(L9.resetsAt).replace("{t}", dateTimeText(window2.resetsAt));
+  var tipEl = null;
+  function showTip(anchor, title, detail) {
+    if (!tipEl) {
+      tipEl = h("div", {
+        role: "tooltip",
+        "data-ccpp-tooltip": "",
+        style: {
+          position: "fixed",
+          zIndex: "130",
+          pointerEvents: "none",
+          display: "flex",
+          flexDirection: "column",
+          gap: "2px",
+          maxWidth: "240px",
+          padding: "6px 8px",
+          borderRadius: "calc(0.375rem * var(--cds-rem-scale, 1))",
+          background: "var(--cds-tooltip-bg, rgb(32,32,31))",
+          color: "var(--cds-tooltip-fg, rgb(240,239,236))",
+          boxShadow: "inset 0 0 0 1px rgba(255,255,255,.1), 0 1px 2px rgba(11,11,11,.06), 0 2px 8px rgba(0,0,0,.24)",
+          font: "400 calc(0.8125rem * var(--cds-rem-scale, 1))/calc(1.125rem * var(--cds-rem-scale, 1)) var(--cds-font-sans, inherit)",
+          textWrap: "balance",
+          whiteSpace: "normal"
+        }
+      });
+      document.body.appendChild(tipEl);
+    }
+    tipEl.replaceChildren(h("span", { text: title, style: { overflowWrap: "anywhere" } }), ...detail ? [h("span", { text: detail, style: { font: "inherit", fontSize: "calc(0.6875rem * var(--cds-rem-scale, 1))", lineHeight: "calc(0.875rem * var(--cds-rem-scale, 1))", color: "rgb(195,194,183)" } })] : []);
+    tipEl.style.display = "flex";
+    const a = anchor.getBoundingClientRect();
+    const r = tipEl.getBoundingClientRect();
+    const left = Math.min(Math.max(8, a.left + a.width / 2 - r.width / 2), window.innerWidth - r.width - 8);
+    const top = a.top - r.height - 4 >= 8 ? a.top - r.height - 4 : a.bottom + 4;
+    tipEl.style.left = `${left}px`;
+    tipEl.style.top = `${top}px`;
+  }
+  var hideTip = () => tipEl && (tipEl.style.display = "none");
+  function withTip(el, content) {
+    el.addEventListener("pointerenter", () => showTip(el, ...content()));
+    el.addEventListener("pointerleave", hideTip);
+    el.addEventListener("pointerdown", hideTip);
+    return el;
+  }
   var COLORS = { ok: "#3f9a5b", warn: "#c98a12", bad: "#d1453b" };
   function ring(window2, label) {
     const percent = window2?.utilization ?? 0;
     const color = COLORS[level(percent, settings4.store.warnAt, settings4.store.dangerAt)];
-    return h("span", {
+    const el = h("span", {
       class: "ccpp-usage-ring",
       "aria-label": `${label} ${Math.round(percent)}%`,
       style: { background: window2 ? `conic-gradient(${color} ${percent * 3.6}deg, rgba(127,127,127,.25) 0)` : "rgba(127,127,127,.25)" }
     });
+    return withTip(el, () => window2 ? [`${label}: ${Math.round(percent)}%`, resetText(window2)] : [label, error ?? t(L9.loading)]);
   }
   function chip(open) {
+    hideTip();
     const style = settings4.store.style;
     const five = usage?.fiveHour ?? null;
     const week = usage?.sevenDay ?? null;
     const pct = (w) => w ? `${Math.round(w.utilization)}%` : "–";
     const text = !usage ? error ? "!" : "…" : `${pct(five)} · ${pct(week)}`;
     const tip = usage ? `${t(L9.session)} ${pct(five)} · ${t(L9.weekly)} ${pct(week)}` : error ?? t(L9.loading);
-    const button = h("button", { type: "button", class: `ccpp-slot-btn ccpp-usage${error && !usage ? " err" : ""}`, title: tip, "aria-label": tip }, style !== "text" ? h("span", { class: "ccpp-usage-rings" }, ring(five, t(L9.session)), ring(week, t(L9.weekly))) : null, style !== "rings" ? h("span", { class: "ccpp-usage-text", text }) : null);
+    const button = h("button", { type: "button", class: `ccpp-slot-btn ccpp-usage${error && !usage ? " err" : ""}`, "aria-label": tip }, style !== "text" ? h("span", { class: "ccpp-usage-rings" }, ring(five, t(L9.session)), ring(week, t(L9.weekly))) : null, style !== "rings" ? h("span", { class: "ccpp-usage-text", text }) : null);
+    if (style === "text" || !usage)
+      withTip(button, () => [tip, five ? resetText(five) : ""]);
     button.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
+      hideTip();
       open(button);
     });
     return button;
@@ -3759,6 +3807,7 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
       listeners2.add(update);
       scope.defer(() => listeners2.delete(update));
       scope.defer(() => (clearTimeout(retryTimer), inflight?.abort()));
+      scope.defer(() => (tipEl?.remove(), tipEl = null));
       scope.interval(() => refresh2(), settings4.store.refreshSec * 1000);
       scope.listen(document, "visibilitychange", () => !document.hidden && Date.now() - lastAttempt > settings4.store.refreshSec * 1000 && refresh2());
       scope.on("reply:end", () => scope.timeout(() => refresh2(true), 2500));
@@ -6098,7 +6147,7 @@ ${m.text.trim()}`).join(`
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.36",
+      version: "0.3.37",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -6115,7 +6164,7 @@ ${m.text.trim()}`).join(`
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.36";
+    win[FLAG] = "0.3.37";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     startPhase("document-start");
@@ -6131,7 +6180,7 @@ ${m.text.trim()}`).join(`
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.36"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.37"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();

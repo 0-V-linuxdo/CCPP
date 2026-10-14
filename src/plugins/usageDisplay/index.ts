@@ -103,19 +103,67 @@ export function level(percent: number, warnAt: number, dangerAt: number): "ok" |
 
 /* ---------- rendering ---------- */
 
+const resetText = (window: UsageWindow) =>
+    !window.resetsAt
+        ? ""
+        : window.resetsAt - Date.now() < 24 * 3600 * 1000
+          ? t(L.resetsIn).replace("{t}", untilText(window.resetsAt))
+          : t(L.resetsAt).replace("{t}", dateTimeText(window.resetsAt));
+
+/* claude.ai's own tooltip (data-cds="Tooltip"): a dark card 4px above the anchor, a 13px title line and an 11px
+   secondary line. Built in the page (not a shadow root) so its --cds-tooltip-* tokens apply. */
+let tipEl: HTMLElement | null = null;
+function showTip(anchor: HTMLElement, title: string, detail: string) {
+    if (!tipEl) {
+        tipEl = h("div", {
+            role: "tooltip",
+            "data-ccpp-tooltip": "",
+            style: {
+                position: "fixed", zIndex: "130", pointerEvents: "none", display: "flex", flexDirection: "column", gap: "2px", maxWidth: "240px",
+                padding: "6px 8px", borderRadius: "calc(0.375rem * var(--cds-rem-scale, 1))", background: "var(--cds-tooltip-bg, rgb(32,32,31))", color: "var(--cds-tooltip-fg, rgb(240,239,236))",
+                boxShadow: "inset 0 0 0 1px rgba(255,255,255,.1), 0 1px 2px rgba(11,11,11,.06), 0 2px 8px rgba(0,0,0,.24)",
+                font: "400 calc(0.8125rem * var(--cds-rem-scale, 1))/calc(1.125rem * var(--cds-rem-scale, 1)) var(--cds-font-sans, inherit)", textWrap: "balance", whiteSpace: "normal",
+            },
+        });
+        document.body.appendChild(tipEl);
+    }
+    tipEl.replaceChildren(
+        h("span", { text: title, style: { overflowWrap: "anywhere" } }),
+        ...(detail ? [h("span", { text: detail, style: { font: "inherit", fontSize: "calc(0.6875rem * var(--cds-rem-scale, 1))", lineHeight: "calc(0.875rem * var(--cds-rem-scale, 1))", color: "rgb(195,194,183)" } })] : []),
+    );
+    tipEl.style.display = "flex";
+    const a = anchor.getBoundingClientRect();
+    const r = tipEl.getBoundingClientRect();
+    const left = Math.min(Math.max(8, a.left + a.width / 2 - r.width / 2), window.innerWidth - r.width - 8);
+    const top = a.top - r.height - 4 >= 8 ? a.top - r.height - 4 : a.bottom + 4;
+    tipEl.style.left = `${left}px`;
+    tipEl.style.top = `${top}px`;
+}
+const hideTip = () => tipEl && (tipEl.style.display = "none");
+function withTip(el: HTMLElement, content: () => [string, string]) {
+    el.addEventListener("pointerenter", () => showTip(el, ...content()));
+    el.addEventListener("pointerleave", hideTip);
+    el.addEventListener("pointerdown", hideTip);
+    return el;
+}
+
 const COLORS = { ok: "#3f9a5b", warn: "#c98a12", bad: "#d1453b" };
 
 function ring(window: UsageWindow | null, label: string) {
     const percent = window?.utilization ?? 0;
     const color = COLORS[level(percent, settings.store.warnAt, settings.store.dangerAt)];
-    return h("span", {
+    const el = h("span", {
         class: "ccpp-usage-ring",
         "aria-label": `${label} ${Math.round(percent)}%`,
         style: { background: window ? `conic-gradient(${color} ${percent * 3.6}deg, rgba(127,127,127,.25) 0)` : "rgba(127,127,127,.25)" },
     });
+    // Each ring explains itself, like claude.ai's single usage ring.
+    return withTip(el, () => (window ? [`${label}: ${Math.round(percent)}%`, resetText(window)] : [label, error ?? t(L.loading)]));
 }
 
 function chip(open: (anchor: HTMLElement) => void) {
+    // A re-render replaces the hovered ring, which then never sees pointerleave.
+    hideTip();
     const style = settings.store.style;
     const five = usage?.fiveHour ?? null;
     const week = usage?.sevenDay ?? null;
@@ -124,13 +172,16 @@ function chip(open: (anchor: HTMLElement) => void) {
     const tip = usage ? `${t(L.session)} ${pct(five)} · ${t(L.weekly)} ${pct(week)}` : error ?? t(L.loading);
     const button = h(
         "button",
-        { type: "button", class: `ccpp-slot-btn ccpp-usage${error && !usage ? " err" : ""}`, title: tip, "aria-label": tip },
+        { type: "button", class: `ccpp-slot-btn ccpp-usage${error && !usage ? " err" : ""}`, "aria-label": tip },
         style !== "text" ? h("span", { class: "ccpp-usage-rings" }, ring(five, t(L.session)), ring(week, t(L.weekly))) : null,
         style !== "rings" ? h("span", { class: "ccpp-usage-text", text }) : null,
     );
+    // Without rings (text style, or before data arrives) the whole button carries the tooltip.
+    if (style === "text" || !usage) withTip(button, () => [tip, five ? resetText(five) : ""]);
     button.addEventListener("click", event => {
         event.preventDefault();
         event.stopPropagation();
+        hideTip();
         open(button);
     });
     return button;
@@ -222,6 +273,7 @@ export default definePlugin({
         listeners.add(update);
         scope.defer(() => listeners.delete(update));
         scope.defer(() => (clearTimeout(retryTimer), inflight?.abort()));
+        scope.defer(() => (tipEl?.remove(), (tipEl = null)));
         scope.interval(() => refresh(), settings.store.refreshSec * 1000);
         scope.listen(document, "visibilitychange", () => !document.hidden && Date.now() - lastAttempt > settings.store.refreshSec * 1000 && refresh());
         scope.on("reply:end", () => scope.timeout(() => refresh(true), 2500));
