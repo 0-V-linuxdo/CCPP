@@ -15,16 +15,18 @@ const settings = definePluginSettings({
 
 export function noDictationCss(dictation: boolean, voice: boolean) {
     const selectors = [
-        ...(dictation ? ['button[aria-label="Dictate"]', 'button[aria-label="Microphone"]', '[data-testid="chin-mic"]'] : []),
-        ...(voice ? ['button[aria-label="Use voice mode"]', 'button[aria-label="Voice input"]'] : []),
+        // The chevron next to the mic opens dictation settings ("Hold to record"); the Claude Code composer
+        // is not a ChatComposer, so these labels are matched anywhere.
+        ...(dictation ? ['button[aria-label="Dictate"]', 'button[aria-label="Microphone"]', '[data-testid="chin-mic"]', 'button[aria-label="Dictation settings"]', 'button[aria-label^="Dictation" i]', 'button[aria-label*="dictat" i]'] : []),
+        ...(voice ? ['button[aria-label="Use voice mode"]', 'button[aria-label="Voice input"]', 'button[aria-label*="voice mode" i]'] : []),
     ];
-    return selectors.length ? `${selectors.map(s => `[data-cds="ChatComposer"] ${s}`).join(",\n")} { display: none !important; }` : "";
+    return selectors.length ? `${selectors.join(",\n")} { display: none !important; }` : "";
 }
 
 export default definePlugin({
     name: "NoDictation",
     title: { zh: "隐藏语音按钮", en: "No voice buttons" },
-    description: { zh: "隐藏输入框里的听写 / 语音模式按钮。", en: "Hides the dictation and voice-mode buttons in the chat input." },
+    description: { zh: "隐藏输入框里的听写 / 语音模式按钮，以及听写设置（按住录音）入口，普通对话和 Claude Code 都适用。", en: "Hides the dictation and voice-mode buttons and the dictation settings (hold to record) menu, in chats and Claude Code." },
     category: "declutter",
     icon: "micOff",
     enabledByDefault: false,
