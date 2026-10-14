@@ -62,11 +62,21 @@ export function insertText(text: string, editor = getEditor()) {
 /** Replaces everything in the editor. An empty string clears it. */
 export function setText(text: string, editor = getEditor()) {
     if (!editor) return false;
-    // Delete first: ProseMirror only picks up a DOM selection on selectionchange, so a paste right
-    // after selecting would land at the old caret and append. execCommand goes through its input path.
+    // ProseMirror only picks up a DOM selection, or a delete, in its own time: a paste dispatched right
+    // after selecting lands at the old caret, and one right after a delete is swallowed. Typing over the
+    // selection goes through its input path at once; multi-line text is pasted a frame after clearing so
+    // it keeps its paragraphs.
     selectAll(editor);
+    if (!text) {
+        document.execCommand("delete");
+        return true;
+    }
+    if (!text.includes("\n")) {
+        if (document.execCommand("insertText", false, text)) return true;
+    }
     document.execCommand("delete");
-    return text ? insertText(text, editor) : true;
+    requestAnimationFrame(() => setTimeout(() => insertText(text, editor), 30));
+    return true;
 }
 
 /**
