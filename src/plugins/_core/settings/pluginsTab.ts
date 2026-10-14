@@ -27,21 +27,21 @@ import { confirmDialog, dialogFrame, openModal } from "./layer";
 import { renderOption } from "./options";
 import { isFavorite, isPinned, onRedraw, prefs, toggleIn, view } from "./state";
 
-const CATEGORY_LABELS: Record<Category | "favorites" | "recent" | "all", Text> = {
+/** void++'s PLUGIN_CATEGORY_TABS: same tabs, same order. */
+const CATEGORY_LABELS: Record<Exclude<Category, "core" | "api"> | "favorites" | "recent" | "all", Text> = {
     favorites: { zh: "收藏", en: "Favorites" },
     recent: { zh: "最近", en: "Recent" },
     all: { zh: "全部", en: "All" },
     composer: { zh: "输入框", en: "Composer" },
     messages: { zh: "消息", en: "Messages" },
     chats: { zh: "对话", en: "Chats" },
-    usage: { zh: "用量", en: "Usage" },
+    media: { zh: "媒体", en: "Media" },
+    navigation: { zh: "导航", en: "Navigation" },
     notifications: { zh: "通知", en: "Notifications" },
     appearance: { zh: "外观", en: "Appearance" },
     declutter: { zh: "精简", en: "Declutter" },
     privacy: { zh: "隐私", en: "Privacy" },
     developer: { zh: "开发者", en: "Developer" },
-    core: { zh: "核心", en: "Core" },
-    api: { zh: "API", en: "API" },
 };
 const CATEGORY_ORDER = Object.keys(CATEGORY_LABELS) as (keyof typeof CATEGORY_LABELS)[];
 
@@ -93,7 +93,7 @@ function inCategory(plugin: Plugin, category: string) {
     if (category === "all") return true;
     if (category === "favorites") return isFavorite(plugin.name);
     if (category === "recent") return isRecent(plugin);
-    return plugin.category === category;
+    return plugin.category === category || !!plugin.tags?.includes(category as Category);
 }
 
 function passesFilter(plugin: Plugin) {
@@ -184,7 +184,25 @@ export function renderPluginsTab(container: HTMLElement) {
     if (!view.category) view.category = defaultCategory();
     const plugins = listedPlugins();
 
-    const search = h("input", { class: "input", type: "search", placeholder: t(L.search).replace("{n}", String(plugins.length)), value: view.query, "aria-label": t(L.search).replace("{n}", String(plugins.length)) });
+    // void++'s layout: category tabs first (no counts), then the search box, whose placeholder counts the
+    // plugins in the selected tab, and the enabled / disabled filter.
+    const categories = CATEGORY_ORDER.filter(cat => ["favorites", "recent", "all"].includes(cat) || plugins.some(p => inCategory(p, cat)));
+    const tabBar = h("div", { class: "tabs", role: "tablist" });
+    const searchLabel = () => t(L.search).replace("{n}", String(plugins.filter(p => inCategory(p, view.category)).length));
+    const search = h("input", { class: "input", type: "search", placeholder: searchLabel(), value: view.query, "aria-label": searchLabel() });
+    for (const cat of categories) {
+        const button = h("button", { type: "button", role: "tab", class: view.category === cat ? "active" : "", "aria-selected": String(view.category === cat) }, t(CATEGORY_LABELS[cat]));
+        button.addEventListener("click", () => {
+            view.category = cat;
+            for (const other of tabBar.children) other.classList.toggle("active", other === button), other.setAttribute("aria-selected", String(other === button));
+            search.placeholder = searchLabel();
+            search.setAttribute("aria-label", searchLabel());
+            renderList();
+        });
+        tabBar.appendChild(button);
+    }
+    container.appendChild(tabBar);
+
     search.addEventListener("input", () => {
         view.query = search.value;
         renderList();
@@ -199,20 +217,6 @@ export function renderPluginsTab(container: HTMLElement) {
         renderList();
     });
     container.appendChild(h("div", { class: "bar" }, h("label", { class: "search" }, icon("search", 14), search), filter));
-
-    const categories = CATEGORY_ORDER.filter(cat => ["favorites", "recent", "all"].includes(cat) || plugins.some(p => p.category === cat));
-    const tabBar = h("div", { class: "tabs", role: "tablist" });
-    for (const cat of categories) {
-        const count = plugins.filter(p => inCategory(p, cat)).length;
-        const button = h("button", { type: "button", role: "tab", class: view.category === cat ? "active" : "", "aria-selected": String(view.category === cat) }, t(CATEGORY_LABELS[cat]), h("span", { class: "n", text: count }));
-        button.addEventListener("click", () => {
-            view.category = cat;
-            for (const other of tabBar.children) other.classList.toggle("active", other === button), other.setAttribute("aria-selected", String(other === button));
-            renderList();
-        });
-        tabBar.appendChild(button);
-    }
-    container.appendChild(tabBar);
 
     const pending = pendingRestart();
     if (pending.length) {

@@ -12,6 +12,7 @@ export default definePlugin({
     title: { zh: "隐藏分享按钮", en: "No share button" },
     description: { zh: "隐藏对话右上角的「分享」按钮，避免误点生成公开链接。", en: "Hides the Share button at the top right of chats so you never create a public link by accident." },
     category: "declutter",
+    tags: ["privacy"],
     icon: "linkOff",
     enabledByDefault: false,
     dependencies: ["StylesApi"],

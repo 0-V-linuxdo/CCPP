@@ -20,7 +20,8 @@ export type Category =
     | "composer"
     | "messages"
     | "chats"
-    | "usage"
+    | "media"
+    | "navigation"
     | "notifications"
     | "appearance"
     | "declutter"
@@ -33,6 +34,8 @@ export interface PluginDef<D extends OptionsDef = OptionsDef> {
     title: Text;
     description: Text;
     category: Category;
+    /** Further categories the plugin is also listed under (void++'s multi-tag plugins). */
+    tags?: Category[];
     /** Name of an icon from @lib/icons. */
     icon?: string;
     authors?: string[];

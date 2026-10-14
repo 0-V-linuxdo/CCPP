@@ -233,7 +233,7 @@ export default definePlugin({
         zh: "把对话右侧做成 Notion 式目录：细刻度标出每条提问和回复，悬停展开全部消息（包括长对话里还没渲染的），点击跳转；正在输出的回复显示为虚线。普通对话和 Claude Code 项目页都能用，项目页的主对话和线程侧栏各有一套，贴着各自的右边缘。",
         en: "A Notion-style outline on the right of the chat: thin ticks for every prompt and reply, hover to list them all (also ones not rendered yet), click to jump; a reply still streaming shows as a dashed tick. On Claude Code project pages the project chat and the thread pane each get their own, flush with their right edge.",
     },
-    category: "messages",
+    category: "navigation",
     icon: "list",
     enabledByDefault: true,
     updatedAt: "2026-10-13",

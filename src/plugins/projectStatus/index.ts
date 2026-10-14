@@ -74,7 +74,7 @@ export default definePlugin({
         zh: "claude.ai 侧栏只给当前打开的项目显示运行圆点；本插件在其他项目图标的右上角画一个状态圆点：有线程或 Code 会话在跑就呼吸（橙色），有线程等你回复是黄色。",
         en: "claude.ai only shows a running dot on the open project; this puts a status dot on the other projects' icon corners: breathing orange while anything runs, yellow when a thread waits for you.",
     },
-    category: "chats",
+    category: "notifications",
     icon: "sparkles",
     enabledByDefault: true,
     updatedAt: "2026-10-14",

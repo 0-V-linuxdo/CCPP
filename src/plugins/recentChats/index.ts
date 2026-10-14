@@ -70,7 +70,7 @@ export default definePlugin({
     name: "RecentChats",
     title: { zh: "最近对话切换", en: "Recent chats switcher" },
     description: { zh: "按 Ctrl+` 弹出最近打开过的对话卡片，方向键 / 数字键快速切换。", en: "Press Ctrl+` for cards of recently opened chats; switch with arrows or number keys." },
-    category: "chats",
+    category: "navigation",
     icon: "grid",
     enabledByDefault: true,
     dependencies: ["RouterApi", "HotkeysApi", "ChatStateApi"],

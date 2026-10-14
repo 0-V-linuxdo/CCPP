@@ -202,7 +202,7 @@ export default definePlugin({
         zh: "在输入框模型选择器旁显示 5 小时会话与每周用量（双圆环 / 百分比），点开看重置时间。数据来自 claude.ai 自己的用量接口。",
         en: "Shows the 5-hour session and weekly usage next to the model picker (rings or percent); click for reset times. Data comes from claude.ai's own usage endpoint.",
     },
-    category: "usage",
+    category: "composer",
     icon: "gauge",
     enabledByDefault: true,
     dependencies: ["ClaudeApi", "SlotsApi", "StylesApi", "ChatStateApi"],

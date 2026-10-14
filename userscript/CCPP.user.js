@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.28
+// @version      20261013.0.3.29
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -2087,7 +2087,7 @@ select.input { padding-right: 6px; }
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.28";
+  var version = "0.3.29";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -2479,14 +2479,13 @@ select.input { padding-right: 6px; }
     composer: { zh: "输入框", en: "Composer" },
     messages: { zh: "消息", en: "Messages" },
     chats: { zh: "对话", en: "Chats" },
-    usage: { zh: "用量", en: "Usage" },
+    media: { zh: "媒体", en: "Media" },
+    navigation: { zh: "导航", en: "Navigation" },
     notifications: { zh: "通知", en: "Notifications" },
     appearance: { zh: "外观", en: "Appearance" },
     declutter: { zh: "精简", en: "Declutter" },
     privacy: { zh: "隐私", en: "Privacy" },
-    developer: { zh: "开发者", en: "Developer" },
-    core: { zh: "核心", en: "Core" },
-    api: { zh: "API", en: "API" }
+    developer: { zh: "开发者", en: "Developer" }
   };
   var CATEGORY_ORDER = Object.keys(CATEGORY_LABELS);
   var L3 = {
@@ -2537,7 +2536,7 @@ select.input { padding-right: 6px; }
       return isFavorite(plugin.name);
     if (category === "recent")
       return isRecent(plugin);
-    return plugin.category === category;
+    return plugin.category === category || !!plugin.tags?.includes(category);
   }
   function passesFilter(plugin) {
     if (view.filter === "enabled")
@@ -2601,7 +2600,23 @@ select.input { padding-right: 6px; }
     if (!view.category)
       view.category = defaultCategory();
     const plugins = listedPlugins();
-    const search = h("input", { class: "input", type: "search", placeholder: t(L3.search).replace("{n}", String(plugins.length)), value: view.query, "aria-label": t(L3.search).replace("{n}", String(plugins.length)) });
+    const categories = CATEGORY_ORDER.filter((cat) => ["favorites", "recent", "all"].includes(cat) || plugins.some((p) => inCategory(p, cat)));
+    const tabBar = h("div", { class: "tabs", role: "tablist" });
+    const searchLabel = () => t(L3.search).replace("{n}", String(plugins.filter((p) => inCategory(p, view.category)).length));
+    const search = h("input", { class: "input", type: "search", placeholder: searchLabel(), value: view.query, "aria-label": searchLabel() });
+    for (const cat of categories) {
+      const button = h("button", { type: "button", role: "tab", class: view.category === cat ? "active" : "", "aria-selected": String(view.category === cat) }, t(CATEGORY_LABELS[cat]));
+      button.addEventListener("click", () => {
+        view.category = cat;
+        for (const other of tabBar.children)
+          other.classList.toggle("active", other === button), other.setAttribute("aria-selected", String(other === button));
+        search.placeholder = searchLabel();
+        search.setAttribute("aria-label", searchLabel());
+        renderList();
+      });
+      tabBar.appendChild(button);
+    }
+    container.appendChild(tabBar);
     search.addEventListener("input", () => {
       view.query = search.value;
       renderList();
@@ -2612,20 +2627,6 @@ select.input { padding-right: 6px; }
       renderList();
     });
     container.appendChild(h("div", { class: "bar" }, h("label", { class: "search" }, icon("search", 14), search), filter));
-    const categories = CATEGORY_ORDER.filter((cat) => ["favorites", "recent", "all"].includes(cat) || plugins.some((p) => p.category === cat));
-    const tabBar = h("div", { class: "tabs", role: "tablist" });
-    for (const cat of categories) {
-      const count = plugins.filter((p) => inCategory(p, cat)).length;
-      const button = h("button", { type: "button", role: "tab", class: view.category === cat ? "active" : "", "aria-selected": String(view.category === cat) }, t(CATEGORY_LABELS[cat]), h("span", { class: "n", text: count }));
-      button.addEventListener("click", () => {
-        view.category = cat;
-        for (const other of tabBar.children)
-          other.classList.toggle("active", other === button), other.setAttribute("aria-selected", String(other === button));
-        renderList();
-      });
-      tabBar.appendChild(button);
-    }
-    container.appendChild(tabBar);
     const pending = pendingRestart();
     if (pending.length) {
       const reload = h("button", { type: "button", class: "btn primary", text: t(L3.reload) });
@@ -3732,7 +3733,7 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
       zh: "在输入框模型选择器旁显示 5 小时会话与每周用量（双圆环 / 百分比），点开看重置时间。数据来自 claude.ai 自己的用量接口。",
       en: "Shows the 5-hour session and weekly usage next to the model picker (rings or percent); click for reset times. Data comes from claude.ai's own usage endpoint."
     },
-    category: "usage",
+    category: "composer",
     icon: "gauge",
     enabledByDefault: true,
     dependencies: ["ClaudeApi", "SlotsApi", "StylesApi", "ChatStateApi"],
@@ -3926,7 +3927,7 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
       zh: "把对话右侧做成 Notion 式目录：细刻度标出每条提问和回复，悬停展开全部消息（包括长对话里还没渲染的），点击跳转；正在输出的回复显示为虚线。普通对话和 Claude Code 项目页都能用，项目页的主对话和线程侧栏各有一套，贴着各自的右边缘。",
       en: "A Notion-style outline on the right of the chat: thin ticks for every prompt and reply, hover to list them all (also ones not rendered yet), click to jump; a reply still streaming shows as a dashed tick. On Claude Code project pages the project chat and the thread pane each get their own, flush with their right edge."
     },
-    category: "messages",
+    category: "navigation",
     icon: "list",
     enabledByDefault: true,
     updatedAt: "2026-10-13",
@@ -4529,7 +4530,7 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
       zh: "claude.ai 侧栏只给当前打开的项目显示运行圆点；本插件在其他项目图标的右上角画一个状态圆点：有线程或 Code 会话在跑就呼吸（橙色），有线程等你回复是黄色。",
       en: "claude.ai only shows a running dot on the open project; this puts a status dot on the other projects' icon corners: breathing orange while anything runs, yellow when a thread waits for you."
     },
-    category: "chats",
+    category: "notifications",
     icon: "sparkles",
     enabledByDefault: true,
     updatedAt: "2026-10-14",
@@ -5296,7 +5297,8 @@ ${composer ? `[data-composer-card-holder], [data-cds="ChatComposer"] { max-width
     name: "ComposerLook",
     title: { zh: "输入框外观", en: "Composer look" },
     description: { zh: "调整输入框背景的不透明度、毛玻璃模糊与圆角。", en: "Tune the chat input's background opacity, frosted blur and corner radius." },
-    category: "appearance",
+    category: "composer",
+    tags: ["appearance"],
     icon: "blend",
     enabledByDefault: false,
     dependencies: ["StylesApi"],
@@ -5478,6 +5480,7 @@ ${composer ? `[data-composer-card-holder], [data-cds="ChatComposer"] { max-width
     title: { zh: "隐藏分享按钮", en: "No share button" },
     description: { zh: "隐藏对话右上角的「分享」按钮，避免误点生成公开链接。", en: "Hides the Share button at the top right of chats so you never create a public link by accident." },
     category: "declutter",
+    tags: ["privacy"],
     icon: "linkOff",
     enabledByDefault: false,
     dependencies: ["StylesApi"],
@@ -5597,7 +5600,7 @@ ${targets.map((t) => `${t}:hover`).join(`,
     name: "RecentChats",
     title: { zh: "最近对话切换", en: "Recent chats switcher" },
     description: { zh: "按 Ctrl+` 弹出最近打开过的对话卡片，方向键 / 数字键快速切换。", en: "Press Ctrl+` for cards of recently opened chats; switch with arrows or number keys." },
-    category: "chats",
+    category: "navigation",
     icon: "grid",
     enabledByDefault: true,
     dependencies: ["RouterApi", "HotkeysApi", "ChatStateApi"],
@@ -6001,7 +6004,7 @@ ${m.text.trim()}`).join(`
       zh: "打开 claude.ai 首页时，侧栏顶部的 Chat / Code 切换自动停在 Code（Claude Code）。只在页面加载时切一次，之后手动切回 Chat 不受影响；打开具体对话链接时不切。",
       en: "When claude.ai opens on the home page, the Chat / Code switch at the top of the sidebar starts on Code (Claude Code). It switches once per page load, never after you pick Chat yourself, and never when you open a specific chat."
     },
-    category: "chats",
+    category: "navigation",
     icon: "terminal",
     enabledByDefault: true,
     updatedAt: "2026-10-13",
@@ -6077,7 +6080,7 @@ ${m.text.trim()}`).join(`
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.28",
+      version: "0.3.29",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -6094,7 +6097,7 @@ ${m.text.trim()}`).join(`
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.28";
+    win[FLAG] = "0.3.29";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     startPhase("document-start");
@@ -6110,7 +6113,7 @@ ${m.text.trim()}`).join(`
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.28"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.29"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();

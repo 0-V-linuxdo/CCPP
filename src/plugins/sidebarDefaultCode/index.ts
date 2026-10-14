@@ -23,7 +23,7 @@ export default definePlugin({
         zh: "打开 claude.ai 首页时，侧栏顶部的 Chat / Code 切换自动停在 Code（Claude Code）。只在页面加载时切一次，之后手动切回 Chat 不受影响；打开具体对话链接时不切。",
         en: "When claude.ai opens on the home page, the Chat / Code switch at the top of the sidebar starts on Code (Claude Code). It switches once per page load, never after you pick Chat yourself, and never when you open a specific chat.",
     },
-    category: "chats",
+    category: "navigation",
     icon: "terminal",
     enabledByDefault: true,
     updatedAt: "2026-10-13",
