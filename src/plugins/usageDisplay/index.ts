@@ -199,8 +199,8 @@ export default definePlugin({
     name: "UsageDisplay",
     title: { zh: "用量显示", en: "Usage display" },
     description: {
-        zh: "在输入框模型选择器旁显示 5 小时会话与每周用量（双圆环 / 百分比），点开看重置时间。数据来自 claude.ai 自己的用量接口。",
-        en: "Shows the 5-hour session and weekly usage next to the model picker (rings or percent); click for reset times. Data comes from claude.ai's own usage endpoint.",
+        zh: "在输入框模型选择器旁同时显示 5 小时会话与每周用量（双圆环 / 百分比），点开看重置时间；普通对话、Claude Code 首页和项目页都有。数据来自 claude.ai 自己的用量接口。",
+        en: "Shows the 5-hour session and weekly usage side by side next to the model picker (rings or percent), in chats, Claude Code and project pages; click for reset times. Data comes from claude.ai's own usage endpoint.",
     },
     category: "composer",
     icon: "gauge",

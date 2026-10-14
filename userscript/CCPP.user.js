@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.33
+// @version      20261013.0.3.34
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -869,7 +869,7 @@
     composerCard: "[data-composer-card-holder]",
     editor: ':is([data-testid="chat-input"], [data-testid="code-prompt-input"])',
     sendButton: ':is([data-testid="chat-input-send"], [data-testid="code-prompt-send"])',
-    modelSelector: '[data-testid="model-selector-dropdown"]',
+    modelSelector: ':is([data-testid="model-selector-dropdown"], [data-testid="epitaxy-cds-model-selector"])',
     greeting: "[data-new-page-greeting-text]",
     menu: '[role="menu"]',
     menuItem: '[role="menuitem"]',
@@ -2092,7 +2092,7 @@ select.input { padding-right: 6px; }
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.33";
+  var version = "0.3.34";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -3735,8 +3735,8 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
     name: "UsageDisplay",
     title: { zh: "用量显示", en: "Usage display" },
     description: {
-      zh: "在输入框模型选择器旁显示 5 小时会话与每周用量（双圆环 / 百分比），点开看重置时间。数据来自 claude.ai 自己的用量接口。",
-      en: "Shows the 5-hour session and weekly usage next to the model picker (rings or percent); click for reset times. Data comes from claude.ai's own usage endpoint."
+      zh: "在输入框模型选择器旁同时显示 5 小时会话与每周用量（双圆环 / 百分比），点开看重置时间；普通对话、Claude Code 首页和项目页都有。数据来自 claude.ai 自己的用量接口。",
+      en: "Shows the 5-hour session and weekly usage side by side next to the model picker (rings or percent), in chats, Claude Code and project pages; click for reset times. Data comes from claude.ai's own usage endpoint."
     },
     category: "composer",
     icon: "gauge",
@@ -6085,7 +6085,7 @@ ${m.text.trim()}`).join(`
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.33",
+      version: "0.3.34",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -6102,7 +6102,7 @@ ${m.text.trim()}`).join(`
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.33";
+    win[FLAG] = "0.3.34";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     startPhase("document-start");
@@ -6118,7 +6118,7 @@ ${m.text.trim()}`).join(`
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.33"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.34"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();
