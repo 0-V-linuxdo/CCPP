@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.31
+// @version      20261013.0.3.32
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -1457,7 +1457,7 @@
 .icon-btn.on { color: var(--fg); }
 .input { height: var(--h); padding: 0 10px; border-radius: var(--radius); border: 0; box-shadow: inset 0 0 0 1px var(--field-ring); background: var(--field); color: var(--fg); font: inherit; outline: none; width: 100%; }
 .input::placeholder { color: var(--fg3); }
-.input:focus, textarea.input:focus { box-shadow: var(--focus); }
+.input:focus, textarea.input:focus { outline: none; box-shadow: var(--focus); }
 textarea.input { height: auto; padding: 8px 10px; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; line-height: 1.5; }
 select.input { padding-right: 6px; }
 /* Same proportions as claude.ai's Switch: height h, width 1.8h, 2px inset knob. */
@@ -2092,7 +2092,7 @@ select.input { padding-right: 6px; }
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.31";
+  var version = "0.3.32";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -2790,7 +2790,7 @@ select.input { padding-right: 6px; }
       el.setAttribute("data-highlighted", "");
     };
     const panel = (anchor, container, width) => {
-      const scroll = h("div", { class: scrollClass, style: { maxHeight: "min(calc(100vh - 16px), 32rem)", overflowY: "auto" } });
+      const scroll = h("div", { class: scrollClass, style: { maxHeight: "min(calc(100vh - 16px), 32rem)", overflowY: "auto", scrollbarWidth: "thin", scrollbarColor: "var(--cds-alpha-2, rgba(127,127,127,.35)) transparent" } });
       const el = h("div", { role: "menu", "data-ccpp-panel-level": "", class: panelClass, style: { position: "absolute", width, zIndex: "1" } }, scroll);
       container.appendChild(el);
       const place = () => {
@@ -6085,7 +6085,7 @@ ${m.text.trim()}`).join(`
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.31",
+      version: "0.3.32",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -6102,7 +6102,7 @@ ${m.text.trim()}`).join(`
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.31";
+    win[FLAG] = "0.3.32";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     startPhase("document-start");
@@ -6118,7 +6118,7 @@ ${m.text.trim()}`).join(`
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.31"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.32"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();

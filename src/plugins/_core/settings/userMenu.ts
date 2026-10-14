@@ -133,7 +133,7 @@ function enhance(menu: HTMLElement, settingsItem: HTMLElement, options: UserMenu
 
     /** A floating panel beside `anchor`, inside `container` (the menu popup or a parent panel). */
     const panel = (anchor: HTMLElement, container: HTMLElement, width: string) => {
-        const scroll = h("div", { class: scrollClass, style: { maxHeight: "min(calc(100vh - 16px), 32rem)", overflowY: "auto" } });
+        const scroll = h("div", { class: scrollClass, style: { maxHeight: "min(calc(100vh - 16px), 32rem)", overflowY: "auto", scrollbarWidth: "thin", scrollbarColor: "var(--cds-alpha-2, rgba(127,127,127,.35)) transparent" } });
         const el = h("div", { role: "menu", "data-ccpp-panel-level": "", class: panelClass, style: { position: "absolute", width, zIndex: "1" } }, scroll);
         container.appendChild(el);
         // Placed once filled: the panel's height decides how far up it must move to stay on screen.

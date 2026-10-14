@@ -45,7 +45,7 @@ export const BASE_CSS = `
 .icon-btn.on { color: var(--fg); }
 .input { height: var(--h); padding: 0 10px; border-radius: var(--radius); border: 0; box-shadow: inset 0 0 0 1px var(--field-ring); background: var(--field); color: var(--fg); font: inherit; outline: none; width: 100%; }
 .input::placeholder { color: var(--fg3); }
-.input:focus, textarea.input:focus { box-shadow: var(--focus); }
+.input:focus, textarea.input:focus { outline: none; box-shadow: var(--focus); }
 textarea.input { height: auto; padding: 8px 10px; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; line-height: 1.5; }
 select.input { padding-right: 6px; }
 /* Same proportions as claude.ai's Switch: height h, width 1.8h, 2px inset knob. */
