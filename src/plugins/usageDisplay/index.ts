@@ -31,7 +31,7 @@ const settings = definePluginSettings({
         ],
     },
     refreshSec: { type: "number", label: { zh: "自动刷新间隔", en: "Refresh every" }, default: 60, min: 30, max: 600, step: 10, unit: "s" },
-    warnAt: { type: "number", label: { zh: "黄色提醒阈值", en: "Amber from" }, default: 70, min: 10, max: 99, unit: "%" },
+    warnAt: { type: "number", label: { zh: "黄色提醒阈值", en: "Amber from" }, default: 75, min: 10, max: 99, unit: "%" },
     dangerAt: { type: "number", label: { zh: "红色提醒阈值", en: "Red from" }, default: 90, min: 10, max: 100, unit: "%" },
 });
 
@@ -113,39 +113,37 @@ const resetText = (window: UsageWindow) =>
 
 
 
-const COLORS = { ok: "#3f9a5b", warn: "#c98a12", bad: "#d1453b" };
+// claude.ai's own usage-ring colours (accent / warning / danger).
+const COLORS = { ok: "var(--cds-fill-accent, #2a78d6)", warn: "var(--cds-fill-warning, #fab219)", bad: "var(--cds-fill-danger, #d03b3b)" };
+const SVG_NS = "http://www.w3.org/2000/svg";
 
-function ring(window: UsageWindow | null, label: string) {
-    const percent = window?.utilization ?? 0;
-    const color = COLORS[level(percent, settings.store.warnAt, settings.store.dangerAt)];
-    // Each ring explains itself, like claude.ai's single usage ring.
-    return h("span", {
-        class: "ccpp-usage-ring",
-        "aria-label": `${label} ${Math.round(percent)}%`,
-        ...(window ? tipAttrs(`${label}: ${Math.round(percent)}%`, resetText(window)) : tipAttrs(label, error ?? t(L.loading))),
-        style: { background: window ? `conic-gradient(${color} ${percent * 3.6}deg, rgba(127,127,127,.25) 0)` : "rgba(127,127,127,.25)" },
-    });
+/** The same 14px ring claude.ai draws in its usage button: r 6, 2px stroke, faint track, round-capped arc from 12 o'clock. */
+function ringSvg(percent: number | null) {
+    const svg = document.createElementNS(SVG_NS, "svg");
+    for (const [k, v] of Object.entries({ width: "14", height: "14", viewBox: "0 0 14 14", "aria-hidden": "true" })) svg.setAttribute(k, v);
+    svg.style.transform = "rotate(-90deg)";
+    const circle = (attrs: Record<string, string>) => {
+        const c = document.createElementNS(SVG_NS, "circle");
+        for (const [k, v] of Object.entries({ cx: "7", cy: "7", r: "6", fill: "none", "stroke-width": "2", ...attrs })) c.setAttribute(k, v);
+        return svg.appendChild(c);
+    };
+    circle({ stroke: "var(--cds-alpha-4, rgba(127,127,127,.35))" });
+    if (percent !== null) {
+        const length = 2 * Math.PI * 6;
+        const clamped = Math.max(0, Math.min(100, percent));
+        circle({
+            stroke: COLORS[level(percent, settings.store.warnAt, settings.store.dangerAt)],
+            "stroke-dasharray": String(length),
+            "stroke-dashoffset": String(length * (1 - clamped / 100)),
+            "stroke-linecap": "round",
+        });
+    }
+    return svg;
 }
 
-function chip(open: (anchor: HTMLElement) => void) {
-    const style = settings.store.style;
-    const five = usage?.fiveHour ?? null;
-    const week = usage?.sevenDay ?? null;
-    const pct = (w: UsageWindow | null) => (w ? `${Math.round(w.utilization)}%` : "–");
-    const text = !usage ? (error ? "!" : "…") : `${pct(five)} · ${pct(week)}`;
-    const tip = usage ? `${t(L.session)} ${pct(five)} · ${t(L.weekly)} ${pct(week)}` : error ?? t(L.loading);
-    const button = h(
-        "button",
-        {
-            type: "button",
-            class: `ccpp-slot-btn ccpp-usage${error && !usage ? " err" : ""}`,
-            "aria-label": tip,
-            // Without rings (text style, or before data arrives) the whole button carries the tooltip.
-            ...(style === "text" || !usage ? tipAttrs(tip, five ? resetText(five) : "") : {}),
-        },
-        style !== "text" ? h("span", { class: "ccpp-usage-rings" }, ring(five, t(L.session)), ring(week, t(L.weekly))) : null,
-        style !== "rings" ? h("span", { class: "ccpp-usage-text", text }) : null,
-    );
+/** A square ghost button like claude.ai's: one per ring, or one for the percent text. */
+function usageButton(open: (anchor: HTMLElement) => void, label: string, tip: Record<string, string>, ...children: Node[]) {
+    const button = h("button", { type: "button", class: "ccpp-usage-btn", "aria-label": label, ...tip }, ...children);
     button.addEventListener("click", event => {
         event.preventDefault();
         event.stopPropagation();
@@ -155,13 +153,40 @@ function chip(open: (anchor: HTMLElement) => void) {
     return button;
 }
 
+function ring(open: (anchor: HTMLElement) => void, window: UsageWindow | null, label: string) {
+    const percent = window ? Math.round(window.utilization) : null;
+    // Each ring explains itself, like claude.ai's single usage ring.
+    return usageButton(
+        open,
+        percent === null ? label : `${label} ${percent}%`,
+        window ? tipAttrs(`${label}: ${percent}%`, resetText(window)) : tipAttrs(label, error ?? t(L.loading)),
+        ringSvg(window ? window.utilization : null),
+    );
+}
+
+function chip(open: (anchor: HTMLElement) => void) {
+    const style = settings.store.style;
+    const five = usage?.fiveHour ?? null;
+    const week = usage?.sevenDay ?? null;
+    const pct = (w: UsageWindow | null) => (w ? `${Math.round(w.utilization)}%` : "–");
+    const text = !usage ? (error ? "!" : "…") : `${pct(five)} · ${pct(week)}`;
+    const tip = usage ? `${t(L.session)} ${pct(five)} · ${t(L.weekly)} ${pct(week)}` : error ?? t(L.loading);
+    return h(
+        "span",
+        { class: `ccpp-usage${error && !usage ? " err" : ""}` },
+        ...(style !== "text" ? [ring(open, five, t(L.session)), ring(open, week, t(L.weekly))] : []),
+        ...(style !== "rings" ? [usageButton(open, tip, tipAttrs(tip, five ? resetText(five) : ""), h("span", { text }))] : []),
+    );
+}
+
+// Sized by claude.ai's own control height token, so the buttons match their neighbours (24px in Claude Code's bar, 32px in chats).
 const SLOT_CSS = `
-.ccpp-usage { gap: 6px; font-variant-numeric: tabular-nums; }
-.ccpp-usage-rings { display: inline-flex; gap: 3px; }
-.ccpp-usage-ring { position: relative; width: 14px; height: 14px; border-radius: 50%; }
-.ccpp-usage-ring::after { content: ""; position: absolute; inset: 3px; border-radius: 50%; background: var(--bg-000, #fff); }
-html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
-.ccpp-usage.err { color: #d1453b; }
+.ccpp-usage { display: inline-flex; align-items: center; gap: 4px; font-variant-numeric: tabular-nums; }
+.ccpp-usage-btn { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; height: var(--cds-h-control, 32px); min-width: var(--cds-h-control, 32px); padding: 0; border: 0; border-radius: calc(0.375rem * var(--cds-rem-scale, 1)); background: transparent; color: var(--cds-text-secondary, inherit); font: inherit; font-size: 12px; cursor: pointer; transition: background-color .15s ease-out; }
+.ccpp-usage-btn:has(> span) { padding: 0 6px; }
+.ccpp-usage-btn:hover, .ccpp-usage-btn[aria-expanded="true"] { color: var(--cds-text-primary, inherit); background: var(--cds-fill-ghost-hover, rgba(127,127,127,.14)); }
+.ccpp-usage-btn:focus-visible { outline: none; box-shadow: var(--cds-shadow-focus, 0 0 0 2px var(--cds-fill-accent, #2a78d6)); }
+.ccpp-usage.err .ccpp-usage-btn { color: var(--cds-text-danger, #d03b3b); }
 `;
 
 const PANEL_CSS = `

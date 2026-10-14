@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.39
+// @version      20261013.0.3.40
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -2187,7 +2187,7 @@ select.input { padding-right: 6px; }
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.39";
+  var version = "0.3.40";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -3694,7 +3694,7 @@ ${x.css}`)].join(`
       ]
     },
     refreshSec: { type: "number", label: { zh: "自动刷新间隔", en: "Refresh every" }, default: 60, min: 30, max: 600, step: 10, unit: "s" },
-    warnAt: { type: "number", label: { zh: "黄色提醒阈值", en: "Amber from" }, default: 70, min: 10, max: 99, unit: "%" },
+    warnAt: { type: "number", label: { zh: "黄色提醒阈值", en: "Amber from" }, default: 75, min: 10, max: 99, unit: "%" },
     dangerAt: { type: "number", label: { zh: "红色提醒阈值", en: "Red from" }, default: 90, min: 10, max: 100, unit: "%" }
   });
   var L9 = {
@@ -3761,30 +3761,34 @@ ${x.css}`)].join(`
     return "ok";
   }
   var resetText = (window2) => !window2.resetsAt ? "" : window2.resetsAt - Date.now() < 24 * 3600 * 1000 ? t(L9.resetsIn).replace("{t}", untilText(window2.resetsAt)) : t(L9.resetsAt).replace("{t}", dateTimeText(window2.resetsAt));
-  var COLORS = { ok: "#3f9a5b", warn: "#c98a12", bad: "#d1453b" };
-  function ring(window2, label) {
-    const percent = window2?.utilization ?? 0;
-    const color = COLORS[level(percent, settings4.store.warnAt, settings4.store.dangerAt)];
-    return h("span", {
-      class: "ccpp-usage-ring",
-      "aria-label": `${label} ${Math.round(percent)}%`,
-      ...window2 ? tipAttrs(`${label}: ${Math.round(percent)}%`, resetText(window2)) : tipAttrs(label, error ?? t(L9.loading)),
-      style: { background: window2 ? `conic-gradient(${color} ${percent * 3.6}deg, rgba(127,127,127,.25) 0)` : "rgba(127,127,127,.25)" }
-    });
+  var COLORS = { ok: "var(--cds-fill-accent, #2a78d6)", warn: "var(--cds-fill-warning, #fab219)", bad: "var(--cds-fill-danger, #d03b3b)" };
+  var SVG_NS = "http://www.w3.org/2000/svg";
+  function ringSvg(percent) {
+    const svg = document.createElementNS(SVG_NS, "svg");
+    for (const [k, v] of Object.entries({ width: "14", height: "14", viewBox: "0 0 14 14", "aria-hidden": "true" }))
+      svg.setAttribute(k, v);
+    svg.style.transform = "rotate(-90deg)";
+    const circle = (attrs) => {
+      const c = document.createElementNS(SVG_NS, "circle");
+      for (const [k, v] of Object.entries({ cx: "7", cy: "7", r: "6", fill: "none", "stroke-width": "2", ...attrs }))
+        c.setAttribute(k, v);
+      return svg.appendChild(c);
+    };
+    circle({ stroke: "var(--cds-alpha-4, rgba(127,127,127,.35))" });
+    if (percent !== null) {
+      const length = 2 * Math.PI * 6;
+      const clamped = Math.max(0, Math.min(100, percent));
+      circle({
+        stroke: COLORS[level(percent, settings4.store.warnAt, settings4.store.dangerAt)],
+        "stroke-dasharray": String(length),
+        "stroke-dashoffset": String(length * (1 - clamped / 100)),
+        "stroke-linecap": "round"
+      });
+    }
+    return svg;
   }
-  function chip(open) {
-    const style = settings4.store.style;
-    const five = usage?.fiveHour ?? null;
-    const week = usage?.sevenDay ?? null;
-    const pct = (w) => w ? `${Math.round(w.utilization)}%` : "–";
-    const text = !usage ? error ? "!" : "…" : `${pct(five)} · ${pct(week)}`;
-    const tip = usage ? `${t(L9.session)} ${pct(five)} · ${t(L9.weekly)} ${pct(week)}` : error ?? t(L9.loading);
-    const button = h("button", {
-      type: "button",
-      class: `ccpp-slot-btn ccpp-usage${error && !usage ? " err" : ""}`,
-      "aria-label": tip,
-      ...style === "text" || !usage ? tipAttrs(tip, five ? resetText(five) : "") : {}
-    }, style !== "text" ? h("span", { class: "ccpp-usage-rings" }, ring(five, t(L9.session)), ring(week, t(L9.weekly))) : null, style !== "rings" ? h("span", { class: "ccpp-usage-text", text }) : null);
+  function usageButton(open, label, tip, ...children) {
+    const button = h("button", { type: "button", class: "ccpp-usage-btn", "aria-label": label, ...tip }, ...children);
     button.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
@@ -3793,13 +3797,26 @@ ${x.css}`)].join(`
     });
     return button;
   }
+  function ring(open, window2, label) {
+    const percent = window2 ? Math.round(window2.utilization) : null;
+    return usageButton(open, percent === null ? label : `${label} ${percent}%`, window2 ? tipAttrs(`${label}: ${percent}%`, resetText(window2)) : tipAttrs(label, error ?? t(L9.loading)), ringSvg(window2 ? window2.utilization : null));
+  }
+  function chip(open) {
+    const style = settings4.store.style;
+    const five = usage?.fiveHour ?? null;
+    const week = usage?.sevenDay ?? null;
+    const pct = (w) => w ? `${Math.round(w.utilization)}%` : "–";
+    const text = !usage ? error ? "!" : "…" : `${pct(five)} · ${pct(week)}`;
+    const tip = usage ? `${t(L9.session)} ${pct(five)} · ${t(L9.weekly)} ${pct(week)}` : error ?? t(L9.loading);
+    return h("span", { class: `ccpp-usage${error && !usage ? " err" : ""}` }, ...style !== "text" ? [ring(open, five, t(L9.session)), ring(open, week, t(L9.weekly))] : [], ...style !== "rings" ? [usageButton(open, tip, tipAttrs(tip, five ? resetText(five) : ""), h("span", { text }))] : []);
+  }
   var SLOT_CSS = `
-.ccpp-usage { gap: 6px; font-variant-numeric: tabular-nums; }
-.ccpp-usage-rings { display: inline-flex; gap: 3px; }
-.ccpp-usage-ring { position: relative; width: 14px; height: 14px; border-radius: 50%; }
-.ccpp-usage-ring::after { content: ""; position: absolute; inset: 3px; border-radius: 50%; background: var(--bg-000, #fff); }
-html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
-.ccpp-usage.err { color: #d1453b; }
+.ccpp-usage { display: inline-flex; align-items: center; gap: 4px; font-variant-numeric: tabular-nums; }
+.ccpp-usage-btn { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; height: var(--cds-h-control, 32px); min-width: var(--cds-h-control, 32px); padding: 0; border: 0; border-radius: calc(0.375rem * var(--cds-rem-scale, 1)); background: transparent; color: var(--cds-text-secondary, inherit); font: inherit; font-size: 12px; cursor: pointer; transition: background-color .15s ease-out; }
+.ccpp-usage-btn:has(> span) { padding: 0 6px; }
+.ccpp-usage-btn:hover, .ccpp-usage-btn[aria-expanded="true"] { color: var(--cds-text-primary, inherit); background: var(--cds-fill-ghost-hover, rgba(127,127,127,.14)); }
+.ccpp-usage-btn:focus-visible { outline: none; box-shadow: var(--cds-shadow-focus, 0 0 0 2px var(--cds-fill-accent, #2a78d6)); }
+.ccpp-usage.err .ccpp-usage-btn { color: var(--cds-text-danger, #d03b3b); }
 `;
   var PANEL_CSS2 = `
 .metric { display: flex; flex-direction: column; gap: 4px; }
@@ -6213,7 +6230,7 @@ ${m.text.trim()}`).join(`
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.39",
+      version: "0.3.40",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -6230,7 +6247,7 @@ ${m.text.trim()}`).join(`
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.39";
+    win[FLAG] = "0.3.40";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -6247,7 +6264,7 @@ ${m.text.trim()}`).join(`
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.39"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.40"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();
