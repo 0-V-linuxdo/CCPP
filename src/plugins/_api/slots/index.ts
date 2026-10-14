@@ -7,6 +7,7 @@
 import { definePlugin } from "@kernel/plugins";
 import type { Scope } from "@kernel/scope";
 import { h } from "@lib/dom";
+import { tipAttrs } from "@lib/tooltip";
 import { addStyle } from "@api/styles";
 import { SEL, watch } from "@api/dom";
 
@@ -82,7 +83,7 @@ export function refreshSlotItem(item: Item) {
 }
 
 export const slotButton = (label: string, onClick: (e: MouseEvent) => void, ...children: (Node | string)[]) =>
-    h("button", { type: "button", class: "ccpp-slot-btn", "aria-label": label, title: label, onclick: onClick as EventListener }, ...children);
+    h("button", { type: "button", class: "ccpp-slot-btn", "aria-label": label, ...tipAttrs(label), onclick: onClick as EventListener }, ...children);
 
 export default definePlugin({
     name: "SlotsApi",

@@ -22,6 +22,7 @@ import {
 import { onSettingsChange } from "@kernel/settings";
 import { clear, h } from "@lib/dom";
 import { icon } from "@lib/icons";
+import { tipAttrs } from "@lib/tooltip";
 
 import { confirmDialog, dialogFrame, openModal } from "./layer";
 import { renderOption } from "./options";
@@ -122,7 +123,7 @@ function pluginSwitch(plugin: Plugin) {
         "aria-checked": String(isActive(plugin)),
         "aria-label": t(plugin.title),
         disabled: !!plugin.required || keptBy.length > 0,
-        title: keptBy.length ? t(L.keptBy) + keptBy.map(p => t(p.title)).join(", ") : "",
+        ...(keptBy.length ? tipAttrs(t(L.keptBy) + keptBy.map(p => t(p.title)).join(", ")) : {}),
     });
     sw.addEventListener("click", () => togglePlugin(plugin, !enabled));
     return sw;
@@ -140,15 +141,15 @@ function badges(plugin: Plugin) {
 function pluginCard(plugin: Plugin): HTMLElement {
     const error = pluginError(plugin.name);
     const iconBtn = (cls: string, label: Text, name: string, on: boolean, run: () => void) => {
-        const button = h("button", { type: "button", class: `icon-btn ${cls}${on ? " on" : ""}`, title: t(label), "aria-label": t(label), "aria-pressed": String(on) }, icon(name, 14));
+        const button = h("button", { type: "button", class: `icon-btn ${cls}${on ? " on" : ""}`, ...tipAttrs(t(label)), "aria-label": t(label), "aria-pressed": String(on) }, icon(name, 14));
         button.addEventListener("click", run);
         return button;
     };
-    const title = h("span", { class: "card-title", text: t(plugin.title), title: plugin.name });
+    const title = h("span", { class: "card-title", text: t(plugin.title), ...tipAttrs(plugin.name) });
     title.addEventListener("click", () => openPluginDialog(plugin));
     return h(
         "div",
-        { class: `card${isActive(plugin) ? " on" : " off"}${error ? " crashed" : ""}`, "data-plugin": plugin.name, title: error ? `${error.stage}: ${error.message}` : null },
+        { class: `card${isActive(plugin) ? " on" : " off"}${error ? " crashed" : ""}`, "data-plugin": plugin.name, ...(error ? tipAttrs(t(L.crashed), `${error.stage}: ${error.message}`) : {}) },
         h(
             "div",
             { class: "card-body" },

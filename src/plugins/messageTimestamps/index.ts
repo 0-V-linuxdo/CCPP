@@ -33,7 +33,7 @@ export default definePlugin({
                 if (!Number.isFinite(at)) return;
                 const text = dateTimeText(at);
                 if (el.textContent !== text) el.textContent = text;
-                el.title = new Date(at).toLocaleString();
+                el.setAttribute("data-ccpp-tip", new Date(at).toLocaleString());
             };
             paint();
             const observer = new MutationObserver(paint);

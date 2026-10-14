@@ -9,6 +9,7 @@ import type { Scope } from "@kernel/scope";
 import { clear, h } from "@lib/dom";
 import { icon } from "@lib/icons";
 import { shadowBox } from "@lib/ui";
+import { tipAttrs } from "@lib/tooltip";
 import { watch } from "@api/dom";
 import { addStyle } from "@api/styles";
 
@@ -290,7 +291,7 @@ export function openStandalone(tabId: string) {
     const nav = h("nav", { class: "shell-nav" }, h("div", { class: "group" }, L.group, h("span", { class: "ver", text: ` v${version}` })));
     const main = h("div", { class: "shell-main" });
     const pageBox = h("div", { style: { flex: "1", minHeight: "0", display: "flex", flexDirection: "column" } });
-    const closeBtn = h("button", { type: "button", class: "icon-btn", "aria-label": t(L.close), title: t(L.close) }, icon("x", 16));
+    const closeBtn = h("button", { type: "button", class: "icon-btn", "aria-label": t(L.close), ...tipAttrs(t(L.close)) }, icon("x", 16));
     main.append(h("div", { class: "shell-top" }, closeBtn), pageBox);
     const draw = () => {
         for (const old of nav.querySelectorAll("button")) old.remove();

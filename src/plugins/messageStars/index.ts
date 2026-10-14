@@ -12,6 +12,7 @@ import { h } from "@lib/dom";
 import { agoText, snippet } from "@lib/format";
 import { icon } from "@lib/icons";
 import { createPopover } from "@lib/popover";
+import { tipAttrs } from "@lib/tooltip";
 import { chatTitle } from "@api/chatState";
 import { SEL, watch } from "@api/dom";
 import { currentRoute, onRoute } from "@api/router";
@@ -92,7 +93,7 @@ export default definePlugin({
                 row.classList.toggle("ccpp-starred-row", on);
                 for (const btn of row.querySelectorAll<HTMLElement>(".ccpp-star-btn")) {
                     btn.classList.toggle("on", on);
-                    btn.title = t(on ? L.unstar : L.star);
+                    btn.setAttribute("data-ccpp-tip", t(on ? L.unstar : L.star));
                     btn.setAttribute("aria-pressed", String(on));
                 }
             }
@@ -107,7 +108,7 @@ export default definePlugin({
             const size = glyph && glyph.width >= 12 && glyph.width <= 24 ? Math.round(glyph.width) : 15;
             const svg = icon("star", size);
             if (native) svg.setAttribute("stroke-width", "1.5");
-            const btn = h("button", { type: "button", class: `ccpp-star-btn${extra}${on ? " on" : ""}`, title: t(on ? L.unstar : L.star), "aria-label": t(L.star), "aria-pressed": String(on) }, svg);
+            const btn = h("button", { type: "button", class: `ccpp-star-btn${extra}${on ? " on" : ""}`, ...tipAttrs(t(on ? L.unstar : L.star)), "aria-label": t(L.star), "aria-pressed": String(on) }, svg);
             if (native) {
                 btn.className = `${native.className} ccpp-star-btn ccpp-native${extra}${on ? " on" : ""}`;
                 for (const attr of [...native.attributes]) if (attr.name.startsWith("data-cds") || attr.name === "data-size") btn.setAttribute(attr.name, attr.value);

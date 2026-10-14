@@ -9,6 +9,7 @@ import { Logger } from "@kernel/logger";
 import { definePlugin } from "@kernel/plugins";
 import { definePluginSettings } from "@kernel/settings";
 import { h } from "@lib/dom";
+import { tipAttrs } from "@lib/tooltip";
 import { ApiError, getProjectActivity, type ProjectActivity } from "@api/claude";
 import { watch } from "@api/dom";
 import { onRoute } from "@api/router";
@@ -117,7 +118,7 @@ export default definePlugin({
             const target = parent();
             if (!target) return;
             const label = t(kind === "clay" ? L.running : L.waiting);
-            target.appendChild(h("span", { [attr]: kind, title: label }, h("span", { role: "status", "aria-label": label }, h("span", { class: "status-dot", "data-kind": kind }))));
+            target.appendChild(h("span", { [attr]: kind, ...tipAttrs(label) }, h("span", { role: "status", "aria-label": label }, h("span", { class: "status-dot", "data-kind": kind }))));
         };
 
         // claude.ai limits project reads per account ("Too many project reads"), and its own pages share

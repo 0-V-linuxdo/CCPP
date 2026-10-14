@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.37
+// @version      20261013.0.3.38
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -540,6 +540,142 @@
   }
   var isDark = () => document.documentElement.dataset.mode === "dark" || !document.documentElement.dataset.mode && matchMedia?.("(prefers-color-scheme: dark)").matches;
 
+  // src/lib/dom.ts
+  function h(tag, attrs = {}, ...children) {
+    const el = document.createElement(tag);
+    for (const [key, value] of Object.entries(attrs)) {
+      if (value == null || value === false)
+        continue;
+      if (key.startsWith("on") && typeof value === "function")
+        el.addEventListener(key.slice(2).toLowerCase(), value);
+      else if (key === "style" && typeof value === "object")
+        Object.assign(el.style, value);
+      else if (key === "class")
+        el.className = String(value);
+      else if (key === "text")
+        el.textContent = String(value);
+      else if (key in el && typeof value !== "string" && key !== "role")
+        el[key] = value;
+      else
+        el.setAttribute(key, value === true ? "" : String(value));
+    }
+    append(el, children);
+    return el;
+  }
+  function append(parent, children) {
+    for (const child of children) {
+      if (child == null || child === false)
+        continue;
+      parent.appendChild(typeof child === "object" ? child : document.createTextNode(String(child)));
+    }
+  }
+  var clear = (el) => {
+    while (el.firstChild)
+      el.firstChild.remove();
+  };
+  function isShown(el) {
+    if (!el || !el.isConnected)
+      return false;
+    const rect = el.getBoundingClientRect();
+    return rect.width > 0 || rect.height > 0;
+  }
+  function download(filename, content, type = "text/plain") {
+    const url = URL.createObjectURL(new Blob([content], { type: `${type};charset=utf-8` }));
+    const a = h("a", { href: url, download: filename, style: { display: "none" } });
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+  }
+  var fileSafe = (name) => name.replace(/[\\/:*?"<>|\u0000-\u001f]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 120) || "untitled";
+  var isEditable = (el) => {
+    if (!(el instanceof HTMLElement))
+      return false;
+    return el.isContentEditable || el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT";
+  };
+
+  // src/lib/tooltip.ts
+  var TIP = "data-ccpp-tip";
+  var TIP_DETAIL = "data-ccpp-tip-detail";
+  var tipAttrs = (title, detail) => detail ? { [TIP]: title, [TIP_DETAIL]: detail } : { [TIP]: title };
+  var card = null;
+  var current = null;
+  var showTimer;
+  var lastHidden = 0;
+  function ensureCard() {
+    if (card?.isConnected)
+      return card;
+    card = h("div", {
+      role: "tooltip",
+      "data-ccpp-tooltip": "",
+      style: {
+        position: "fixed",
+        zIndex: "2147483601",
+        pointerEvents: "none",
+        display: "none",
+        flexDirection: "column",
+        gap: "2px",
+        maxWidth: "240px",
+        padding: "6px 8px",
+        borderRadius: "calc(0.375rem * var(--cds-rem-scale, 1))",
+        background: "var(--cds-tooltip-bg, rgb(32,32,31))",
+        color: "var(--cds-tooltip-fg, rgb(240,239,236))",
+        boxShadow: "inset 0 0 0 1px rgba(255,255,255,.1), 0 1px 2px rgba(11,11,11,.06), 0 2px 8px rgba(0,0,0,.24)",
+        font: "400 calc(0.8125rem * var(--cds-rem-scale, 1))/calc(1.125rem * var(--cds-rem-scale, 1)) var(--cds-font-sans, ui-sans-serif, system-ui, sans-serif)",
+        textWrap: "balance",
+        whiteSpace: "normal",
+        overflowWrap: "anywhere",
+        textAlign: "start"
+      }
+    });
+    document.body.appendChild(card);
+    return card;
+  }
+  function showTip(anchor, title, detail = "") {
+    if (!title)
+      return hideTip();
+    const el = ensureCard();
+    el.replaceChildren(h("span", { text: title }), ...detail ? [h("span", { text: detail, style: { fontSize: "calc(0.6875rem * var(--cds-rem-scale, 1))", lineHeight: "calc(0.875rem * var(--cds-rem-scale, 1))", color: "rgb(195,194,183)" } })] : []);
+    el.style.display = "flex";
+    const a = anchor.getBoundingClientRect();
+    const r = el.getBoundingClientRect();
+    el.style.left = `${Math.min(Math.max(8, a.left + a.width / 2 - r.width / 2), window.innerWidth - r.width - 8)}px`;
+    el.style.top = `${a.top - r.height - 4 >= 8 ? a.top - r.height - 4 : a.bottom + 4}px`;
+    current = anchor;
+  }
+  function hideTip() {
+    clearTimeout(showTimer);
+    if (card && card.style.display !== "none")
+      lastHidden = Date.now();
+    if (card)
+      card.style.display = "none";
+    current = null;
+  }
+  var tipTarget = (event) => event.composedPath().find((n) => n instanceof Element && n.hasAttribute(TIP)) ?? null;
+  var installed = false;
+  function installTooltips() {
+    if (installed)
+      return;
+    installed = true;
+    document.addEventListener("pointerover", (event) => {
+      const target = tipTarget(event);
+      if (target === current)
+        return;
+      clearTimeout(showTimer);
+      if (!target)
+        return hideTip();
+      const open = () => target.isConnected && showTip(target, target.getAttribute(TIP) ?? "", target.getAttribute(TIP_DETAIL) ?? "");
+      if (current || Date.now() - lastHidden < 400)
+        open();
+      else
+        showTimer = setTimeout(open, 500);
+    }, true);
+    document.addEventListener("pointerout", (event) => !event.relatedTarget && hideTip(), true);
+    for (const type of ["pointerdown", "keydown", "scroll", "blur"])
+      window.addEventListener(type, hideTip, true);
+    setInterval(() => current && !current.isConnected && hideTip(), 500);
+  }
+
   // src/plugins/_api/claude/index.ts
   var UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   var orgPromise = null;
@@ -797,20 +933,20 @@
     const kind = chat ? "chat" : project ? "project" : path === "/new" || path === "/" ? "new" : path.startsWith("/settings") ? "settings" : "other";
     return { path, kind, chatId: chat?.[1].toLowerCase() ?? null, projectId: project?.[1].toLowerCase() ?? null };
   }
-  var current = parseRoute(location.pathname);
-  var currentRoute = () => current;
+  var current2 = parseRoute(location.pathname);
+  var currentRoute = () => current2;
   function check() {
     const path = location.pathname;
-    if (path === current.path)
+    if (path === current2.path)
       return;
-    const previous = current;
-    current = parseRoute(path);
-    emit("route", { route: current, previous });
+    const previous = current2;
+    current2 = parseRoute(path);
+    emit("route", { route: current2, previous });
   }
   function onRoute(scope, fn, immediate = true) {
     scope.on("route", ({ route, previous }) => fn(route, previous));
     if (immediate)
-      fn(current, null);
+      fn(current2, null);
   }
   var router_default = definePlugin({
     name: "RouterApi",
@@ -838,7 +974,7 @@
       }
       scope.listen(pageWindow, "popstate", check);
       scope.interval(check, 700);
-      current = parseRoute(location.pathname);
+      current2 = parseRoute(location.pathname);
     }
   });
 
@@ -1025,60 +1161,6 @@
       });
     }
   });
-
-  // src/lib/dom.ts
-  function h(tag, attrs = {}, ...children) {
-    const el = document.createElement(tag);
-    for (const [key, value] of Object.entries(attrs)) {
-      if (value == null || value === false)
-        continue;
-      if (key.startsWith("on") && typeof value === "function")
-        el.addEventListener(key.slice(2).toLowerCase(), value);
-      else if (key === "style" && typeof value === "object")
-        Object.assign(el.style, value);
-      else if (key === "class")
-        el.className = String(value);
-      else if (key === "text")
-        el.textContent = String(value);
-      else if (key in el && typeof value !== "string" && key !== "role")
-        el[key] = value;
-      else
-        el.setAttribute(key, value === true ? "" : String(value));
-    }
-    append(el, children);
-    return el;
-  }
-  function append(parent, children) {
-    for (const child of children) {
-      if (child == null || child === false)
-        continue;
-      parent.appendChild(typeof child === "object" ? child : document.createTextNode(String(child)));
-    }
-  }
-  var clear = (el) => {
-    while (el.firstChild)
-      el.firstChild.remove();
-  };
-  function isShown(el) {
-    if (!el || !el.isConnected)
-      return false;
-    const rect = el.getBoundingClientRect();
-    return rect.width > 0 || rect.height > 0;
-  }
-  function download(filename, content, type = "text/plain") {
-    const url = URL.createObjectURL(new Blob([content], { type: `${type};charset=utf-8` }));
-    const a = h("a", { href: url, download: filename, style: { display: "none" } });
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 5000);
-  }
-  var fileSafe = (name) => name.replace(/[\\/:*?"<>|\u0000-\u001f]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 120) || "untitled";
-  var isEditable = (el) => {
-    if (!(el instanceof HTMLElement))
-      return false;
-    return el.isContentEditable || el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT";
-  };
 
   // src/plugins/_api/composer/index.ts
   function getEditor() {
@@ -1675,7 +1757,7 @@ select.input { padding-right: 6px; }
       item.nodes.set(container, next);
     }
   }
-  var slotButton = (label, onClick, ...children) => h("button", { type: "button", class: "ccpp-slot-btn", "aria-label": label, title: label, onclick: onClick }, ...children);
+  var slotButton = (label, onClick, ...children) => h("button", { type: "button", class: "ccpp-slot-btn", "aria-label": label, ...tipAttrs(label), onclick: onClick }, ...children);
   var slots_default = definePlugin({
     name: "SlotsApi",
     title: { zh: "界面插槽", en: "UI slots API" },
@@ -2068,7 +2150,7 @@ select.input { padding-right: 6px; }
       clear(shadow.box);
   }
   function dialogFrame(options) {
-    const close = h("button", { type: "button", class: "icon-btn", "aria-label": t(L.close), title: t(L.close) }, icon("x", 16));
+    const close = h("button", { type: "button", class: "icon-btn", "aria-label": t(L.close), ...tipAttrs(t(L.close)) }, icon("x", 16));
     close.addEventListener("click", options.onClose);
     return h("div", { class: `dialog${options.size ? ` ${options.size}` : ""}`, role: "dialog", "aria-modal": "true", "aria-label": options.title }, h("div", { class: "d-head" }, options.icon ? h("span", { class: "chip-icon" }, icon(options.icon, 16)) : null, h("h2", { text: options.title }), close), h("div", { class: "d-body" }, ...options.body), options.foot?.length ? h("div", { class: "d-foot" }, ...options.foot) : null);
   }
@@ -2093,7 +2175,7 @@ select.input { padding-right: 6px; }
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.37";
+  var version = "0.3.38";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -2379,7 +2461,7 @@ select.input { padding-right: 6px; }
     const nav = h("nav", { class: "shell-nav" }, h("div", { class: "group" }, L2.group, h("span", { class: "ver", text: ` v${version}` })));
     const main = h("div", { class: "shell-main" });
     const pageBox = h("div", { style: { flex: "1", minHeight: "0", display: "flex", flexDirection: "column" } });
-    const closeBtn = h("button", { type: "button", class: "icon-btn", "aria-label": t(L2.close), title: t(L2.close) }, icon("x", 16));
+    const closeBtn = h("button", { type: "button", class: "icon-btn", "aria-label": t(L2.close), ...tipAttrs(t(L2.close)) }, icon("x", 16));
     main.append(h("div", { class: "shell-top" }, closeBtn), pageBox);
     const draw = () => {
       for (const old of nav.querySelectorAll("button"))
@@ -2570,7 +2652,7 @@ select.input { padding-right: 6px; }
       "aria-checked": String(isActive(plugin)),
       "aria-label": t(plugin.title),
       disabled: !!plugin.required || keptBy.length > 0,
-      title: keptBy.length ? t(L3.keptBy) + keptBy.map((p) => t(p.title)).join(", ") : ""
+      ...keptBy.length ? tipAttrs(t(L3.keptBy) + keptBy.map((p) => t(p.title)).join(", ")) : {}
     });
     sw.addEventListener("click", () => togglePlugin(plugin, !enabled));
     return sw;
@@ -2590,13 +2672,13 @@ select.input { padding-right: 6px; }
   function pluginCard(plugin) {
     const error = pluginError(plugin.name);
     const iconBtn = (cls, label, name, on, run) => {
-      const button = h("button", { type: "button", class: `icon-btn ${cls}${on ? " on" : ""}`, title: t(label), "aria-label": t(label), "aria-pressed": String(on) }, icon(name, 14));
+      const button = h("button", { type: "button", class: `icon-btn ${cls}${on ? " on" : ""}`, ...tipAttrs(t(label)), "aria-label": t(label), "aria-pressed": String(on) }, icon(name, 14));
       button.addEventListener("click", run);
       return button;
     };
-    const title = h("span", { class: "card-title", text: t(plugin.title), title: plugin.name });
+    const title = h("span", { class: "card-title", text: t(plugin.title), ...tipAttrs(plugin.name) });
     title.addEventListener("click", () => openPluginDialog(plugin));
-    return h("div", { class: `card${isActive(plugin) ? " on" : " off"}${error ? " crashed" : ""}`, "data-plugin": plugin.name, title: error ? `${error.stage}: ${error.message}` : null }, h("div", { class: "card-body" }, h("div", { class: "card-top" }, h("span", { class: "chip-icon" }, icon(plugin.icon ?? "puzzle", 14)), title, h("div", { class: "card-actions" }, iconBtn("star", L3.favorite, "star", isFavorite(plugin.name), () => toggleIn("favorites", plugin.name)), iconBtn("pin", L3.pin, "pin", isPinned(plugin.name), () => toggleIn("pinned", plugin.name)), hasOptions(plugin) ? iconBtn("cfg", L3.configure, "sliders", false, () => openPluginDialog(plugin)) : null, pluginSwitch(plugin))), h("div", { class: "card-desc", text: t(plugin.description) }), h("div", { class: "card-gap" }), h("div", { class: "card-foot" }, ...badges(plugin), h("span", { class: "author", text: authorOf(plugin) }))));
+    return h("div", { class: `card${isActive(plugin) ? " on" : " off"}${error ? " crashed" : ""}`, "data-plugin": plugin.name, ...error ? tipAttrs(t(L3.crashed), `${error.stage}: ${error.message}`) : {} }, h("div", { class: "card-body" }, h("div", { class: "card-top" }, h("span", { class: "chip-icon" }, icon(plugin.icon ?? "puzzle", 14)), title, h("div", { class: "card-actions" }, iconBtn("star", L3.favorite, "star", isFavorite(plugin.name), () => toggleIn("favorites", plugin.name)), iconBtn("pin", L3.pin, "pin", isPinned(plugin.name), () => toggleIn("pinned", plugin.name)), hasOptions(plugin) ? iconBtn("cfg", L3.configure, "sliders", false, () => openPluginDialog(plugin)) : null, pluginSwitch(plugin))), h("div", { class: "card-desc", text: t(plugin.description) }), h("div", { class: "card-gap" }), h("div", { class: "card-foot" }, ...badges(plugin), h("span", { class: "author", text: authorOf(plugin) }))));
   }
   var sortPlugins = (list) => list.sort((a, b) => Number(isPinned(b.name)) - Number(isPinned(a.name)) || Number(isFavorite(b.name)) - Number(isFavorite(a.name)) || t(a.title).localeCompare(t(b.title)));
   function defaultCategory() {
@@ -2863,7 +2945,7 @@ select.input { padding-right: 6px; }
       for (const plugin of options.plugins()) {
         const dot = h("span", {
           class: "shrink-0",
-          title: isActive(plugin) ? "ON" : "OFF",
+          ...tipAttrs(isActive(plugin) ? "ON" : "OFF"),
           style: { width: "6px", height: "6px", borderRadius: "50%", marginInlineStart: "8px", background: isActive(plugin) ? "var(--cds-fill-accent, #2a78d6)" : "var(--cds-alpha-2, rgba(127,127,127,.4))" }
         });
         scroll.appendChild(row(icon(plugin.icon ?? "puzzle", 16), t(plugin.title), { trailing: dot, run: () => options.openPlugin(plugin) }));
@@ -3300,10 +3382,10 @@ ${x.css}`)].join(`
   function themeCard(o) {
     const sw = h("button", { type: "button", class: "switch", role: "switch", "aria-checked": String(o.enabled), "aria-label": o.name });
     sw.addEventListener("click", () => o.toggle(!o.enabled));
-    return h("div", { class: `card${o.enabled ? " on" : " off"}${o.error ? " crashed" : ""}` }, h("div", { class: "card-body" }, h("div", { class: "card-top" }, h("span", { class: "chip-icon" }, icon("palette", 14)), h("span", { class: "card-title", text: o.name, title: o.name, style: { cursor: "default" } }), h("div", { class: "card-actions" }, ...o.actions, sw)), h("div", { class: "card-desc", text: o.desc }), h("div", { class: "card-gap" }), h("div", { class: "card-foot" }, icon(o.online ? "globe" : "folder", 12), h("span", { text: t(o.online ? L8.onlineShort : L8.localShort) }), o.error ? h("span", { class: "badge bad", text: t(L8.failed), title: o.error }) : null, h("span", { class: "author", text: o.author }))));
+    return h("div", { class: `card${o.enabled ? " on" : " off"}${o.error ? " crashed" : ""}` }, h("div", { class: "card-body" }, h("div", { class: "card-top" }, h("span", { class: "chip-icon" }, icon("palette", 14)), h("span", { class: "card-title", text: o.name, ...tipAttrs(o.name), style: { cursor: "default" } }), h("div", { class: "card-actions" }, ...o.actions, sw)), h("div", { class: "card-desc", text: o.desc }), h("div", { class: "card-gap" }), h("div", { class: "card-foot" }, icon(o.online ? "globe" : "folder", 12), h("span", { text: t(o.online ? L8.onlineShort : L8.localShort) }), o.error ? h("span", { class: "badge bad", text: t(L8.failed), ...tipAttrs(t(L8.failed), o.error) }) : null, h("span", { class: "author", text: o.author }))));
   }
   var iconAction = (name, label, run) => {
-    const button = h("button", { type: "button", class: "icon-btn", title: t(label), "aria-label": t(label) }, icon(name, 14));
+    const button = h("button", { type: "button", class: "icon-btn", ...tipAttrs(t(label)), "aria-label": t(label) }, icon(name, 14));
     button.addEventListener("click", run);
     return button;
   };
@@ -3666,70 +3748,30 @@ ${x.css}`)].join(`
     return "ok";
   }
   var resetText = (window2) => !window2.resetsAt ? "" : window2.resetsAt - Date.now() < 24 * 3600 * 1000 ? t(L9.resetsIn).replace("{t}", untilText(window2.resetsAt)) : t(L9.resetsAt).replace("{t}", dateTimeText(window2.resetsAt));
-  var tipEl = null;
-  function showTip(anchor, title, detail) {
-    if (!tipEl) {
-      tipEl = h("div", {
-        role: "tooltip",
-        "data-ccpp-tooltip": "",
-        style: {
-          position: "fixed",
-          zIndex: "130",
-          pointerEvents: "none",
-          display: "flex",
-          flexDirection: "column",
-          gap: "2px",
-          maxWidth: "240px",
-          padding: "6px 8px",
-          borderRadius: "calc(0.375rem * var(--cds-rem-scale, 1))",
-          background: "var(--cds-tooltip-bg, rgb(32,32,31))",
-          color: "var(--cds-tooltip-fg, rgb(240,239,236))",
-          boxShadow: "inset 0 0 0 1px rgba(255,255,255,.1), 0 1px 2px rgba(11,11,11,.06), 0 2px 8px rgba(0,0,0,.24)",
-          font: "400 calc(0.8125rem * var(--cds-rem-scale, 1))/calc(1.125rem * var(--cds-rem-scale, 1)) var(--cds-font-sans, inherit)",
-          textWrap: "balance",
-          whiteSpace: "normal"
-        }
-      });
-      document.body.appendChild(tipEl);
-    }
-    tipEl.replaceChildren(h("span", { text: title, style: { overflowWrap: "anywhere" } }), ...detail ? [h("span", { text: detail, style: { font: "inherit", fontSize: "calc(0.6875rem * var(--cds-rem-scale, 1))", lineHeight: "calc(0.875rem * var(--cds-rem-scale, 1))", color: "rgb(195,194,183)" } })] : []);
-    tipEl.style.display = "flex";
-    const a = anchor.getBoundingClientRect();
-    const r = tipEl.getBoundingClientRect();
-    const left = Math.min(Math.max(8, a.left + a.width / 2 - r.width / 2), window.innerWidth - r.width - 8);
-    const top = a.top - r.height - 4 >= 8 ? a.top - r.height - 4 : a.bottom + 4;
-    tipEl.style.left = `${left}px`;
-    tipEl.style.top = `${top}px`;
-  }
-  var hideTip = () => tipEl && (tipEl.style.display = "none");
-  function withTip(el, content) {
-    el.addEventListener("pointerenter", () => showTip(el, ...content()));
-    el.addEventListener("pointerleave", hideTip);
-    el.addEventListener("pointerdown", hideTip);
-    return el;
-  }
   var COLORS = { ok: "#3f9a5b", warn: "#c98a12", bad: "#d1453b" };
   function ring(window2, label) {
     const percent = window2?.utilization ?? 0;
     const color = COLORS[level(percent, settings4.store.warnAt, settings4.store.dangerAt)];
-    const el = h("span", {
+    return h("span", {
       class: "ccpp-usage-ring",
       "aria-label": `${label} ${Math.round(percent)}%`,
+      ...window2 ? tipAttrs(`${label}: ${Math.round(percent)}%`, resetText(window2)) : tipAttrs(label, error ?? t(L9.loading)),
       style: { background: window2 ? `conic-gradient(${color} ${percent * 3.6}deg, rgba(127,127,127,.25) 0)` : "rgba(127,127,127,.25)" }
     });
-    return withTip(el, () => window2 ? [`${label}: ${Math.round(percent)}%`, resetText(window2)] : [label, error ?? t(L9.loading)]);
   }
   function chip(open) {
-    hideTip();
     const style = settings4.store.style;
     const five = usage?.fiveHour ?? null;
     const week = usage?.sevenDay ?? null;
     const pct = (w) => w ? `${Math.round(w.utilization)}%` : "–";
     const text = !usage ? error ? "!" : "…" : `${pct(five)} · ${pct(week)}`;
     const tip = usage ? `${t(L9.session)} ${pct(five)} · ${t(L9.weekly)} ${pct(week)}` : error ?? t(L9.loading);
-    const button = h("button", { type: "button", class: `ccpp-slot-btn ccpp-usage${error && !usage ? " err" : ""}`, "aria-label": tip }, style !== "text" ? h("span", { class: "ccpp-usage-rings" }, ring(five, t(L9.session)), ring(week, t(L9.weekly))) : null, style !== "rings" ? h("span", { class: "ccpp-usage-text", text }) : null);
-    if (style === "text" || !usage)
-      withTip(button, () => [tip, five ? resetText(five) : ""]);
+    const button = h("button", {
+      type: "button",
+      class: `ccpp-slot-btn ccpp-usage${error && !usage ? " err" : ""}`,
+      "aria-label": tip,
+      ...style === "text" || !usage ? tipAttrs(tip, five ? resetText(five) : "") : {}
+    }, style !== "text" ? h("span", { class: "ccpp-usage-rings" }, ring(five, t(L9.session)), ring(week, t(L9.weekly))) : null, style !== "rings" ? h("span", { class: "ccpp-usage-text", text }) : null);
     button.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
@@ -3759,7 +3801,7 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
     return h("div", { class: "metric" }, h("div", { class: "line" }, h("span", { text: label }), h("span", { class: "pct", text: `${Math.round(window2.utilization)}%`, style: { color: COLORS[lv] } })), h("div", { class: "bar" }, h("i", { style: { width: `${window2.utilization}%`, background: COLORS[lv] } })), reset ? h("div", { class: "muted", text: reset, style: { fontSize: "12px" } }) : null);
   }
   function renderPanel(panel) {
-    const refreshBtn = h("button", { type: "button", class: "icon-btn", title: t(L9.refresh), "aria-label": t(L9.refresh) }, icon("refresh", 15));
+    const refreshBtn = h("button", { type: "button", class: "icon-btn", ...tipAttrs(t(L9.refresh)), "aria-label": t(L9.refresh) }, icon("refresh", 15));
     if (loading)
       refreshBtn.firstElementChild?.classList.add("spin");
     refreshBtn.addEventListener("click", () => refresh2(true));
@@ -3807,7 +3849,6 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
       listeners2.add(update);
       scope.defer(() => listeners2.delete(update));
       scope.defer(() => (clearTimeout(retryTimer), inflight?.abort()));
-      scope.defer(() => (tipEl?.remove(), tipEl = null));
       scope.interval(() => refresh2(), settings4.store.refreshSec * 1000);
       scope.listen(document, "visibilitychange", () => !document.hidden && Date.now() - lastAttempt > settings4.store.refreshSec * 1000 && refresh2());
       scope.on("reply:end", () => scope.timeout(() => refresh2(true), 2500));
@@ -4424,7 +4465,7 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
           row.classList.toggle("ccpp-starred-row", on);
           for (const btn of row.querySelectorAll(".ccpp-star-btn")) {
             btn.classList.toggle("on", on);
-            btn.title = t(on ? L11.unstar : L11.star);
+            btn.setAttribute("data-ccpp-tip", t(on ? L11.unstar : L11.star));
             btn.setAttribute("aria-pressed", String(on));
           }
         }
@@ -4438,7 +4479,7 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
         const svg = icon("star", size);
         if (native)
           svg.setAttribute("stroke-width", "1.5");
-        const btn = h("button", { type: "button", class: `ccpp-star-btn${extra}${on ? " on" : ""}`, title: t(on ? L11.unstar : L11.star), "aria-label": t(L11.star), "aria-pressed": String(on) }, svg);
+        const btn = h("button", { type: "button", class: `ccpp-star-btn${extra}${on ? " on" : ""}`, ...tipAttrs(t(on ? L11.unstar : L11.star)), "aria-label": t(L11.star), "aria-pressed": String(on) }, svg);
         if (native) {
           btn.className = `${native.className} ccpp-star-btn ccpp-native${extra}${on ? " on" : ""}`;
           for (const attr of [...native.attributes])
@@ -4637,7 +4678,7 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
         if (!target)
           return;
         const label = t(kind === "clay" ? L12.running : L12.waiting);
-        target.appendChild(h("span", { [attr]: kind, title: label }, h("span", { role: "status", "aria-label": label }, h("span", { class: "status-dot", "data-kind": kind }))));
+        target.appendChild(h("span", { [attr]: kind, ...tipAttrs(label) }, h("span", { role: "status", "aria-label": label }, h("span", { class: "status-dot", "data-kind": kind }))));
       };
       let pausedUntil = 0;
       const poll = async () => {
@@ -5875,7 +5916,7 @@ ${m.text.trim()}`).join(`
           const text = dateTimeText(at);
           if (el.textContent !== text)
             el.textContent = text;
-          el.title = new Date(at).toLocaleString();
+          el.setAttribute("data-ccpp-tip", new Date(at).toLocaleString());
         };
         paint();
         const observer = new MutationObserver(paint);
@@ -6147,7 +6188,7 @@ ${m.text.trim()}`).join(`
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.37",
+      version: "0.3.38",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -6164,9 +6205,10 @@ ${m.text.trim()}`).join(`
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.37";
+    win[FLAG] = "0.3.38";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
+    installTooltips();
     startPhase("document-start");
     const ready = () => startPhase("dom-ready");
     if (document.readyState === "loading")
@@ -6180,7 +6222,7 @@ ${m.text.trim()}`).join(`
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.37"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.38"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();

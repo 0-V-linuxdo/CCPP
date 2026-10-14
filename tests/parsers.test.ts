@@ -317,3 +317,22 @@ describe("projectKind", () => {
         expect(projectKind(undefined, true, true)).toBe(null);
     });
 });
+
+import { installTooltips, tipAttrs } from "../src/lib/tooltip";
+
+describe("native-style tooltips", () => {
+    test("an element with data-ccpp-tip opens a two-line card on hover", async () => {
+        installTooltips();
+        document.body.innerHTML = "";
+        const btn = document.createElement("button");
+        for (const [k, v] of Object.entries(tipAttrs("Weekly: 85%", "Resets Sun 8:00 AM"))) btn.setAttribute(k, v);
+        document.body.appendChild(btn);
+        btn.dispatchEvent(new PointerEvent("pointerover", { bubbles: true, composed: true }));
+        await new Promise(r => setTimeout(r, 600));
+        const card = document.querySelector<HTMLElement>("[data-ccpp-tooltip]")!;
+        expect(card.style.display).toBe("flex");
+        expect(card.textContent).toBe("Weekly: 85%Resets Sun 8:00 AM");
+        btn.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+        expect(card.style.display).toBe("none");
+    });
+});

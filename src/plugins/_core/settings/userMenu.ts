@@ -9,6 +9,7 @@ import { isActive, type Plugin } from "@kernel/plugins";
 import type { Scope } from "@kernel/scope";
 import { h } from "@lib/dom";
 import { icon } from "@lib/icons";
+import { tipAttrs } from "@lib/tooltip";
 import { SEL, watch } from "@api/dom";
 
 import type { SettingsTab } from "./state";
@@ -207,7 +208,7 @@ function enhance(menu: HTMLElement, settingsItem: HTMLElement, options: UserMenu
         for (const plugin of options.plugins()) {
             const dot = h("span", {
                 class: "shrink-0",
-                title: isActive(plugin) ? "ON" : "OFF",
+                ...tipAttrs(isActive(plugin) ? "ON" : "OFF"),
                 style: { width: "6px", height: "6px", borderRadius: "50%", marginInlineStart: "8px", background: isActive(plugin) ? "var(--cds-fill-accent, #2a78d6)" : "var(--cds-alpha-2, rgba(127,127,127,.4))" },
             });
             scroll.appendChild(row(icon(plugin.icon ?? "puzzle", 16), t(plugin.title), { trailing: dot, run: () => options.openPlugin(plugin) }));

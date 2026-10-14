@@ -9,6 +9,7 @@ import { allPlugins, pluginInfo, registerPlugins, startPhase } from "@kernel/plu
 import { replaceBag, SETTINGS_KEY } from "@kernel/settings";
 import { PREFIX } from "@kernel/storage";
 import { isTopDocument, pageWindow } from "@lib/page";
+import { installTooltips } from "@lib/tooltip";
 
 import { PLUGINS } from "./plugins";
 
@@ -41,6 +42,7 @@ function boot() {
     win[FLAG] = typeof VERSION === "string" ? VERSION : true;
     registerPlugins(PLUGINS);
     exposeRuntime(win);
+    installTooltips();
     startPhase("document-start");
     const ready = () => startPhase("dom-ready");
     if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", ready, { once: true });

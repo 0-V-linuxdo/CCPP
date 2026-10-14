@@ -9,6 +9,7 @@ import type { Scope } from "@kernel/scope";
 import { clear, h } from "@lib/dom";
 import { icon } from "@lib/icons";
 import { shadowBox } from "@lib/ui";
+import { tipAttrs } from "@lib/tooltip";
 
 import { LAYER_CSS, PANEL_CSS } from "./styles";
 
@@ -98,7 +99,7 @@ export function closeAllModals() {
 
 /** The standard dialog frame: head (icon, title, close), body, optional footer. */
 export function dialogFrame(options: { title: string; icon?: string; size?: "small" | "wide"; body: Node[]; foot?: Node[]; onClose: () => void }) {
-    const close = h("button", { type: "button", class: "icon-btn", "aria-label": t(L.close), title: t(L.close) }, icon("x", 16));
+    const close = h("button", { type: "button", class: "icon-btn", "aria-label": t(L.close), ...tipAttrs(t(L.close)) }, icon("x", 16));
     close.addEventListener("click", options.onClose);
     return h(
         "div",

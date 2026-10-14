@@ -10,6 +10,7 @@ import { definePlugin } from "@kernel/plugins";
 import { persisted } from "@kernel/storage";
 import { clear, h } from "@lib/dom";
 import { icon } from "@lib/icons";
+import { tipAttrs } from "@lib/tooltip";
 import { addStyle } from "@api/styles";
 import { toast } from "@api/notices";
 import { confirmDialog, dialogFrame, openModal, registerTab } from "@core/settings";
@@ -163,7 +164,7 @@ function themeCard(o: { name: string; desc: string; author: string; online: bool
         h(
             "div",
             { class: "card-body" },
-            h("div", { class: "card-top" }, h("span", { class: "chip-icon" }, icon("palette", 14)), h("span", { class: "card-title", text: o.name, title: o.name, style: { cursor: "default" } }), h("div", { class: "card-actions" }, ...o.actions, sw)),
+            h("div", { class: "card-top" }, h("span", { class: "chip-icon" }, icon("palette", 14)), h("span", { class: "card-title", text: o.name, ...tipAttrs(o.name), style: { cursor: "default" } }), h("div", { class: "card-actions" }, ...o.actions, sw)),
             h("div", { class: "card-desc", text: o.desc }),
             h("div", { class: "card-gap" }),
             h(
@@ -171,7 +172,7 @@ function themeCard(o: { name: string; desc: string; author: string; online: bool
                 { class: "card-foot" },
                 icon(o.online ? "globe" : "folder", 12),
                 h("span", { text: t(o.online ? L.onlineShort : L.localShort) }),
-                o.error ? h("span", { class: "badge bad", text: t(L.failed), title: o.error }) : null,
+                o.error ? h("span", { class: "badge bad", text: t(L.failed), ...tipAttrs(t(L.failed), o.error) }) : null,
                 h("span", { class: "author", text: o.author }),
             ),
         ),
@@ -179,7 +180,7 @@ function themeCard(o: { name: string; desc: string; author: string; online: bool
 }
 
 const iconAction = (name: string, label: Text, run: () => void) => {
-    const button = h("button", { type: "button", class: "icon-btn", title: t(label), "aria-label": t(label) }, icon(name, 14));
+    const button = h("button", { type: "button", class: "icon-btn", ...tipAttrs(t(label)), "aria-label": t(label) }, icon(name, 14));
     button.addEventListener("click", run);
     return button;
 };
