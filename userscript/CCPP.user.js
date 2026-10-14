@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.29
+// @version      20261013.0.3.30
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -1376,6 +1376,8 @@
     linkOff: [p("M9 17H7A5 5 0 0 1 7 7"), p("M15 7h2a5 5 0 0 1 4 8"), p("M8 12h4"), p("m2 2 20 20")],
     micOff: [p("m2 2 20 20"), p("M18.89 13.23A7.12 7.12 0 0 0 19 12v-2"), p("M5 10v2a7 7 0 0 0 12 5"), p("M15 9.34V5a3 3 0 0 0-5.68-1.33"), p("M9 9v3a3 3 0 0 0 5.12 2.12"), p("M12 19v3")],
     user: [c(12, 8, 5), p("M20 21a8 8 0 0 0-16 0")],
+    creditCard: [p("M4 5h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z"), p("M2 10h20")],
+    brain: [p("M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"), p("M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z"), p("M12 5v13")],
     grid: [p("M3 3h7v7H3z"), p("M14 3h7v7h-7z"), p("M14 14h7v7h-7z"), p("M3 14h7v7H3z")],
     fileText: [p("M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"), p("M14 2v4a2 2 0 0 0 2 2h4"), p("M16 13H8"), p("M16 17H8"), p("M10 9H8")],
     terminal: [p("m4 17 6-6-6-6"), p("M12 19h8")],
@@ -2087,7 +2089,7 @@ select.input { padding-right: 6px; }
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.29";
+  var version = "0.3.30";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -2702,19 +2704,19 @@ select.input { padding-right: 6px; }
   // src/plugins/_core/settings/userMenu.ts
   var SETTINGS_ITEM = '[data-testid="user-menu-settings"]';
   var NATIVE_SECTIONS = [
-    { hash: "settings/general", label: { zh: "通用", en: "General" } },
-    { hash: "settings/account", label: { zh: "账户", en: "Account" } },
-    { hash: "settings/data-privacy-controls", label: { zh: "隐私", en: "Privacy" } },
-    { hash: "settings/billing", label: { zh: "账单", en: "Billing" } },
-    { hash: "settings/usage", label: { zh: "用量", en: "Usage" } },
-    { hash: "settings/capabilities", label: { zh: "功能", en: "Capabilities" } },
-    { hash: "settings/memory", label: { zh: "记忆", en: "Memory" } },
-    { hash: "settings/design-systems", label: { zh: "设计系统", en: "Design systems" } },
-    { hash: "settings/claude-code", label: { zh: "Claude Code", en: "Claude Code" } },
-    { hash: "settings/browser-extension", label: { zh: "Claude in Chrome", en: "Claude in Chrome" } },
-    { hash: "customize/skills/yours", label: { zh: "技能", en: "Skills" } },
-    { hash: "customize/connectors/yours", label: { zh: "连接器", en: "Connectors" } },
-    { hash: "customize/plugins/yours", label: { zh: "插件（claude.ai）", en: "Plugins (claude.ai)" } }
+    { hash: "settings/general", icon: "sliders", label: { zh: "通用", en: "General" } },
+    { hash: "settings/account", icon: "user", label: { zh: "账户", en: "Account" } },
+    { hash: "settings/data-privacy-controls", icon: "shield", label: { zh: "隐私", en: "Privacy" } },
+    { hash: "settings/billing", icon: "creditCard", label: { zh: "账单", en: "Billing" } },
+    { hash: "settings/usage", icon: "gauge", label: { zh: "用量", en: "Usage" } },
+    { hash: "settings/capabilities", icon: "grid", label: { zh: "功能", en: "Capabilities" } },
+    { hash: "settings/memory", icon: "brain", label: { zh: "记忆", en: "Memory" } },
+    { hash: "settings/design-systems", icon: "palette", label: { zh: "设计系统", en: "Design systems" } },
+    { hash: "settings/claude-code", icon: "terminal", label: { zh: "Claude Code", en: "Claude Code" } },
+    { hash: "settings/browser-extension", icon: "globe", label: { zh: "Claude in Chrome", en: "Claude in Chrome" } },
+    { hash: "customize/skills/yours", icon: "sparkles", label: { zh: "技能", en: "Skills" } },
+    { hash: "customize/connectors/yours", icon: "link", label: { zh: "连接器", en: "Connectors" } },
+    { hash: "customize/plugins/yours", icon: "puzzle", label: { zh: "插件（claude.ai）", en: "Plugins (claude.ai)" } }
   ];
   var L4 = {
     plugins: { zh: "插件", en: "Plugins" },
@@ -2886,7 +2888,7 @@ select.input { padding-right: 6px; }
         scroll.appendChild(separator());
         scroll.appendChild(caption(t(L4.claude)));
         for (const section of NATIVE_SECTIONS)
-          scroll.appendChild(row(null, t(section.label), { run: () => location.hash = section.hash }));
+          scroll.appendChild(row(icon(section.icon, 16), t(section.label), { run: () => location.hash = section.hash }));
       });
     }
     if (options.entry) {
@@ -6080,7 +6082,7 @@ ${m.text.trim()}`).join(`
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.29",
+      version: "0.3.30",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -6097,7 +6099,7 @@ ${m.text.trim()}`).join(`
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.29";
+    win[FLAG] = "0.3.30";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     startPhase("document-start");
@@ -6113,7 +6115,7 @@ ${m.text.trim()}`).join(`
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.29"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.30"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();

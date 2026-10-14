@@ -17,20 +17,20 @@ import type { SettingsTab } from "./state";
 const SETTINGS_ITEM = '[data-testid="user-menu-settings"]';
 
 /** claude.ai's own settings pages and the hash that opens each. */
-export const NATIVE_SECTIONS: { hash: string; label: Text }[] = [
-    { hash: "settings/general", label: { zh: "通用", en: "General" } },
-    { hash: "settings/account", label: { zh: "账户", en: "Account" } },
-    { hash: "settings/data-privacy-controls", label: { zh: "隐私", en: "Privacy" } },
-    { hash: "settings/billing", label: { zh: "账单", en: "Billing" } },
-    { hash: "settings/usage", label: { zh: "用量", en: "Usage" } },
-    { hash: "settings/capabilities", label: { zh: "功能", en: "Capabilities" } },
-    { hash: "settings/memory", label: { zh: "记忆", en: "Memory" } },
-    { hash: "settings/design-systems", label: { zh: "设计系统", en: "Design systems" } },
-    { hash: "settings/claude-code", label: { zh: "Claude Code", en: "Claude Code" } },
-    { hash: "settings/browser-extension", label: { zh: "Claude in Chrome", en: "Claude in Chrome" } },
-    { hash: "customize/skills/yours", label: { zh: "技能", en: "Skills" } },
-    { hash: "customize/connectors/yours", label: { zh: "连接器", en: "Connectors" } },
-    { hash: "customize/plugins/yours", label: { zh: "插件（claude.ai）", en: "Plugins (claude.ai)" } },
+export const NATIVE_SECTIONS: { hash: string; icon: string; label: Text }[] = [
+    { hash: "settings/general", icon: "sliders", label: { zh: "通用", en: "General" } },
+    { hash: "settings/account", icon: "user", label: { zh: "账户", en: "Account" } },
+    { hash: "settings/data-privacy-controls", icon: "shield", label: { zh: "隐私", en: "Privacy" } },
+    { hash: "settings/billing", icon: "creditCard", label: { zh: "账单", en: "Billing" } },
+    { hash: "settings/usage", icon: "gauge", label: { zh: "用量", en: "Usage" } },
+    { hash: "settings/capabilities", icon: "grid", label: { zh: "功能", en: "Capabilities" } },
+    { hash: "settings/memory", icon: "brain", label: { zh: "记忆", en: "Memory" } },
+    { hash: "settings/design-systems", icon: "palette", label: { zh: "设计系统", en: "Design systems" } },
+    { hash: "settings/claude-code", icon: "terminal", label: { zh: "Claude Code", en: "Claude Code" } },
+    { hash: "settings/browser-extension", icon: "globe", label: { zh: "Claude in Chrome", en: "Claude in Chrome" } },
+    { hash: "customize/skills/yours", icon: "sparkles", label: { zh: "技能", en: "Skills" } },
+    { hash: "customize/connectors/yours", icon: "link", label: { zh: "连接器", en: "Connectors" } },
+    { hash: "customize/plugins/yours", icon: "puzzle", label: { zh: "插件（claude.ai）", en: "Plugins (claude.ai)" } },
 ];
 
 const L = {
@@ -236,7 +236,7 @@ function enhance(menu: HTMLElement, settingsItem: HTMLElement, options: UserMenu
             fillCcpp(scroll, child);
             scroll.appendChild(separator());
             scroll.appendChild(caption(t(L.claude)));
-            for (const section of NATIVE_SECTIONS) scroll.appendChild(row(null, t(section.label), { run: () => (location.hash = section.hash) }));
+            for (const section of NATIVE_SECTIONS) scroll.appendChild(row(icon(section.icon, 16), t(section.label), { run: () => (location.hash = section.hash) }));
         });
     }
 
