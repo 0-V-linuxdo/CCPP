@@ -29,6 +29,9 @@ export const BASE_CSS = `
   --fg: var(--cds-text-primary, #f5f4ef); --fg2: var(--cds-text-secondary, #c2c0b6); --fg3: var(--cds-text-muted, #8f8d86);
   --line: var(--cds-alpha-2, rgba(255,255,255,.1)); --line-soft: var(--cds-alpha-1, rgba(255,255,255,.05)); --field-ring: var(--cds-fill-field-ring, rgba(255,255,255,.15)); }
 .ccpp * { box-sizing: border-box; }
+/* Scrollbars like claude.ai's: a thin rounded thumb on no track, a little stronger while hovered. */
+.ccpp, .ccpp * { scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+.ccpp:hover, .ccpp *:hover { scrollbar-color: color-mix(in srgb, var(--fg3) 55%, transparent) transparent; }
 .ccpp button { font: inherit; color: inherit; cursor: pointer; }
 .ccpp :focus-visible { outline: none; box-shadow: var(--focus); }
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: var(--h); padding: 0 12px; border-radius: var(--radius); border: 0; background: var(--bg2); color: var(--fg); white-space: nowrap; }

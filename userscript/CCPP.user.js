@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.30
+// @version      20261013.0.3.31
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -1441,6 +1441,9 @@
   --fg: var(--cds-text-primary, #f5f4ef); --fg2: var(--cds-text-secondary, #c2c0b6); --fg3: var(--cds-text-muted, #8f8d86);
   --line: var(--cds-alpha-2, rgba(255,255,255,.1)); --line-soft: var(--cds-alpha-1, rgba(255,255,255,.05)); --field-ring: var(--cds-fill-field-ring, rgba(255,255,255,.15)); }
 .ccpp * { box-sizing: border-box; }
+/* Scrollbars like claude.ai's: a thin rounded thumb on no track, a little stronger while hovered. */
+.ccpp, .ccpp * { scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+.ccpp:hover, .ccpp *:hover { scrollbar-color: color-mix(in srgb, var(--fg3) 55%, transparent) transparent; }
 .ccpp button { font: inherit; color: inherit; cursor: pointer; }
 .ccpp :focus-visible { outline: none; box-shadow: var(--focus); }
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: var(--h); padding: 0 12px; border-radius: var(--radius); border: 0; background: var(--bg2); color: var(--fg); white-space: nowrap; }
@@ -2089,7 +2092,7 @@ select.input { padding-right: 6px; }
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.30";
+  var version = "0.3.31";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -3802,7 +3805,7 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
 .rail:hover .tick.current::after { background: var(--fg); }
 .rail:hover .tick.marked::after { background: var(--clay); }
 .menu { position: absolute; top: 50%; right: calc(100% + 4px); width: min(288px, 70vw); max-height: var(--menu-h, 70vh); overflow: auto; padding: 6px; border-radius: 20px; background: var(--bg); box-shadow: var(--shadow); color: var(--fg); pointer-events: auto;
-  opacity: 0; visibility: hidden; transform: translate(8px, -50%); transition: opacity .2s ease, visibility .2s ease, transform .2s ease; scrollbar-width: thin; overscroll-behavior: contain; }
+  opacity: 0; visibility: hidden; transform: translate(8px, -50%); transition: opacity .2s ease, visibility .2s ease, transform .2s ease; overscroll-behavior: contain; }
 .rail.open .menu { opacity: 1; visibility: visible; transform: translate(0, -50%); }
 .meta { padding: 4px 10px 6px; color: var(--fg2); font-size: var(--fs-xs); letter-spacing: -.2px; font-variant-numeric: tabular-nums; }
 .list { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; list-style: none; }
@@ -6082,7 +6085,7 @@ ${m.text.trim()}`).join(`
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.30",
+      version: "0.3.31",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -6099,7 +6102,7 @@ ${m.text.trim()}`).join(`
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.30";
+    win[FLAG] = "0.3.31";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     startPhase("document-start");
@@ -6115,7 +6118,7 @@ ${m.text.trim()}`).join(`
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.30"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.31"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();
