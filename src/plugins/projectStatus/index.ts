@@ -9,7 +9,7 @@ import { Logger } from "@kernel/logger";
 import { definePlugin } from "@kernel/plugins";
 import { definePluginSettings } from "@kernel/settings";
 import { h } from "@lib/dom";
-import { getProjectActivity, type ProjectActivity } from "@api/claude";
+import { ApiError, getProjectActivity, type ProjectActivity } from "@api/claude";
 import { watch } from "@api/dom";
 import { addStyle } from "@api/styles";
 
@@ -18,7 +18,7 @@ const logger = new Logger("ProjectStatus");
 const settings = definePluginSettings({
     showCode: { type: "boolean", label: { zh: "图标右上角显示项目自身的 Code 状态", en: "Show the project's own Code session on the icon corner" }, description: { zh: "右侧圆点是项目里线程（对话）的状态；图标右上角是项目总控 Code 会话的状态，和原生会话图标的角标位置一致。", en: "The dot on the right is for the project's threads; the icon corner is for the project's own Code session, like the native session icons." }, default: true },
     showWaiting: { type: "boolean", label: { zh: "也标出「等你回复」的项目", en: "Also mark projects waiting on you" }, description: { zh: "有线程在等你时显示黄色圆点。", en: "A yellow dot when a thread is waiting for you." }, default: true },
-    refreshSec: { type: "number", label: { zh: "刷新间隔", en: "Refresh every" }, default: 15, min: 5, max: 120, step: 5, unit: "s" },
+    refreshSec: { type: "number", label: { zh: "刷新间隔", en: "Refresh every" }, default: 30, min: 10, max: 300, step: 5, unit: "s" },
 });
 
 const L = {
@@ -118,17 +118,29 @@ export default definePlugin({
             target.appendChild(h("span", { [attr]: kind, title: label }, h("span", { role: "status", "aria-label": label }, h("span", { class: "status-dot", "data-kind": kind }))));
         };
 
+        // claude.ai limits project reads per account ("Too many project reads"), and its own pages share
+        // that quota. So projects are read one after another, and a 429 pauses polling for a while.
+        let pausedUntil = 0;
         const poll = async () => {
-            if (busy || document.hidden || !rows.size) return;
+            if (busy || document.hidden || !rows.size || Date.now() < pausedUntil) return;
             busy = true;
             try {
-                const results = await Promise.allSettled([...rows.keys()].map(id => getProjectActivity(id, scope.signal)));
-                if (!scope.alive) return;
-                for (const result of results) {
-                    if (result.status === "fulfilled") activity.set(result.value.channelId, result.value);
-                    else logger.debug("Project activity failed:", result.reason);
+                for (const id of [...rows.keys()]) {
+                    if (!scope.alive || document.hidden) return;
+                    try {
+                        const result = await getProjectActivity(id, scope.signal);
+                        activity.set(result.channelId, result);
+                        paint(id);
+                    } catch (error) {
+                        if (error instanceof ApiError && error.status === 429) {
+                            pausedUntil = Date.now() + 60_000;
+                            logger.debug("Project reads rate-limited; pausing a minute.");
+                            return;
+                        }
+                        logger.debug("Project activity failed:", error);
+                    }
+                    await new Promise(resolve => setTimeout(resolve, 400));
                 }
-                for (const id of rows.keys()) paint(id);
             } finally {
                 busy = false;
             }

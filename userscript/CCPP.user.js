@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.15
+// @version      20261013.0.3.16
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -747,11 +747,13 @@
     }
     return map;
   }
-  async function getChannelSessions(signal) {
+  function getChannelSessions(signal) {
     if (channelSessions && Date.now() - channelSessions.at < CHANNEL_LIST_TTL)
       return channelSessions.map;
-    const map = parseChannelSessions(await getCodeJson("/v1/code/channels?scope=joined&include_archived=false&limit=200", signal));
-    channelSessions = { at: Date.now(), map };
+    const map = getCodeJson("/v1/code/channels?scope=joined&include_archived=false&limit=200", signal).then(parseChannelSessions);
+    const entry = { at: Date.now(), map };
+    channelSessions = entry;
+    map.catch(() => channelSessions === entry && (channelSessions = null));
     return map;
   }
   async function getProjectActivity(channelId, signal) {
@@ -2077,7 +2079,7 @@ select.input { padding-right: 6px; }
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.15";
+  var version = "0.3.16";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -4403,7 +4405,7 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
   var settings7 = definePluginSettings({
     showCode: { type: "boolean", label: { zh: "图标右上角显示项目自身的 Code 状态", en: "Show the project's own Code session on the icon corner" }, description: { zh: "右侧圆点是项目里线程（对话）的状态；图标右上角是项目总控 Code 会话的状态，和原生会话图标的角标位置一致。", en: "The dot on the right is for the project's threads; the icon corner is for the project's own Code session, like the native session icons." }, default: true },
     showWaiting: { type: "boolean", label: { zh: "也标出「等你回复」的项目", en: "Also mark projects waiting on you" }, description: { zh: "有线程在等你时显示黄色圆点。", en: "A yellow dot when a thread is waiting for you." }, default: true },
-    refreshSec: { type: "number", label: { zh: "刷新间隔", en: "Refresh every" }, default: 15, min: 5, max: 120, step: 5, unit: "s" }
+    refreshSec: { type: "number", label: { zh: "刷新间隔", en: "Refresh every" }, default: 30, min: 10, max: 300, step: 5, unit: "s" }
   });
   var L12 = {
     running: { zh: "运行中", en: "Running" },
@@ -4494,22 +4496,29 @@ html[data-mode="dark"] .ccpp-usage-ring::after { background: #30302e; }
         const label = t(kind === "clay" ? L12.running : L12.waiting);
         target.appendChild(h("span", { [attr]: kind, title: label }, h("span", { role: "status", "aria-label": label }, h("span", { class: "status-dot", "data-kind": kind }))));
       };
+      let pausedUntil = 0;
       const poll = async () => {
-        if (busy || document.hidden || !rows.size)
+        if (busy || document.hidden || !rows.size || Date.now() < pausedUntil)
           return;
         busy = true;
         try {
-          const results = await Promise.allSettled([...rows.keys()].map((id) => getProjectActivity(id, scope.signal)));
-          if (!scope.alive)
-            return;
-          for (const result of results) {
-            if (result.status === "fulfilled")
-              activity.set(result.value.channelId, result.value);
-            else
-              logger10.debug("Project activity failed:", result.reason);
+          for (const id of [...rows.keys()]) {
+            if (!scope.alive || document.hidden)
+              return;
+            try {
+              const result = await getProjectActivity(id, scope.signal);
+              activity.set(result.channelId, result);
+              paint(id);
+            } catch (error) {
+              if (error instanceof ApiError && error.status === 429) {
+                pausedUntil = Date.now() + 60000;
+                logger10.debug("Project reads rate-limited; pausing a minute.");
+                return;
+              }
+              logger10.debug("Project activity failed:", error);
+            }
+            await new Promise((resolve) => setTimeout(resolve, 400));
           }
-          for (const id of rows.keys())
-            paint(id);
         } finally {
           busy = false;
         }
@@ -4982,6 +4991,8 @@ ${t(L15.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
     return "idle";
   }
   var ICON_ID = "ccpp-favicon";
+  var ERROR_EVENT = /^event:\s*error\s*$|"type"\s*:\s*"error"/m;
+  var STOP_EVENT = /^event:\s*message_stop\s*$|"type"\s*:\s*"message_stop"/m;
   var isIconLink = (node) => node instanceof HTMLLinkElement && /\bicon\b/i.test(node.rel) && node.id !== ICON_ID;
   var isCompletion = (path) => /\/chat_conversations\/[^/]+\/(?:completion|retry_completion)$/.test(path);
   var chatFavicon_default = definePlugin({
@@ -5062,7 +5073,8 @@ ${t(L15.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
       };
       let inflight = 0;
       let pendingUntil = 0;
-      const live = () => inflight > 0 || Date.now() < pendingUntil || chatPhase() === "streaming";
+      let endedAt = 0;
+      const live = () => inflight > 0 || Date.now() < pendingUntil || chatPhase() === "streaming" && Date.now() - endedAt > 1e4;
       const update = () => {
         const now = live();
         if (now && !streaming) {
@@ -5114,15 +5126,42 @@ ${t(L15.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
         inflight++;
         pendingUntil = 0;
         update();
+        let open = true;
+        const close = () => {
+          if (!open)
+            return;
+          open = false;
+          inflight = Math.max(0, inflight - 1);
+          endedAt = Date.now();
+          update();
+        };
         try {
           if (!response.ok)
             return fail();
-          const text = await response.text();
-          if (/^event:\s*error\s*$/m.test(text) || /"type"\s*:\s*"error"/.test(text))
-            fail();
+          const reader = response.body?.getReader();
+          if (!reader) {
+            const text = await response.text();
+            if (ERROR_EVENT.test(text))
+              fail();
+            return;
+          }
+          const decoder = new TextDecoder;
+          let tail = "";
+          for (;; ) {
+            const { done, value } = await reader.read();
+            if (done)
+              break;
+            tail = (tail + decoder.decode(value, { stream: true })).slice(-4096);
+            if (ERROR_EVENT.test(tail))
+              fail();
+            if (STOP_EVENT.test(tail)) {
+              close();
+              reader.cancel().catch(() => {});
+              break;
+            }
+          }
         } catch {} finally {
-          inflight = Math.max(0, inflight - 1);
-          update();
+          close();
         }
       });
       scope.observe(link, { attributes: true, attributeFilter: ["href"] }, () => {
@@ -5960,7 +5999,7 @@ ${m.text.trim()}`).join(`
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.15",
+      version: "0.3.16",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -5977,7 +6016,7 @@ ${m.text.trim()}`).join(`
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.15";
+    win[FLAG] = "0.3.16";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     startPhase("document-start");
@@ -5993,7 +6032,7 @@ ${m.text.trim()}`).join(`
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.15"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.16"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();

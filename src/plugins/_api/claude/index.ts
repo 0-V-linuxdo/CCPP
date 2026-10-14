@@ -274,7 +274,7 @@ export function parseSessionState(raw: unknown): "working" | "blocked" | null {
 }
 
 /** Project id → its channel (coordinator) session id, from the projects list. Cached briefly. */
-let channelSessions: { at: number; map: Map<string, string> } | null = null;
+let channelSessions: { at: number; map: Promise<Map<string, string>> } | null = null;
 const CHANNEL_LIST_TTL = 5 * 60_000;
 
 export function parseChannelSessions(raw: unknown): Map<string, string> {
@@ -287,10 +287,13 @@ export function parseChannelSessions(raw: unknown): Map<string, string> {
     return map;
 }
 
-async function getChannelSessions(signal?: AbortSignal) {
+/** One shared request: concurrent callers wait on the same promise instead of each fetching the list. */
+function getChannelSessions(signal?: AbortSignal) {
     if (channelSessions && Date.now() - channelSessions.at < CHANNEL_LIST_TTL) return channelSessions.map;
-    const map = parseChannelSessions(await getCodeJson("/v1/code/channels?scope=joined&include_archived=false&limit=200", signal));
-    channelSessions = { at: Date.now(), map };
+    const map = getCodeJson("/v1/code/channels?scope=joined&include_archived=false&limit=200", signal).then(parseChannelSessions);
+    const entry = { at: Date.now(), map };
+    channelSessions = entry;
+    map.catch(() => channelSessions === entry && (channelSessions = null));
     return map;
 }
 

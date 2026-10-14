@@ -126,6 +126,8 @@ export function computeState(facts: ChatFacts): FaviconState {
 }
 
 const ICON_ID = "ccpp-favicon";
+const ERROR_EVENT = /^event:\s*error\s*$|"type"\s*:\s*"error"/m;
+const STOP_EVENT = /^event:\s*message_stop\s*$|"type"\s*:\s*"message_stop"/m;
 const isIconLink = (node: Node): node is HTMLLinkElement => node instanceof HTMLLinkElement && /\bicon\b/i.test(node.rel) && node.id !== ICON_ID;
 /** claude.ai's chat requests whose failure means the reply errored. */
 const isCompletion = (path: string) => /\/chat_conversations\/[^/]+\/(?:completion|retry_completion)$/.test(path);
@@ -210,7 +212,9 @@ export default definePlugin({
         // mark. Short replies can finish between two DOM checks, so the request itself is the main signal.
         let inflight = 0;
         let pendingUntil = 0;
-        const live = () => inflight > 0 || Date.now() < pendingUntil || chatPhase() === "streaming";
+        // Right after a reply's request ends, claude.ai's streaming mark lags by a few seconds; trust the request.
+        let endedAt = 0;
+        const live = () => inflight > 0 || Date.now() < pendingUntil || (chatPhase() === "streaming" && Date.now() - endedAt > 10_000);
         const update = () => {
             const now = live();
             if (now && !streaming) {
@@ -265,14 +269,39 @@ export default definePlugin({
             inflight++;
             pendingUntil = 0;
             update();
+            let open = true;
+            const close = () => {
+                if (!open) return;
+                open = false;
+                inflight = Math.max(0, inflight - 1);
+                endedAt = Date.now();
+                update();
+            };
             try {
                 if (!response.ok) return fail();
-                const text = await response.text();
-                if (/^event:\s*error\s*$/m.test(text) || /"type"\s*:\s*"error"/.test(text)) fail();
+                // The reply is done at message_stop; the connection itself can stay open seconds longer.
+                const reader = response.body?.getReader();
+                if (!reader) {
+                    const text = await response.text();
+                    if (ERROR_EVENT.test(text)) fail();
+                    return;
+                }
+                const decoder = new TextDecoder();
+                let tail = "";
+                for (;;) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    tail = (tail + decoder.decode(value, { stream: true })).slice(-4096);
+                    if (ERROR_EVENT.test(tail)) fail();
+                    if (STOP_EVENT.test(tail)) {
+                        close();
+                        void reader.cancel().catch(() => {});
+                        break;
+                    }
+                }
             } catch {
             } finally {
-                inflight = Math.max(0, inflight - 1);
-                update();
+                close();
             }
         });
         // claude.ai sets the href of every icon link while it replies, ours included; put ours back.
