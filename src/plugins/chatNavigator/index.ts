@@ -63,7 +63,7 @@ const CSS = `
 .rail { position: fixed; display: flex; align-items: center; pointer-events: none; }
 .ticks { display: flex; flex-direction: column; align-items: flex-end; max-height: 100%; overflow: hidden; pointer-events: auto; scrollbar-width: none; }
 .ticks::-webkit-scrollbar { display: none; }
-.tick { display: flex; align-items: center; justify-content: flex-end; flex: none; width: 32px; height: 12px; padding: 0 2px 0 0; border: 0; background: transparent; }
+.tick { display: flex; align-items: center; justify-content: flex-end; flex: none; width: 20px; height: 12px; padding: 0 2px 0 0; border: 0; background: transparent; }
 .dense .tick { height: 7px; }
 .tick::after { content: ""; display: block; height: 1px; width: 6px; border-radius: 999px; background: color-mix(in srgb, var(--fg3) 60%, transparent); transition: width .15s ease, background-color .15s ease; }
 .tick.assistant::after { width: 12px; }
@@ -225,6 +225,9 @@ function transcripts() {
     const all = getScrollers();
     return all.filter(el => !all.some(other => other !== el && other.contains(el)));
 }
+
+/** How long the pointer rests on the ticks before the outline opens. */
+const OPEN_DELAY_MS = 180;
 
 export default definePlugin({
     name: "ChatNavigator",
@@ -454,9 +457,17 @@ export default definePlugin({
                 if (open) drawMenu(true);
                 else aim = -1;
             };
+            // Passing over the ticks on the way to the scrollbar shouldn't open the card: wait for the pointer to rest.
+            let openTimer: ReturnType<typeof setTimeout> | undefined;
             for (const el of [ticks, menu]) {
-                el.addEventListener("mouseenter", () => setOpen(true));
+                el.addEventListener("mouseenter", () => {
+                    clearTimeout(hideTimer);
+                    clearTimeout(openTimer);
+                    if (el === menu || rail.classList.contains("open")) setOpen(true);
+                    else openTimer = setTimeout(() => setOpen(true), OPEN_DELAY_MS);
+                });
                 el.addEventListener("mouseleave", () => {
+                    clearTimeout(openTimer);
                     clearTimeout(hideTimer);
                     hideTimer = setTimeout(() => setOpen(false), 200);
                 });
@@ -524,6 +535,7 @@ export default definePlugin({
 
             const dispose = () => {
                 clearTimeout(hideTimer);
+                clearTimeout(openTimer);
                 for (const type of ["wheel", "touchstart", "pointerdown", "keydown"]) scroller.removeEventListener(type, unpin);
                 loadToken++;
                 rail.remove();

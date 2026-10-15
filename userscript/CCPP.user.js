@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.43
+// @version      20261013.0.3.44
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -2187,7 +2187,7 @@ select.input { padding-right: 6px; }
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.43";
+  var version = "0.3.44";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -3915,7 +3915,7 @@ ${x.css}`)].join(`
 .rail { position: fixed; display: flex; align-items: center; pointer-events: none; }
 .ticks { display: flex; flex-direction: column; align-items: flex-end; max-height: 100%; overflow: hidden; pointer-events: auto; scrollbar-width: none; }
 .ticks::-webkit-scrollbar { display: none; }
-.tick { display: flex; align-items: center; justify-content: flex-end; flex: none; width: 32px; height: 12px; padding: 0 2px 0 0; border: 0; background: transparent; }
+.tick { display: flex; align-items: center; justify-content: flex-end; flex: none; width: 20px; height: 12px; padding: 0 2px 0 0; border: 0; background: transparent; }
 .dense .tick { height: 7px; }
 .tick::after { content: ""; display: block; height: 1px; width: 6px; border-radius: 999px; background: color-mix(in srgb, var(--fg3) 60%, transparent); transition: width .15s ease, background-color .15s ease; }
 .tick.assistant::after { width: 12px; }
@@ -4047,6 +4047,7 @@ ${x.css}`)].join(`
     const all = getScrollers();
     return all.filter((el) => !all.some((other) => other !== el && other.contains(el)));
   }
+  var OPEN_DELAY_MS = 180;
   var chatNavigator_default = definePlugin({
     name: "ChatNavigator",
     title: { zh: "对话目录", en: "Chat navigator" },
@@ -4259,9 +4260,18 @@ ${x.css}`)].join(`
           else
             aim = -1;
         };
+        let openTimer;
         for (const el of [ticks, menu]) {
-          el.addEventListener("mouseenter", () => setOpen(true));
+          el.addEventListener("mouseenter", () => {
+            clearTimeout(hideTimer);
+            clearTimeout(openTimer);
+            if (el === menu || rail.classList.contains("open"))
+              setOpen(true);
+            else
+              openTimer = setTimeout(() => setOpen(true), OPEN_DELAY_MS);
+          });
           el.addEventListener("mouseleave", () => {
+            clearTimeout(openTimer);
             clearTimeout(hideTimer);
             hideTimer = setTimeout(() => setOpen(false), 200);
           });
@@ -4327,6 +4337,7 @@ ${x.css}`)].join(`
         };
         const dispose = () => {
           clearTimeout(hideTimer);
+          clearTimeout(openTimer);
           for (const type of ["wheel", "touchstart", "pointerdown", "keydown"])
             scroller.removeEventListener(type, unpin);
           loadToken++;
@@ -6261,7 +6272,7 @@ ${m.text.trim()}`).join(`
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.43",
+      version: "0.3.44",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -6278,7 +6289,7 @@ ${m.text.trim()}`).join(`
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.43";
+    win[FLAG] = "0.3.44";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -6295,7 +6306,7 @@ ${m.text.trim()}`).join(`
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.43"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.44"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();
