@@ -18,6 +18,8 @@ export interface Star {
 export interface ChatStars {
     title: string;
     stars: Star[];
+    /** Where the conversation lives, for keys that are not claude.ai chat ids (Claude Code pages). */
+    url?: string;
 }
 
 export type StarBook = Record<string, ChatStars>;
@@ -26,7 +28,7 @@ const isStar = (v: any): v is Star => v && typeof v.key === "string" && Number.i
 
 export function isBook(value: unknown): value is StarBook {
     if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-    return Object.values(value as Record<string, any>).every(chat => chat && typeof chat.title === "string" && Array.isArray(chat.stars) && chat.stars.every(isStar));
+    return Object.values(value as Record<string, any>).every(chat => chat && typeof chat.title === "string" && (chat.url === undefined || typeof chat.url === "string") && Array.isArray(chat.stars) && chat.stars.every(isStar));
 }
 
 export const book = persisted<StarBook>("message-stars", {}, isBook);
@@ -34,12 +36,37 @@ export const book = persisted<StarBook>("message-stars", {}, isBook);
 export const starsFor = (chatId: string | null) => (chatId ? book.get()[chatId]?.stars ?? [] : []);
 
 /** Adds or removes a star; returns whether the message is starred afterwards. */
-export function toggleStar(chatId: string, title: string, star: Star, current = book.get()): { next: StarBook; starred: boolean } {
+export function toggleStar(chatId: string, title: string, star: Star, current = book.get(), url?: string): { next: StarBook; starred: boolean } {
     const chat = current[chatId] ?? { title, stars: [] };
     const exists = chat.stars.some(s => s.key === star.key);
     const stars = exists ? chat.stars.filter(s => s.key !== star.key) : [...chat.stars, star].sort((a, b) => a.index - b.index);
     const next = { ...current };
-    if (stars.length) next[chatId] = { title: title || chat.title, stars };
+    const href = url ?? chat.url;
+    if (stars.length) next[chatId] = { title: title || chat.title, stars, ...(href ? { url: href } : {}) };
     else delete next[chatId];
     return { next, starred: !exists };
+}
+
+export interface ChatKey {
+    key: string;
+    url: string;
+}
+
+/**
+ * Which conversation a message belongs to. Chats use their id. Claude Code pages have no chat id: a project's
+ * own chat is keyed by its channel (chan_…), a thread open in the side pane by channel:thread, and any other
+ * Claude Code page (a session) by its last path segment.
+ */
+export function chatKeyFor(path: string, search: string, inSidePane: boolean): ChatKey | null {
+    const chat = /^\/chat\/([0-9a-f-]{36})/i.exec(path);
+    if (chat) return { key: chat[1].toLowerCase(), url: `/chat/${chat[1].toLowerCase()}` };
+    const project = /^\/code\/project\/([\w-]+)/.exec(path);
+    if (project) {
+        const thread = new URLSearchParams(search).get("thread");
+        if (inSidePane && thread) return { key: `${project[1]}:${thread}`, url: `/code/project/${project[1]}?thread=${encodeURIComponent(thread)}` };
+        return inSidePane ? null : { key: project[1], url: `/code/project/${project[1]}` };
+    }
+    const code = /^\/code\/([\w-]+)\/?$/.exec(path);
+    if (code && code[1] !== "project") return { key: code[1], url: `/code/${code[1]}` };
+    return null;
 }

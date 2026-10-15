@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.40
+// @version      20261013.0.3.41
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -2187,7 +2187,7 @@ select.input { padding-right: 6px; }
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.40";
+  var version = "0.3.41";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -4412,20 +4412,37 @@ ${x.css}`)].join(`
   function isBook(value) {
     if (!value || typeof value !== "object" || Array.isArray(value))
       return false;
-    return Object.values(value).every((chat) => chat && typeof chat.title === "string" && Array.isArray(chat.stars) && chat.stars.every(isStar));
+    return Object.values(value).every((chat) => chat && typeof chat.title === "string" && (chat.url === undefined || typeof chat.url === "string") && Array.isArray(chat.stars) && chat.stars.every(isStar));
   }
   var book = persisted("message-stars", {}, isBook);
   var starsFor = (chatId) => chatId ? book.get()[chatId]?.stars ?? [] : [];
-  function toggleStar(chatId, title, star, current = book.get()) {
+  function toggleStar(chatId, title, star, current = book.get(), url) {
     const chat = current[chatId] ?? { title, stars: [] };
     const exists = chat.stars.some((s) => s.key === star.key);
     const stars = exists ? chat.stars.filter((s) => s.key !== star.key) : [...chat.stars, star].sort((a, b) => a.index - b.index);
     const next = { ...current };
+    const href = url ?? chat.url;
     if (stars.length)
-      next[chatId] = { title: title || chat.title, stars };
+      next[chatId] = { title: title || chat.title, stars, ...href ? { url: href } : {} };
     else
       delete next[chatId];
     return { next, starred: !exists };
+  }
+  function chatKeyFor(path, search, inSidePane) {
+    const chat = /^\/chat\/([0-9a-f-]{36})/i.exec(path);
+    if (chat)
+      return { key: chat[1].toLowerCase(), url: `/chat/${chat[1].toLowerCase()}` };
+    const project = /^\/code\/project\/([\w-]+)/.exec(path);
+    if (project) {
+      const thread = new URLSearchParams(search).get("thread");
+      if (inSidePane && thread)
+        return { key: `${project[1]}:${thread}`, url: `/code/project/${project[1]}?thread=${encodeURIComponent(thread)}` };
+      return inSidePane ? null : { key: project[1], url: `/code/project/${project[1]}` };
+    }
+    const code = /^\/code\/([\w-]+)\/?$/.exec(path);
+    if (code && code[1] !== "project")
+      return { key: code[1], url: `/code/${code[1]}` };
+    return null;
   }
 
   // src/plugins/messageStars/index.ts
@@ -4463,6 +4480,10 @@ ${x.css}`)].join(`
     const body = role === "user" ? message.querySelector(SEL.userMessageBody) ?? message : message.querySelector(SEL.prose) ?? message;
     return { index, role, key, text: snippet(body.innerText, 200) };
   }
+  var SIDE_PANE = '[data-perf-region="side_pane"]';
+  var keyOf = (el) => chatKeyFor(location.pathname, location.search, !!el?.closest(SIDE_PANE));
+  var pageKeys = () => [keyOf(null), document.querySelector(SIDE_PANE) ? chatKeyFor(location.pathname, location.search, true) : null].filter((k) => k !== null);
+  var isPlaceholder = (button) => /^Show message actions/i.test(button.getAttribute("aria-label") ?? "") || button.getBoundingClientRect().width < 4;
   var messageStars_default = definePlugin({
     name: "MessageStars",
     title: { zh: "消息收藏", en: "Message stars" },
@@ -4477,21 +4498,23 @@ ${x.css}`)].join(`
     settings: settings6,
     start(scope) {
       addStyle(scope, CSS5, "stars");
-      const isStarred = (key) => starsFor(currentRoute().chatId).some((s) => s.key === key);
+      const isStarred = (row, key) => starsFor(keyOf(row)?.key ?? null).some((s) => s.key === key);
       const toggle = (row) => {
-        const chatId = currentRoute().chatId;
+        const chat = keyOf(row);
         const info = rowInfo(row);
-        if (!chatId || !info)
+        if (!chat || !info)
           return;
-        const { next } = toggleStar(chatId, chatTitle(), { ...info, at: Date.now() });
+        const { next } = toggleStar(chat.key, chatTitle(), { ...info, at: Date.now() }, book.get(), chat.url);
         book.set(next);
       };
       const paint = () => {
-        const chatId = currentRoute().chatId;
-        const keys = new Set(starsFor(chatId).map((s) => s.key));
+        const starred = new Map;
         for (const row of document.querySelectorAll(SEL.transcriptRow)) {
           const info = rowInfo(row);
-          const on = !!info && keys.has(info.key);
+          const chat = keyOf(row)?.key ?? "";
+          if (!starred.has(chat))
+            starred.set(chat, new Set(starsFor(chat || null).map((s) => s.key)));
+          const on = !!info && starred.get(chat).has(info.key);
           row.classList.toggle("ccpp-starred-row", on);
           for (const btn of row.querySelectorAll(".ccpp-star-btn")) {
             btn.classList.toggle("on", on);
@@ -4499,11 +4522,11 @@ ${x.css}`)].join(`
             btn.setAttribute("aria-pressed", String(on));
           }
         }
-        setMarks("stars", starsFor(chatId).map((s) => s.index));
+        setMarks("stars", starsFor(keyOf(null)?.key ?? null).map((s) => s.index));
       };
       const makeButton = (row, extra = "", native) => {
         const info = rowInfo(row);
-        const on = !!info && isStarred(info.key);
+        const on = !!info && isStarred(row, info.key);
         const glyph = native?.querySelector('svg, [data-cds="Icon"]')?.getBoundingClientRect();
         const size = glyph && glyph.width >= 12 && glyph.width <= 24 ? Math.round(glyph.width) : 15;
         const svg = icon("star", size);
@@ -4526,11 +4549,15 @@ ${x.css}`)].join(`
       watch(scope, SEL.transcriptRow, (row) => {
         let btn = null;
         const attach = () => {
-          if (btn?.isConnected)
-            return;
           const toolbar = row.querySelector(SEL.messageActions) ?? row.querySelector('[role="toolbar"]');
+          if (btn?.isConnected && (btn.classList.contains("ccpp-star-float") || !toolbar || toolbar.contains(btn)))
+            return;
+          btn?.remove();
+          btn = null;
           if (toolbar) {
-            const native = [...toolbar.querySelectorAll("button:not(.ccpp-star-btn)")].pop();
+            const native = [...toolbar.querySelectorAll("button:not(.ccpp-star-btn)")].filter((b) => !isPlaceholder(b)).pop();
+            if (!native && (toolbar.hasAttribute("data-deferred") || toolbar.querySelector("button")))
+              return;
             btn = makeButton(row, "", native);
             toolbar.appendChild(btn);
             return;
@@ -4549,7 +4576,7 @@ ${x.css}`)].join(`
         observer.observe(row, { childList: true, subtree: true });
         row.classList.toggle("ccpp-starred-row", (() => {
           const info = rowInfo(row);
-          return !!info && isStarred(info.key);
+          return !!info && isStarred(row, info.key);
         })());
         return () => {
           observer.disconnect();
@@ -4559,8 +4586,8 @@ ${x.css}`)].join(`
       });
       const list = createPopover(scope, "stars-list", LIST_CSS, 340);
       const renderList = (panel, close) => {
-        const chatId = currentRoute().chatId;
-        const here = starsFor(chatId);
+        const keys = pageKeys();
+        const here = keys.flatMap((k) => starsFor(k.key).map((star) => ({ star, side: k.key.includes(":") })));
         panel.appendChild(h("div", { class: "top" }, icon("star", 16), h("b", { text: t(L11.list) })));
         const item = (star, onClick, sub) => {
           const row = h("button", { type: "button", class: "item" }, h("span", { class: "star", text: "★" }), h("span", { class: "grow" }, h("div", { class: "clip2", text: star.text || "…" }), h("div", { class: "sub", text: sub })));
@@ -4569,17 +4596,19 @@ ${x.css}`)].join(`
         };
         if (here.length) {
           panel.appendChild(h("div", { class: "sec", text: t(L11.here) }));
-          for (const star of here)
-            panel.appendChild(item(star, () => (close(), void jumpTo(star.index)), `${star.role === "user" ? t(L11.you) : "Claude"} · #${star.index + 1} · ${agoText(star.at)}`));
+          for (const { star, side } of here) {
+            const scroller = getScrollers().find((el) => !!el.closest(SIDE_PANE) === side) ?? null;
+            panel.appendChild(item(star, () => (close(), void jumpTo(star.index, { scroller })), `${star.role === "user" ? t(L11.you) : "Claude"} · #${star.index + 1} · ${agoText(star.at)}`));
+          }
         }
-        const others = settings6.store.otherChats ? Object.entries(book.get()).filter(([id]) => id !== chatId) : [];
+        const others = settings6.store.otherChats ? Object.entries(book.get()).filter(([id]) => !keys.some((k) => k.key === id)) : [];
         if (others.length) {
           panel.appendChild(h("div", { class: "sec", text: t(L11.others) }));
           for (const [id, chat] of others.slice(0, 30)) {
             for (const star of chat.stars.slice(0, 5)) {
               panel.appendChild(item(star, () => {
                 close();
-                location.assign(`/chat/${id}`);
+                location.assign(chat.url ?? `/chat/${id}`);
               }, `${chat.title || id.slice(0, 8)} · #${star.index + 1}`));
             }
           }
@@ -4590,7 +4619,7 @@ ${x.css}`)].join(`
       let headerItem = null;
       if (settings6.store.headerButton) {
         headerItem = addSlotItem(scope, "header", "stars", () => {
-          const count = starsFor(currentRoute().chatId).length;
+          const count = pageKeys().reduce((n, k) => n + starsFor(k.key).length, 0);
           const btn = slotButton(t(L11.list), (event) => list.open(event.currentTarget, renderList), icon("star", 16), count ? String(count) : "");
           if (count)
             btn.classList.add("on");
@@ -6230,7 +6259,7 @@ ${m.text.trim()}`).join(`
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.40",
+      version: "0.3.41",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -6247,7 +6276,7 @@ ${m.text.trim()}`).join(`
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.40";
+    win[FLAG] = "0.3.41";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -6264,7 +6293,7 @@ ${m.text.trim()}`).join(`
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.40"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.41"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();

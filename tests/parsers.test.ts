@@ -14,7 +14,7 @@ import { pickPhrase, fillPhrase } from "../src/plugins/customGreeting";
 import { toMarkdown } from "../src/plugins/exportChat";
 import { splitLinks } from "../src/plugins/betterLinks";
 import { isTelemetry } from "../src/plugins/noTelemetry";
-import { toggleStar } from "../src/plugins/messageStars/store";
+import { chatKeyFor, toggleStar } from "../src/plugins/messageStars/store";
 import { computeState, faviconFor, parseMark } from "../src/plugins/chatFavicon";
 import { alignWithApi, outlineFromApi } from "../src/plugins/chatNavigator";
 import { parseChannelMessages } from "../src/plugins/_api/claude";
@@ -334,5 +334,22 @@ describe("native-style tooltips", () => {
         expect(card.textContent).toBe("Weekly: 85%Resets Sun 8:00 AM");
         btn.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
         expect(card.style.display).toBe("none");
+    });
+});
+
+describe("message star conversation keys", () => {
+    test("chats, Claude Code project chats, threads and sessions", () => {
+        const id = "f2d2fe2d-0852-4e8a-9fd8-87e867e7be5e";
+        expect(chatKeyFor(`/chat/${id}`, "", false)).toEqual({ key: id, url: `/chat/${id}` });
+        expect(chatKeyFor("/code/project/chan_01ABC", "?thread=cmsg_9", false)).toEqual({ key: "chan_01ABC", url: "/code/project/chan_01ABC" });
+        expect(chatKeyFor("/code/project/chan_01ABC", "?thread=cmsg_9", true)).toEqual({ key: "chan_01ABC:cmsg_9", url: "/code/project/chan_01ABC?thread=cmsg_9" });
+        expect(chatKeyFor("/code/project/chan_01ABC", "", true)).toBeNull();
+        expect(chatKeyFor("/code/session_01XYZ", "", false)).toEqual({ key: "session_01XYZ", url: "/code/session_01XYZ" });
+        expect(chatKeyFor("/new", "", false)).toBeNull();
+    });
+
+    test("a star remembers where a Claude Code conversation lives", () => {
+        const star = { key: "k", index: 0, role: "user" as const, text: "hi", at: 1 };
+        expect(toggleStar("chan_1", "P", star, {}, "/code/project/chan_1").next).toEqual({ chan_1: { title: "P", stars: [star], url: "/code/project/chan_1" } });
     });
 });

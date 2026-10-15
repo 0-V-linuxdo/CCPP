@@ -15,12 +15,12 @@ import { createPopover } from "@lib/popover";
 import { tipAttrs } from "@lib/tooltip";
 import { chatTitle } from "@api/chatState";
 import { SEL, watch } from "@api/dom";
-import { currentRoute, onRoute } from "@api/router";
+import { onRoute } from "@api/router";
 import { addSlotItem, refreshSlotItem, slotButton } from "@api/slots";
 import { addStyle } from "@api/styles";
-import { jumpTo, setMarks } from "@api/transcript";
+import { getScrollers, jumpTo, setMarks } from "@api/transcript";
 
-import { book, type Star, starsFor, toggleStar } from "./store";
+import { book, chatKeyFor, type Star, starsFor, toggleStar } from "./store";
 
 const settings = definePluginSettings({
     headerButton: { type: "boolean", label: { zh: "在对话标题栏显示收藏列表按钮", en: "Starred list button in the chat header" }, default: true },
@@ -60,6 +60,16 @@ function rowInfo(row: HTMLElement) {
     return { index, role, key, text: snippet(body.innerText, 200) };
 }
 
+const SIDE_PANE = '[data-perf-region="side_pane"]';
+
+/** The conversation `el` belongs to: the page's chat, or on Claude Code pages the project chat or the thread beside it. */
+const keyOf = (el: Element | null) => chatKeyFor(location.pathname, location.search, !!el?.closest(SIDE_PANE));
+/** Conversations shown on this page: the main one, plus a thread in the side pane. */
+const pageKeys = () => [keyOf(null), document.querySelector(SIDE_PANE) ? chatKeyFor(location.pathname, location.search, true) : null].filter(k => k !== null);
+
+/** A claude.ai placeholder for a toolbar it has not rendered yet (older replies' action bars mount on hover). */
+const isPlaceholder = (button: HTMLElement) => /^Show message actions/i.test(button.getAttribute("aria-label") ?? "") || button.getBoundingClientRect().width < 4;
+
 export default definePlugin({
     name: "MessageStars",
     title: { zh: "消息收藏", en: "Message stars" },
@@ -74,22 +84,23 @@ export default definePlugin({
     settings,
     start(scope: Scope) {
         addStyle(scope, CSS, "stars");
-        const isStarred = (key: string) => starsFor(currentRoute().chatId).some(s => s.key === key);
+        const isStarred = (row: HTMLElement, key: string) => starsFor(keyOf(row)?.key ?? null).some(s => s.key === key);
 
         const toggle = (row: HTMLElement) => {
-            const chatId = currentRoute().chatId;
+            const chat = keyOf(row);
             const info = rowInfo(row);
-            if (!chatId || !info) return;
-            const { next } = toggleStar(chatId, chatTitle(), { ...info, at: Date.now() });
+            if (!chat || !info) return;
+            const { next } = toggleStar(chat.key, chatTitle(), { ...info, at: Date.now() }, book.get(), chat.url);
             book.set(next);
         };
 
         const paint = () => {
-            const chatId = currentRoute().chatId;
-            const keys = new Set(starsFor(chatId).map(s => s.key));
+            const starred = new Map<string, Set<string>>();
             for (const row of document.querySelectorAll<HTMLElement>(SEL.transcriptRow)) {
                 const info = rowInfo(row);
-                const on = !!info && keys.has(info.key);
+                const chat = keyOf(row)?.key ?? "";
+                if (!starred.has(chat)) starred.set(chat, new Set(starsFor(chat || null).map(s => s.key)));
+                const on = !!info && starred.get(chat)!.has(info.key);
                 row.classList.toggle("ccpp-starred-row", on);
                 for (const btn of row.querySelectorAll<HTMLElement>(".ccpp-star-btn")) {
                     btn.classList.toggle("on", on);
@@ -97,13 +108,13 @@ export default definePlugin({
                     btn.setAttribute("aria-pressed", String(on));
                 }
             }
-            setMarks("stars", starsFor(chatId).map(s => s.index));
+            setMarks("stars", starsFor(keyOf(null)?.key ?? null).map(s => s.index));
         };
 
         /** In a native toolbar the button borrows a neighbour's classes and icon size, so it reads as one of them. */
         const makeButton = (row: HTMLElement, extra = "", native?: HTMLElement | null) => {
             const info = rowInfo(row);
-            const on = !!info && isStarred(info.key);
+            const on = !!info && isStarred(row, info.key);
             const glyph = native?.querySelector("svg, [data-cds=\"Icon\"]")?.getBoundingClientRect();
             const size = glyph && glyph.width >= 12 && glyph.width <= 24 ? Math.round(glyph.width) : 15;
             const svg = icon("star", size);
@@ -124,10 +135,14 @@ export default definePlugin({
         watch(scope, SEL.transcriptRow, row => {
             let btn: HTMLElement | null = null;
             const attach = () => {
-                if (btn?.isConnected) return;
                 const toolbar = row.querySelector<HTMLElement>(SEL.messageActions) ?? row.querySelector<HTMLElement>('[role="toolbar"]');
+                if (btn?.isConnected && (btn.classList.contains("ccpp-star-float") || !toolbar || toolbar.contains(btn))) return;
+                btn?.remove();
+                btn = null;
                 if (toolbar) {
-                    const native = [...toolbar.querySelectorAll<HTMLElement>("button:not(.ccpp-star-btn)")].pop();
+                    // A deferred toolbar is a hidden placeholder; wait for the real buttons (they mount on hover) and style after them.
+                    const native = [...toolbar.querySelectorAll<HTMLElement>("button:not(.ccpp-star-btn)")].filter(b => !isPlaceholder(b)).pop();
+                    if (!native && (toolbar.hasAttribute("data-deferred") || toolbar.querySelector("button"))) return;
                     btn = makeButton(row, "", native);
                     toolbar.appendChild(btn);
                     return;
@@ -145,7 +160,7 @@ export default definePlugin({
             observer.observe(row, { childList: true, subtree: true });
             row.classList.toggle("ccpp-starred-row", (() => {
                 const info = rowInfo(row);
-                return !!info && isStarred(info.key);
+                return !!info && isStarred(row, info.key);
             })());
             return () => {
                 observer.disconnect();
@@ -158,8 +173,8 @@ export default definePlugin({
 
         const list = createPopover(scope, "stars-list", LIST_CSS, 340);
         const renderList = (panel: HTMLElement, close: () => void) => {
-            const chatId = currentRoute().chatId;
-            const here = starsFor(chatId);
+            const keys = pageKeys();
+            const here = keys.flatMap(k => starsFor(k.key).map(star => ({ star, side: k.key.includes(":") })));
             panel.appendChild(h("div", { class: "top" }, icon("star", 16), h("b", { text: t(L.list) })));
             const item = (star: Star, onClick: () => void, sub: string) => {
                 const row = h(
@@ -173,16 +188,19 @@ export default definePlugin({
             };
             if (here.length) {
                 panel.appendChild(h("div", { class: "sec", text: t(L.here) }));
-                for (const star of here) panel.appendChild(item(star, () => (close(), void jumpTo(star.index)), `${star.role === "user" ? t(L.you) : "Claude"} · #${star.index + 1} · ${agoText(star.at)}`));
+                for (const { star, side } of here) {
+                    const scroller = getScrollers().find(el => !!el.closest(SIDE_PANE) === side) ?? null;
+                    panel.appendChild(item(star, () => (close(), void jumpTo(star.index, { scroller })), `${star.role === "user" ? t(L.you) : "Claude"} · #${star.index + 1} · ${agoText(star.at)}`));
+                }
             }
-            const others = settings.store.otherChats ? Object.entries(book.get()).filter(([id]) => id !== chatId) : [];
+            const others = settings.store.otherChats ? Object.entries(book.get()).filter(([id]) => !keys.some(k => k.key === id)) : [];
             if (others.length) {
                 panel.appendChild(h("div", { class: "sec", text: t(L.others) }));
                 for (const [id, chat] of others.slice(0, 30)) {
                     for (const star of chat.stars.slice(0, 5)) {
                         panel.appendChild(item(star, () => {
                             close();
-                            location.assign(`/chat/${id}`);
+                            location.assign(chat.url ?? `/chat/${id}`);
                         }, `${chat.title || id.slice(0, 8)} · #${star.index + 1}`));
                     }
                 }
@@ -193,7 +211,7 @@ export default definePlugin({
         let headerItem: ReturnType<typeof addSlotItem> | null = null;
         if (settings.store.headerButton) {
             headerItem = addSlotItem(scope, "header", "stars", () => {
-                const count = starsFor(currentRoute().chatId).length;
+                const count = pageKeys().reduce((n, k) => n + starsFor(k.key).length, 0);
                 const btn = slotButton(t(L.list), event => list.open(event.currentTarget as HTMLElement, renderList), icon("star", 16), count ? String(count) : "");
                 if (count) btn.classList.add("on");
                 return btn;
