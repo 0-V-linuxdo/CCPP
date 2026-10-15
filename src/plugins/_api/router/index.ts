@@ -22,6 +22,8 @@ export interface Route {
 declare module "@kernel/events" {
     interface EventMap {
         route: { route: Route; previous: Route | null };
+        /** The query string changed on the same page (e.g. a Claude Code thread opened or closed: ?thread=…). */
+        "route:search": { search: string; previous: string };
     }
 }
 
@@ -39,8 +41,15 @@ export function parseRoute(path: string): Route {
 let current: Route = parseRoute(location.pathname);
 export const currentRoute = () => current;
 
+let search = location.search;
+
 function check() {
     const path = location.pathname;
+    if (location.search !== search) {
+        const previous = search;
+        search = location.search;
+        if (path === current.path) emit("route:search", { search, previous });
+    }
     if (path === current.path) return;
     const previous = current;
     current = parseRoute(path);

@@ -96,11 +96,16 @@ const CODE_TITLE = '[data-pane-title], [data-perf-region="side_pane"] [data-top-
  * Where a Claude Code header's own buttons start: the first button near the title that isn't part of it, lifted
  * out of single-child wrappers. With no such button the slot goes right after the title.
  */
+/** The side pane's grip between title and buttons is a button too, but not one of the header's actions. */
+const isDragHandle = (b: HTMLElement) => /(^|\s)tiles-drag-handle(\s|$)/.test(b.className) || b.matches("[data-drag-handle], [aria-roledescription='drag handle']");
+
 export function codeHeaderAnchor(title: HTMLElement): { anchor: HTMLElement; where: "before" | "after" } {
     let branch: HTMLElement = title;
     for (let depth = 0; depth < 6 && branch.parentElement; depth++) {
         const row = branch.parentElement;
-        const button = [...row.querySelectorAll<HTMLElement>("button")].find(b => !branch.contains(b) && !b.closest(".ccpp-slot") && (branch.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING));
+        const button = [...row.querySelectorAll<HTMLElement>("button")].find(
+            b => !branch.contains(b) && !b.closest(".ccpp-slot") && !isDragHandle(b) && branch.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING,
+        );
         if (button) {
             let anchor = button;
             while (anchor.parentElement && anchor.parentElement !== row && anchor.parentElement.children.length === 1) anchor = anchor.parentElement;

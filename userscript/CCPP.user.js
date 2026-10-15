@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.45
+// @version      20261013.0.3.46
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -935,8 +935,15 @@
   }
   var current2 = parseRoute(location.pathname);
   var currentRoute = () => current2;
+  var search = location.search;
   function check() {
     const path = location.pathname;
+    if (location.search !== search) {
+      const previous = search;
+      search = location.search;
+      if (path === current2.path)
+        emit("route:search", { search, previous });
+    }
     if (path === current2.path)
       return;
     const previous = current2;
@@ -1761,11 +1768,12 @@ select.input { padding-right: 6px; }
   }
   var slotButton = (label, onClick, ...children) => h("button", { type: "button", class: "ccpp-slot-btn", "aria-label": label, ...tipAttrs(label), onclick: onClick }, ...children);
   var CODE_TITLE = '[data-pane-title], [data-perf-region="side_pane"] [data-top-right] [data-cds="OverflowTooltip"]';
+  var isDragHandle = (b) => /(^|\s)tiles-drag-handle(\s|$)/.test(b.className) || b.matches("[data-drag-handle], [aria-roledescription='drag handle']");
   function codeHeaderAnchor(title) {
     let branch = title;
     for (let depth = 0;depth < 6 && branch.parentElement; depth++) {
       const row = branch.parentElement;
-      const button = [...row.querySelectorAll("button")].find((b) => !branch.contains(b) && !b.closest(".ccpp-slot") && branch.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+      const button = [...row.querySelectorAll("button")].find((b) => !branch.contains(b) && !b.closest(".ccpp-slot") && !isDragHandle(b) && branch.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
       if (button) {
         let anchor = button;
         while (anchor.parentElement && anchor.parentElement !== row && anchor.parentElement.children.length === 1)
@@ -2218,7 +2226,7 @@ select.input { padding-right: 6px; }
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.45";
+  var version = "0.3.46";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -3795,6 +3803,7 @@ ${x.css}`)].join(`
   var resetText = (window2) => !window2.resetsAt ? "" : window2.resetsAt - Date.now() < 24 * 3600 * 1000 ? t(L9.resetsIn).replace("{t}", untilText(window2.resetsAt)) : t(L9.resetsAt).replace("{t}", dateTimeText(window2.resetsAt));
   var COLORS = { ok: "var(--cds-fill-accent, #2a78d6)", warn: "var(--cds-fill-warning, #fab219)", bad: "var(--cds-fill-danger, #d03b3b)" };
   var SVG_NS = "http://www.w3.org/2000/svg";
+  var nativeTrack = () => document.querySelector("svg [data-ring-track]")?.getAttribute("stroke") || "var(--cds-alpha-2, rgba(127,127,127,.12))";
   function ringSvg(percent) {
     const svg = document.createElementNS(SVG_NS, "svg");
     for (const [k, v] of Object.entries({ width: "14", height: "14", viewBox: "0 0 14 14", "aria-hidden": "true" }))
@@ -3806,7 +3815,7 @@ ${x.css}`)].join(`
         c.setAttribute(k, v);
       return svg.appendChild(c);
     };
-    circle({ stroke: "var(--cds-alpha-4, rgba(127,127,127,.35))" });
+    circle({ stroke: nativeTrack() });
     if (percent !== null) {
       const length = 2 * Math.PI * 6;
       const clamped = Math.max(0, Math.min(100, percent));
@@ -4678,6 +4687,12 @@ ${x.css}`)].join(`
         list.update();
       }));
       scope.defer(() => setMarks("stars", []));
+      scope.on("route:search", () => {
+        paint();
+        for (const item of headerItems)
+          refreshSlotItem(item);
+        list.close();
+      });
       onRoute(scope, () => {
         paint();
         for (const item of headerItems)
@@ -6304,7 +6319,7 @@ ${m.text.trim()}`).join(`
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.45",
+      version: "0.3.46",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -6321,7 +6336,7 @@ ${m.text.trim()}`).join(`
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.45";
+    win[FLAG] = "0.3.46";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -6338,7 +6353,7 @@ ${m.text.trim()}`).join(`
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.45"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.46"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();

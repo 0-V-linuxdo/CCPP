@@ -118,6 +118,9 @@ const resetText = (window: UsageWindow) =>
 const COLORS = { ok: "var(--cds-fill-accent, #2a78d6)", warn: "var(--cds-fill-warning, #fab219)", bad: "var(--cds-fill-danger, #d03b3b)" };
 const SVG_NS = "http://www.w3.org/2000/svg";
 
+/** claude.ai's ring track differs by page (--cds-alpha-2 in chat composers, --cds-alpha-4 in the Claude Code bar); copy the one on screen. */
+const nativeTrack = () => document.querySelector("svg [data-ring-track]")?.getAttribute("stroke") || "var(--cds-alpha-2, rgba(127,127,127,.12))";
+
 /** The same 14px ring claude.ai draws in its usage button: r 6, 2px stroke, faint track, round-capped arc from 12 o'clock. */
 function ringSvg(percent: number | null) {
     const svg = document.createElementNS(SVG_NS, "svg");
@@ -128,7 +131,7 @@ function ringSvg(percent: number | null) {
         for (const [k, v] of Object.entries({ cx: "7", cy: "7", r: "6", fill: "none", "stroke-width": "2", ...attrs })) c.setAttribute(k, v);
         return svg.appendChild(c);
     };
-    circle({ stroke: "var(--cds-alpha-4, rgba(127,127,127,.35))" });
+    circle({ stroke: nativeTrack() });
     if (percent !== null) {
         const length = 2 * Math.PI * 6;
         const clamped = Math.max(0, Math.min(100, percent));

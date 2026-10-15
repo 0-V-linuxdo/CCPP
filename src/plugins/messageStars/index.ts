@@ -227,7 +227,13 @@ export default definePlugin({
             list.update();
         }));
         scope.defer(() => setMarks("stars", []));
-        onRoute(scope, () => {
+        // Opening or closing a thread only changes ?thread=; the header count covers that thread.
+        scope.on("route:search", () => {
+            paint();
+            for (const item of headerItems) refreshSlotItem(item);
+            list.close();
+        });
+                onRoute(scope, () => {
             paint();
             for (const item of headerItems) refreshSlotItem(item);
             list.close();
