@@ -80,7 +80,8 @@ async function refresh(force = false) {
         error = null;
     } catch (err) {
         if (timedOut) {
-            error = t(L.timeout);
+            // With numbers already on screen a slow request is not worth an error; just retry.
+            if (!usage) error = t(L.timeout);
             retryTimer = setTimeout(() => refresh(true), 8000);
             return;
         }
