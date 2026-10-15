@@ -40,11 +40,16 @@ export function matches(event: KeyboardEvent, combo: Combo) {
     return key === combo.key && event.ctrlKey === combo.ctrl && event.altKey === combo.alt && event.shiftKey === combo.shift && event.metaKey === combo.meta;
 }
 
-export function comboLabel(spec: string) {
+/** The keys of a shortcut in claude.ai's order (⌃ ⌥ ⇧ ⌘ key), e.g. ["⇧", "⌘", "."]. */
+export function comboKeys(spec: string): string[] {
     const combo = parseCombo(spec);
     const mac = isMac();
     const parts = [combo.ctrl && (mac ? "⌃" : "Ctrl"), combo.alt && (mac ? "⌥" : "Alt"), combo.shift && (mac ? "⇧" : "Shift"), combo.meta && (mac ? "⌘" : "Win"), combo.key.length === 1 ? combo.key.toUpperCase() : combo.key];
-    return parts.filter(Boolean).join(mac ? "" : "+");
+    return parts.filter((p): p is string => !!p);
+}
+
+export function comboLabel(spec: string) {
+    return comboKeys(spec).join(isMac() ? "" : "+");
 }
 
 /** Binds a shortcut for the scope's lifetime. Ignored while typing unless `inInputs`. */

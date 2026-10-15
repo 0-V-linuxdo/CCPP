@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.50
+// @version      20261013.0.3.51
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -1287,11 +1287,14 @@
     const key = CODE_KEYS[event.code] ?? (event.code.startsWith("Key") ? event.code.slice(3).toLowerCase() : event.code.startsWith("Digit") ? event.code.slice(5) : event.key.toLowerCase());
     return key === combo.key && event.ctrlKey === combo.ctrl && event.altKey === combo.alt && event.shiftKey === combo.shift && event.metaKey === combo.meta;
   }
-  function comboLabel(spec) {
+  function comboKeys(spec) {
     const combo = parseCombo(spec);
     const mac = isMac();
     const parts = [combo.ctrl && (mac ? "⌃" : "Ctrl"), combo.alt && (mac ? "⌥" : "Alt"), combo.shift && (mac ? "⇧" : "Shift"), combo.meta && (mac ? "⌘" : "Win"), combo.key.length === 1 ? combo.key.toUpperCase() : combo.key];
-    return parts.filter(Boolean).join(mac ? "" : "+");
+    return parts.filter((p) => !!p);
+  }
+  function comboLabel(spec) {
+    return comboKeys(spec).join(isMac() ? "" : "+");
   }
   function bindKey(scope, spec, fn, options = {}) {
     const combo = parseCombo(spec);
@@ -2226,7 +2229,7 @@ select.input { padding-right: 6px; }
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.50";
+  var version = "0.3.51";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -2884,6 +2887,24 @@ select.input { padding-right: 6px; }
       };
     });
   }
+  function shortcutHint(settingsItem, keys) {
+    if (!keys.length)
+      return null;
+    const keyLike = (el) => /^(?:[⌘⇧⌥⌃]|Ctrl|Shift|Alt|Win|.)$/.test(el.textContent?.trim() ?? "");
+    const native = [...settingsItem.querySelectorAll("kbd, span, div")].find((el) => el.children.length >= 2 && [...el.children].every(keyLike) && /[⌘⇧⌥⌃]|Ctrl/.test(el.textContent ?? ""));
+    if (native) {
+      const hint = native.cloneNode(false);
+      const sample = native.firstElementChild;
+      for (const key of keys) {
+        const part = sample.cloneNode(true);
+        part.textContent = key;
+        hint.appendChild(part);
+      }
+      hint.setAttribute("data-ccpp-shortcut", "");
+      return hint;
+    }
+    return h("span", { class: "shrink-0 text-muted", "data-ccpp-shortcut": "", text: keys.join(" "), style: { fontSize: "var(--cds-font-size-caption, 12px)", letterSpacing: ".08em" } });
+  }
   function closeMenu(menu) {
     menu.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
   }
@@ -2898,7 +2919,7 @@ select.input { padding-right: 6px; }
     const added = [];
     const chevron = () => h("span", { class: "-mr-1 shrink-0 text-muted", "data-ccpp-chevron": "", style: { display: "inline-flex" } }, icon("chevronRight", 16));
     const row = (iconNode, label, opts = {}) => {
-      const el = h("div", { role: "menuitem", tabindex: "-1", "data-cds-icon-row": "", "data-ccpp-item": "", class: opts.sub ? subItemClass : itemClass, style: { cursor: "pointer" } }, h("span", { class: iconClass }, iconNode), h("span", { class: "min-w-0 flex-1 truncate", text: label }), opts.sub ? chevron() : opts.trailing ?? null);
+      const el = h("div", { role: "menuitem", tabindex: "-1", "data-cds-icon-row": "", "data-ccpp-item": "", class: opts.sub ? subItemClass : itemClass, style: { cursor: "pointer" } }, h("span", { class: iconClass }, iconNode), typeof label === "string" ? h("span", { class: "min-w-0 flex-1 truncate", text: label }) : label, opts.trailing ?? null, opts.sub ? chevron() : null);
       if (opts.sub)
         el.setAttribute("aria-haspopup", "menu");
       el.addEventListener("pointerenter", () => highlight(el));
@@ -3029,7 +3050,8 @@ select.input { padding-right: 6px; }
       });
     }
     if (options.entry) {
-      const entry = row(icon("plug", 16), "CC++", { sub: true });
+      const name = h("span", { class: "min-w-0 flex-1 truncate" }, "CC++", h("span", { class: "text-muted", "data-ccpp-version": "", text: ` v${version}`, style: { fontSize: "var(--cds-font-size-caption, 12px)", marginInlineStart: "4px" } }));
+      const entry = row(icon("plug", 16), name, { sub: true, trailing: shortcutHint(settingsItem, options.shortcut) });
       top.attach(entry, "14rem", (scroll, child) => {
         fillCcpp(scroll, child);
         scroll.appendChild(separator());
@@ -3128,6 +3150,7 @@ select.input { padding-right: 6px; }
       installUserMenu(scope, {
         entry: settings.store.userMenuEntry,
         settingsFlyout: settings.store.settingsFlyout,
+        shortcut: settings.store.hotkey.trim() ? comboKeys(settings.store.hotkey) : [],
         tabs: sortedTabs,
         plugins: () => listedPlugins().sort((a, b) => t(a.title).localeCompare(t(b.title))),
         openTab: (tab) => openSettings({ tab }),
@@ -6341,7 +6364,7 @@ ${m.text.trim()}`).join(`
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.50",
+      version: "0.3.51",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -6358,7 +6381,7 @@ ${m.text.trim()}`).join(`
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.50";
+    win[FLAG] = "0.3.51";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -6375,7 +6398,7 @@ ${m.text.trim()}`).join(`
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.50"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.51"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();

@@ -9,7 +9,7 @@ import { definePlugin, getPlugin, onPluginStateChange, type Plugin } from "@kern
 import type { Scope } from "@kernel/scope";
 import { definePluginSettings, onSettingsChange } from "@kernel/settings";
 import { icon } from "@lib/icons";
-import { bindKey, comboLabel } from "@api/hotkeys";
+import { bindKey, comboKeys, comboLabel } from "@api/hotkeys";
 import { addMenuCommand } from "@api/menu";
 import { addSlotItem, slotButton } from "@api/slots";
 
@@ -103,6 +103,7 @@ function installEntries(parent: Scope) {
         installUserMenu(scope, {
             entry: settings.store.userMenuEntry,
             settingsFlyout: settings.store.settingsFlyout,
+            shortcut: settings.store.hotkey.trim() ? comboKeys(settings.store.hotkey) : [],
             tabs: sortedTabs,
             plugins: () => listedPlugins().sort((a: Plugin, b: Plugin) => t(a.title).localeCompare(t(b.title))),
             openTab: tab => openSettings({ tab }),

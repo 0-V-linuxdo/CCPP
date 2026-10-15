@@ -4,7 +4,7 @@ claude.ai 的插件化用户脚本：**一切皆插件**。内核只负责插件
 
 [安装 / 更新](https://raw.githubusercontent.com/0-V-linuxdo/CCPP/main/userscript/CCPP.user.js)（Tampermonkey / Violentmonkey / ScriptCat 等）
 
-打开设置：头像菜单里的「CC++ 设置」、脚本管理器菜单，或快捷键 `⌘/Ctrl + Shift + ,`。
+打开设置：头像菜单里的「CC++ 设置」、脚本管理器菜单，或快捷键 `⌘/Ctrl + Shift + .`。
 
 界面语言跟随 claude.ai 自身的语言设置（不是浏览器语言）：claude.ai 为中文时显示中文，其余一律英文；也可在 CC++ 设置里手动指定。
 

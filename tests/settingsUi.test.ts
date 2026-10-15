@@ -119,3 +119,16 @@ describe("themes", () => {
         expect(css).toContain("c{}");
     });
 });
+
+describe("account menu shortcut hint", () => {
+    test("copies claude.ai's hint structure with our keys, else falls back to text", async () => {
+        const { shortcutHint } = await import("../src/plugins/_core/settings/userMenu");
+        document.body.innerHTML = `<div id="s"><span>i</span><span>Settings</span><span class="hint"><kbd class="k">⇧</kbd><kbd class="k">⌘</kbd><kbd class="k">,</kbd></span></div>`;
+        const hint = shortcutHint(document.getElementById("s")!, ["⇧", "⌘", "."])!;
+        expect(hint.className).toBe("hint");
+        expect([...hint.children].map(k => `${k.tagName}.${k.className}:${k.textContent}`)).toEqual(["KBD.k:⇧", "KBD.k:⌘", "KBD.k:."]);
+        document.body.innerHTML = `<div id="s"><span>i</span><span>Settings</span></div>`;
+        expect(shortcutHint(document.getElementById("s")!, ["⇧", "⌘", "."])!.textContent).toBe("⇧ ⌘ .");
+        expect(shortcutHint(document.getElementById("s")!, [])).toBeNull();
+    });
+});

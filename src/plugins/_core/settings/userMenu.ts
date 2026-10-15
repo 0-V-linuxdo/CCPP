@@ -12,7 +12,7 @@ import { icon } from "@lib/icons";
 import { tipAttrs } from "@lib/tooltip";
 import { SEL, watch } from "@api/dom";
 
-import type { SettingsTab } from "./state";
+import { type SettingsTab, version } from "./state";
 
 /** The "Settings" row of claude.ai's account menu, which tells that menu apart from others. */
 const SETTINGS_ITEM = '[data-testid="user-menu-settings"]';
@@ -50,6 +50,8 @@ export interface UserMenuOptions {
     entry: boolean;
     /** Turn claude.ai's Settings row into a submenu too (void++'s SettingsFlyout). */
     settingsFlyout: boolean;
+    /** Keys of the shortcut that opens CC++ settings, shown like claude.ai's own hint on its Settings row. */
+    shortcut: string[];
 }
 
 /**
@@ -78,6 +80,28 @@ export function installUserMenu(scope: Scope, options: UserMenuOptions) {
     });
 }
 
+/**
+ * A shortcut hint built like the one on claude.ai's Settings row (⇧⌘,): the same container and per-key elements,
+ * copied from that row, with our keys. Plain muted text when the row has no hint to copy.
+ */
+export function shortcutHint(settingsItem: HTMLElement, keys: string[]): HTMLElement | null {
+    if (!keys.length) return null;
+    const keyLike = (el: Element) => /^(?:[⌘⇧⌥⌃]|Ctrl|Shift|Alt|Win|.)$/.test(el.textContent?.trim() ?? "");
+    const native = [...settingsItem.querySelectorAll<HTMLElement>("kbd, span, div")].find(el => el.children.length >= 2 && [...el.children].every(keyLike) && /[⌘⇧⌥⌃]|Ctrl/.test(el.textContent ?? ""));
+    if (native) {
+        const hint = native.cloneNode(false) as HTMLElement;
+        const sample = native.firstElementChild!;
+        for (const key of keys) {
+            const part = sample.cloneNode(true) as HTMLElement;
+            part.textContent = key;
+            hint.appendChild(part);
+        }
+        hint.setAttribute("data-ccpp-shortcut", "");
+        return hint;
+    }
+    return h("span", { class: "shrink-0 text-muted", "data-ccpp-shortcut": "", text: keys.join(" "), style: { fontSize: "var(--cds-font-size-caption, 12px)", letterSpacing: ".08em" } });
+}
+
 type Fill = (scroll: HTMLElement, child: Level) => void;
 interface Level {
     attach(trigger: HTMLElement, width: string, fill: Fill): void;
@@ -101,13 +125,14 @@ function enhance(menu: HTMLElement, settingsItem: HTMLElement, options: UserMenu
 
     const chevron = () => h("span", { class: "-mr-1 shrink-0 text-muted", "data-ccpp-chevron": "", style: { display: "inline-flex" } }, icon("chevronRight", 16));
 
-    const row = (iconNode: Node | null, label: string, opts: { sub?: boolean; trailing?: Node | null; run?: () => void } = {}) => {
+    const row = (iconNode: Node | null, label: string | Node, opts: { sub?: boolean; trailing?: Node | null; run?: () => void } = {}) => {
         const el = h(
             "div",
             { role: "menuitem", tabindex: "-1", "data-cds-icon-row": "", "data-ccpp-item": "", class: opts.sub ? subItemClass : itemClass, style: { cursor: "pointer" } },
             h("span", { class: iconClass }, iconNode),
-            h("span", { class: "min-w-0 flex-1 truncate", text: label }),
-            opts.sub ? chevron() : (opts.trailing ?? null),
+            typeof label === "string" ? h("span", { class: "min-w-0 flex-1 truncate", text: label }) : label,
+            opts.trailing ?? null,
+            opts.sub ? chevron() : null,
         );
         if (opts.sub) el.setAttribute("aria-haspopup", "menu");
         el.addEventListener("pointerenter", () => highlight(el));
@@ -242,7 +267,8 @@ function enhance(menu: HTMLElement, settingsItem: HTMLElement, options: UserMenu
     }
 
     if (options.entry) {
-        const entry = row(icon("plug", 16), "CC++", { sub: true });
+        const name = h("span", { class: "min-w-0 flex-1 truncate" }, "CC++", h("span", { class: "text-muted", "data-ccpp-version": "", text: ` v${version}`, style: { fontSize: "var(--cds-font-size-caption, 12px)", marginInlineStart: "4px" } }));
+        const entry = row(icon("plug", 16), name, { sub: true, trailing: shortcutHint(settingsItem, options.shortcut) });
         top.attach(entry, "14rem", (scroll, child) => {
             fillCcpp(scroll, child);
             scroll.appendChild(separator());
