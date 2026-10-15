@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.42
+// @version      20261013.0.3.43
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -2187,7 +2187,7 @@ select.input { padding-right: 6px; }
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.42";
+  var version = "0.3.43";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -4521,6 +4521,7 @@ ${x.css}`)].join(`
             btn.classList.toggle("on", on);
             btn.setAttribute("data-ccpp-tip", t(on ? L11.unstar : L11.star));
             btn.setAttribute("aria-pressed", String(on));
+            btn.setAttribute("aria-label", t(on ? L11.unstar : L11.star));
           }
         }
         setMarks("stars", starsFor(keyOf(null)?.key ?? null).map((s) => s.index));
@@ -4533,7 +4534,7 @@ ${x.css}`)].join(`
         const svg = icon("star", size);
         if (native)
           svg.setAttribute("stroke-width", "1.5");
-        const btn = h("button", { type: "button", class: `ccpp-star-btn${extra}${on ? " on" : ""}`, ...tipAttrs(t(on ? L11.unstar : L11.star)), "aria-label": t(L11.star), "aria-pressed": String(on) }, svg);
+        const btn = h("button", { type: "button", class: `ccpp-star-btn${extra}${on ? " on" : ""}`, ...tipAttrs(t(on ? L11.unstar : L11.star)), "aria-label": t(on ? L11.unstar : L11.star), "aria-pressed": String(on) }, svg);
         if (native) {
           btn.className = `${native.className} ccpp-star-btn ccpp-native${extra}${on ? " on" : ""}`;
           for (const attr of [...native.attributes])
@@ -6260,7 +6261,7 @@ ${m.text.trim()}`).join(`
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.42",
+      version: "0.3.43",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -6277,7 +6278,7 @@ ${m.text.trim()}`).join(`
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.42";
+    win[FLAG] = "0.3.43";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -6294,7 +6295,7 @@ ${m.text.trim()}`).join(`
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.42"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.43"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();
