@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.49
+// @version      20261013.0.3.50
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -2226,7 +2226,7 @@ select.input { padding-right: 6px; }
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.49";
+  var version = "0.3.50";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -4518,7 +4518,8 @@ ${x.css}`)].join(`
 .ccpp-star-btn.on { color: #ff7a17; background: rgb(255 122 23 / 14%); opacity: 1; }
 .ccpp-star-btn.on:hover, .ccpp-star-btn.on:focus-visible { color: #ff7a17; background: rgb(255 122 23 / 22%); }
 .ccpp-star-float { position: absolute; top: 4px; inset-inline-start: -34px; opacity: 0; transition: opacity .12s; z-index: 1; }
-[data-testid="transcript-row"]:hover .ccpp-star-float, .ccpp-star-float.on { opacity: .8; }
+[data-testid="transcript-row"]:hover .ccpp-star-float { opacity: .8; }
+.ccpp-star-float.on { opacity: 1; }
 `;
   var LIST_CSS = `.sec { font-size: 12px; color: var(--fg3); padding: 2px 8px; } .star { color: #ff7a17; flex: none; }`;
   function rowInfo(row) {
@@ -6340,7 +6341,7 @@ ${m.text.trim()}`).join(`
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.49",
+      version: "0.3.50",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -6357,7 +6358,7 @@ ${m.text.trim()}`).join(`
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.49";
+    win[FLAG] = "0.3.50";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -6374,7 +6375,7 @@ ${m.text.trim()}`).join(`
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.49"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.50"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();

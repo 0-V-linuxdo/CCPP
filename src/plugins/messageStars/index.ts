@@ -44,7 +44,8 @@ const CSS = `
 .ccpp-star-btn.on { color: #ff7a17; background: rgb(255 122 23 / 14%); opacity: 1; }
 .ccpp-star-btn.on:hover, .ccpp-star-btn.on:focus-visible { color: #ff7a17; background: rgb(255 122 23 / 22%); }
 .ccpp-star-float { position: absolute; top: 4px; inset-inline-start: -34px; opacity: 0; transition: opacity .12s; z-index: 1; }
-[data-testid="transcript-row"]:hover .ccpp-star-float, .ccpp-star-float.on { opacity: .8; }
+[data-testid="transcript-row"]:hover .ccpp-star-float { opacity: .8; }
+.ccpp-star-float.on { opacity: 1; }
 `;
 
 const LIST_CSS = `.sec { font-size: 12px; color: var(--fg3); padding: 2px 8px; } .star { color: #ff7a17; flex: none; }`;
