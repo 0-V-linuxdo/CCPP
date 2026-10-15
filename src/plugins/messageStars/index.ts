@@ -40,14 +40,14 @@ const L = {
 const CSS = `
 .ccpp-star-btn:not(.ccpp-native) { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 8px; border: 0; background: transparent; color: var(--cds-text-secondary, inherit); cursor: pointer; }
 .ccpp-star-btn:not(.ccpp-native):hover { color: var(--cds-text-primary, inherit); background: var(--cds-fill-ghost-hover, rgba(127,127,127,.14)); }
-.ccpp-star-btn.on { color: #e8a33d; opacity: 1; }
-.ccpp-star-btn.on svg { fill: currentColor; }
+/* Like void++: a starred message is marked only by its star, orange on a faint orange tint; the message itself is left alone. */
+.ccpp-star-btn.on { color: #ff7a17; background: rgb(255 122 23 / 14%); opacity: 1; }
+.ccpp-star-btn.on:hover, .ccpp-star-btn.on:focus-visible { color: #ff7a17; background: rgb(255 122 23 / 22%); }
 .ccpp-star-float { position: absolute; top: 4px; inset-inline-start: -34px; opacity: 0; transition: opacity .12s; z-index: 1; }
 [data-testid="transcript-row"]:hover .ccpp-star-float, .ccpp-star-float.on { opacity: .8; }
-.ccpp-starred-row [data-testid="user-message"], .ccpp-starred-row [data-testid="assistant-message"] { box-shadow: inset 3px 0 0 #e8a33d; border-radius: 4px; }
 `;
 
-const LIST_CSS = `.sec { font-size: 12px; color: var(--fg3); padding: 2px 8px; } .star { color: #e8a33d; flex: none; }`;
+const LIST_CSS = `.sec { font-size: 12px; color: var(--fg3); padding: 2px 8px; } .star { color: #ff7a17; flex: none; }`;
 
 function rowInfo(row: HTMLElement) {
     const index = Number(row.dataset.index);

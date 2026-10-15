@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.47
+// @version      20261013.0.3.48
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -2226,7 +2226,7 @@ select.input { padding-right: 6px; }
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.47";
+  var version = "0.3.48";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -3960,12 +3960,12 @@ ${x.css}`)].join(`
 .tick::after { content: ""; display: block; height: 1px; width: 6px; border-radius: 999px; background: color-mix(in srgb, var(--fg3) 60%, transparent); transition: width .15s ease, background-color .15s ease; }
 .tick.assistant::after { width: 12px; }
 .tick.current::after { width: 16px; background: var(--fg); }
-.tick.marked::after { background: var(--clay); }
+.tick.marked::after { background: #ff7a17; }
 .tick.live::after { height: 0; background: none; border-top: 1px dashed color-mix(in srgb, var(--fg3) 70%, transparent); }
 .tick.live.current::after { border-top-color: var(--fg); }
 .rail:hover .tick::after { background: color-mix(in srgb, var(--fg3) 85%, transparent); }
 .rail:hover .tick.current::after { background: var(--fg); }
-.rail:hover .tick.marked::after { background: var(--clay); }
+.rail:hover .tick.marked::after { background: #ff7a17; }
 .menu { position: absolute; top: 50%; right: calc(100% + 4px); width: min(288px, 70vw); max-height: var(--menu-h, 70vh); overflow: auto; padding: 6px; border-radius: 20px; background: var(--bg); box-shadow: var(--shadow); color: var(--fg); pointer-events: auto;
   opacity: 0; visibility: hidden; transform: translate(8px, -50%); transition: opacity .2s ease, visibility .2s ease, transform .2s ease; overscroll-behavior: contain; }
 .rail.open .menu { opacity: 1; visibility: visible; transform: translate(0, -50%); }
@@ -3977,7 +3977,7 @@ ${x.css}`)].join(`
 .emoji { flex: none; font-size: 15px; line-height: 1; }
 .label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .label.dim { color: var(--fg3); font-style: italic; }
-.star { flex: none; color: var(--clay); font-size: 12px; }
+.star { flex: none; color: #ff7a17; font-size: 12px; }
 @media (prefers-reduced-motion: reduce) { .menu, .tick::after { transition: none; } }
 `;
   var seen2 = new Map;
@@ -4514,13 +4514,13 @@ ${x.css}`)].join(`
   var CSS5 = `
 .ccpp-star-btn:not(.ccpp-native) { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 8px; border: 0; background: transparent; color: var(--cds-text-secondary, inherit); cursor: pointer; }
 .ccpp-star-btn:not(.ccpp-native):hover { color: var(--cds-text-primary, inherit); background: var(--cds-fill-ghost-hover, rgba(127,127,127,.14)); }
-.ccpp-star-btn.on { color: #e8a33d; opacity: 1; }
-.ccpp-star-btn.on svg { fill: currentColor; }
+/* Like void++: a starred message is marked only by its star, orange on a faint orange tint; the message itself is left alone. */
+.ccpp-star-btn.on { color: #ff7a17; background: rgb(255 122 23 / 14%); opacity: 1; }
+.ccpp-star-btn.on:hover, .ccpp-star-btn.on:focus-visible { color: #ff7a17; background: rgb(255 122 23 / 22%); }
 .ccpp-star-float { position: absolute; top: 4px; inset-inline-start: -34px; opacity: 0; transition: opacity .12s; z-index: 1; }
 [data-testid="transcript-row"]:hover .ccpp-star-float, .ccpp-star-float.on { opacity: .8; }
-.ccpp-starred-row [data-testid="user-message"], .ccpp-starred-row [data-testid="assistant-message"] { box-shadow: inset 3px 0 0 #e8a33d; border-radius: 4px; }
 `;
-  var LIST_CSS = `.sec { font-size: 12px; color: var(--fg3); padding: 2px 8px; } .star { color: #e8a33d; flex: none; }`;
+  var LIST_CSS = `.sec { font-size: 12px; color: var(--fg3); padding: 2px 8px; } .star { color: #ff7a17; flex: none; }`;
   function rowInfo(row) {
     const index = Number(row.dataset.index);
     const message = row.querySelector(`${SEL.userMessage}, ${SEL.assistantMessage}`);
@@ -6319,7 +6319,7 @@ ${m.text.trim()}`).join(`
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.47",
+      version: "0.3.48",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -6336,7 +6336,7 @@ ${m.text.trim()}`).join(`
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.47";
+    win[FLAG] = "0.3.48";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -6353,7 +6353,7 @@ ${m.text.trim()}`).join(`
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.47"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.48"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();
