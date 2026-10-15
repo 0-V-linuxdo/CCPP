@@ -353,3 +353,17 @@ describe("message star conversation keys", () => {
         expect(toggleStar("chan_1", "P", star, {}, "/code/project/chan_1").next).toEqual({ chan_1: { title: "P", stars: [star], url: "/code/project/chan_1" } });
     });
 });
+
+describe("Claude Code header slot", () => {
+    test("goes before the header's own buttons, or after the title when there are none", async () => {
+        const { codeHeaderAnchor } = await import("../src/plugins/_api/slots");
+        document.body.innerHTML = `<div id="row"><div><span><button data-pane-title>CC++</button></span></div><div id="actions"><span id="wrap"><button>Share</button></span><button>More</button></div></div>`;
+        const got = codeHeaderAnchor(document.querySelector<HTMLElement>("[data-pane-title]")!);
+        expect(got.where).toBe("before");
+        expect(got.anchor.id).toBe("wrap");
+        document.body.innerHTML = `<div><span><button data-pane-title>CC++</button></span><p>x</p></div>`;
+        const lone = codeHeaderAnchor(document.querySelector<HTMLElement>("[data-pane-title]")!);
+        expect(lone.where).toBe("after");
+        expect(lone.anchor.tagName).toBe("SPAN");
+    });
+});

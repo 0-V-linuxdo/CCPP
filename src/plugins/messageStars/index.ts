@@ -209,25 +209,27 @@ export default definePlugin({
             if (!here.length && !others.length) panel.appendChild(h("div", { class: "msg", text: t(L.none) }));
         };
 
-        let headerItem: ReturnType<typeof addSlotItem> | null = null;
+        const headerItems: ReturnType<typeof addSlotItem>[] = [];
         if (settings.store.headerButton) {
-            headerItem = addSlotItem(scope, "header", "stars", () => {
+            const render = () => {
                 const count = pageKeys().reduce((n, k) => n + starsFor(k.key).length, 0);
                 const btn = slotButton(t(L.list), event => list.open(event.currentTarget as HTMLElement, renderList), icon("star", 16), count ? String(count) : "");
                 if (count) btn.classList.add("on");
                 return btn;
-            }, 10);
+            };
+            // Chats have a header action row; Claude Code pages get the button in each pane's header instead.
+            headerItems.push(addSlotItem(scope, "header", "stars", render, 10), addSlotItem(scope, "codeHeader", "stars", render, 10));
         }
 
         scope.defer(book.subscribe(() => {
             paint();
-            if (headerItem) refreshSlotItem(headerItem);
+            for (const item of headerItems) refreshSlotItem(item);
             list.update();
         }));
         scope.defer(() => setMarks("stars", []));
         onRoute(scope, () => {
             paint();
-            if (headerItem) refreshSlotItem(headerItem);
+            for (const item of headerItems) refreshSlotItem(item);
             list.close();
         });
         paint();

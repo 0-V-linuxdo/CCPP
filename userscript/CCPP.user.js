@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.44
+// @version      20261013.0.3.45
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -1706,12 +1706,14 @@ select.input { padding-right: 6px; }
 
   // src/plugins/_api/slots/index.ts
   var items = new Set;
-  var containers = new Map([["composer", new Set], ["header", new Set]]);
+  var containers = new Map([["composer", new Set], ["header", new Set], ["codeHeader", new Set]]);
   var CSS2 = `
 .ccpp-slot { display: inline-flex; align-items: center; gap: 4px; flex: none; }
 .ccpp-slot:empty { display: none; }
 .ccpp-slot-composer { margin-inline-end: 4px; }
 .ccpp-slot-header { margin-inline-end: 4px; }
+.ccpp-slot-codeHeader { margin-inline: 4px; }
+.ccpp-slot-codeHeader .ccpp-slot-btn { min-width: var(--cds-h-control, 32px); height: var(--cds-h-control, 32px); padding: 0 6px; border-radius: calc(0.375rem * var(--cds-rem-scale, 1)); }
 .ccpp-slot-btn { display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-width: 32px; height: 32px; padding: 0 8px; border-radius: 8px; border: 0; background: transparent; color: var(--cds-text-secondary, inherit); font: inherit; font-size: 12px; cursor: pointer; }
 /* Same colors and hover as claude.ai's ghost buttons next to it. */
 .ccpp-slot-btn:hover { color: var(--cds-text-primary, inherit); background: var(--cds-fill-ghost-hover, rgba(127,127,127,.14)); }
@@ -1758,6 +1760,25 @@ select.input { padding-right: 6px; }
     }
   }
   var slotButton = (label, onClick, ...children) => h("button", { type: "button", class: "ccpp-slot-btn", "aria-label": label, ...tipAttrs(label), onclick: onClick }, ...children);
+  var CODE_TITLE = '[data-pane-title], [data-perf-region="side_pane"] [data-top-right] [data-cds="OverflowTooltip"]';
+  function codeHeaderAnchor(title) {
+    let branch = title;
+    for (let depth = 0;depth < 6 && branch.parentElement; depth++) {
+      const row = branch.parentElement;
+      const button = [...row.querySelectorAll("button")].find((b) => !branch.contains(b) && !b.closest(".ccpp-slot") && branch.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+      if (button) {
+        let anchor = button;
+        while (anchor.parentElement && anchor.parentElement !== row && anchor.parentElement.children.length === 1)
+          anchor = anchor.parentElement;
+        return { anchor, where: "before" };
+      }
+      branch = row;
+    }
+    let anchor = title;
+    while (anchor.parentElement && anchor.parentElement.children.length === 1)
+      anchor = anchor.parentElement;
+    return { anchor, where: "after" };
+  }
   var slots_default = definePlugin({
     name: "SlotsApi",
     title: { zh: "界面插槽", en: "UI slots API" },
@@ -1772,6 +1793,8 @@ select.input { padding-right: 6px; }
         const container = h("span", { class: `ccpp-slot ccpp-slot-${slot}`, "data-ccpp-slot": slot });
         if (where === "before")
           anchor.before(container);
+        else if (where === "after")
+          anchor.after(container);
         else
           anchor.prepend(container);
         containers.get(slot).add(container);
@@ -1788,6 +1811,14 @@ select.input { padding-right: 6px; }
         return mountIn("composer", anchor, "before");
       });
       watch(scope, SEL.headerActions, (el) => mountIn("header", el, "prepend"));
+      watch(scope, CODE_TITLE, (el) => {
+        if (!location.pathname.startsWith("/code"))
+          return;
+        const { anchor, where } = codeHeaderAnchor(el);
+        if (anchor.parentElement?.querySelector(":scope > .ccpp-slot-codeHeader"))
+          return;
+        return mountIn("codeHeader", anchor, where);
+      });
     }
   });
 
@@ -2187,7 +2218,7 @@ select.input { padding-right: 6px; }
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.44";
+  var version = "0.3.45";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -4629,27 +4660,28 @@ ${x.css}`)].join(`
         if (!here.length && !others.length)
           panel.appendChild(h("div", { class: "msg", text: t(L11.none) }));
       };
-      let headerItem = null;
+      const headerItems = [];
       if (settings6.store.headerButton) {
-        headerItem = addSlotItem(scope, "header", "stars", () => {
+        const render = () => {
           const count = pageKeys().reduce((n, k) => n + starsFor(k.key).length, 0);
           const btn = slotButton(t(L11.list), (event) => list.open(event.currentTarget, renderList), icon("star", 16), count ? String(count) : "");
           if (count)
             btn.classList.add("on");
           return btn;
-        }, 10);
+        };
+        headerItems.push(addSlotItem(scope, "header", "stars", render, 10), addSlotItem(scope, "codeHeader", "stars", render, 10));
       }
       scope.defer(book.subscribe(() => {
         paint();
-        if (headerItem)
-          refreshSlotItem(headerItem);
+        for (const item of headerItems)
+          refreshSlotItem(item);
         list.update();
       }));
       scope.defer(() => setMarks("stars", []));
       onRoute(scope, () => {
         paint();
-        if (headerItem)
-          refreshSlotItem(headerItem);
+        for (const item of headerItems)
+          refreshSlotItem(item);
         list.close();
       });
       paint();
@@ -6272,7 +6304,7 @@ ${m.text.trim()}`).join(`
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.44",
+      version: "0.3.45",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -6289,7 +6321,7 @@ ${m.text.trim()}`).join(`
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.44";
+    win[FLAG] = "0.3.45";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -6306,7 +6338,7 @@ ${m.text.trim()}`).join(`
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.44"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.45"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();
