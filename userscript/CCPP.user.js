@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.54
+// @version      20261013.0.3.55
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -2229,7 +2229,7 @@ select.input { padding-right: 6px; }
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.54";
+  var version = "0.3.55";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -4547,9 +4547,6 @@ ${x.css}`)].join(`
 /* Like void++: a starred message is marked only by its star, orange on a faint orange tint; the message itself is left alone. */
 .ccpp-star-btn.on { color: #ff7a17; background: rgb(255 122 23 / 14%); opacity: 1; }
 .ccpp-star-btn.on:hover, .ccpp-star-btn.on:focus-visible { color: #ff7a17; background: rgb(255 122 23 / 22%); }
-.ccpp-star-float { position: absolute; top: 4px; inset-inline-start: -34px; opacity: 0; transition: opacity .12s; z-index: 1; }
-[data-testid="transcript-row"]:hover .ccpp-star-float { opacity: .8; }
-.ccpp-star-float.on { opacity: 1; }
 `;
   var LIST_CSS = `.sec { font-size: 12px; color: var(--fg3); padding: 2px 8px; } .star { color: #ff7a17; flex: none; }`;
   function rowInfo(row) {
@@ -4664,26 +4661,15 @@ ${x.css}`)].join(`
           if (!rowInfo(row))
             return;
           const toolbar = row.querySelector(SEL.messageActions) ?? row.querySelector('[role="toolbar"]');
-          if (btn?.isConnected && (btn.classList.contains("ccpp-star-float") || !toolbar || toolbar.contains(btn)))
+          if (btn?.isConnected && toolbar?.contains(btn))
             return;
+          const native = toolbar ? [...toolbar.querySelectorAll("button:not(.ccpp-star-btn)")].filter((b) => !isPlaceholder(b)).pop() : undefined;
           btn?.remove();
           btn = null;
-          if (toolbar) {
-            const native = [...toolbar.querySelectorAll("button:not(.ccpp-star-btn)")].filter((b) => !isPlaceholder(b)).pop();
-            if (!native && (toolbar.hasAttribute("data-deferred") || toolbar.querySelector("button")))
-              return;
-            btn = makeButton(row, "", native);
-            toolbar.appendChild(btn);
+          if (!toolbar || !native)
             return;
-          }
-          const message = row.querySelector(SEL.userMessage);
-          if (!message)
-            return;
-          const holder = message.parentElement ?? message;
-          if (getComputedStyle(holder).position === "static")
-            holder.style.position = "relative";
-          btn = makeButton(row, " ccpp-star-float");
-          holder.appendChild(btn);
+          btn = makeButton(row, "", native);
+          toolbar.appendChild(btn);
         };
         attach();
         const observer = new MutationObserver(() => attach());
@@ -6380,7 +6366,7 @@ ${m.text.trim()}`).join(`
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.54",
+      version: "0.3.55",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -6397,7 +6383,7 @@ ${m.text.trim()}`).join(`
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.54";
+    win[FLAG] = "0.3.55";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -6414,7 +6400,7 @@ ${m.text.trim()}`).join(`
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.54"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.55"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();

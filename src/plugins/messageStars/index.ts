@@ -43,9 +43,6 @@ const CSS = `
 /* Like void++: a starred message is marked only by its star, orange on a faint orange tint; the message itself is left alone. */
 .ccpp-star-btn.on { color: #ff7a17; background: rgb(255 122 23 / 14%); opacity: 1; }
 .ccpp-star-btn.on:hover, .ccpp-star-btn.on:focus-visible { color: #ff7a17; background: rgb(255 122 23 / 22%); }
-.ccpp-star-float { position: absolute; top: 4px; inset-inline-start: -34px; opacity: 0; transition: opacity .12s; z-index: 1; }
-[data-testid="transcript-row"]:hover .ccpp-star-float { opacity: .8; }
-.ccpp-star-float.on { opacity: 1; }
 `;
 
 const LIST_CSS = `.sec { font-size: 12px; color: var(--fg3); padding: 2px 8px; } .star { color: #ff7a17; flex: none; }`;
@@ -173,23 +170,15 @@ export default definePlugin({
                 // No star where it couldn't be saved (a row whose message isn't recognised yet).
                 if (!rowInfo(row)) return;
                 const toolbar = row.querySelector<HTMLElement>(SEL.messageActions) ?? row.querySelector<HTMLElement>('[role="toolbar"]');
-                if (btn?.isConnected && (btn.classList.contains("ccpp-star-float") || !toolbar || toolbar.contains(btn))) return;
+                if (btn?.isConnected && toolbar?.contains(btn)) return;
+                // The star lives only in claude.ai's own action bar, like void++. Your messages' bars mount on hover
+                // (until then there is at most a hidden placeholder), so the star appears with them.
+                const native = toolbar ? [...toolbar.querySelectorAll<HTMLElement>("button:not(.ccpp-star-btn)")].filter(b => !isPlaceholder(b)).pop() : undefined;
                 btn?.remove();
                 btn = null;
-                if (toolbar) {
-                    // A deferred toolbar is a hidden placeholder; wait for the real buttons (they mount on hover) and style after them.
-                    const native = [...toolbar.querySelectorAll<HTMLElement>("button:not(.ccpp-star-btn)")].filter(b => !isPlaceholder(b)).pop();
-                    if (!native && (toolbar.hasAttribute("data-deferred") || toolbar.querySelector("button"))) return;
-                    btn = makeButton(row, "", native);
-                    toolbar.appendChild(btn);
-                    return;
-                }
-                const message = row.querySelector<HTMLElement>(SEL.userMessage);
-                if (!message) return;
-                const holder = message.parentElement ?? message;
-                if (getComputedStyle(holder).position === "static") holder.style.position = "relative";
-                btn = makeButton(row, " ccpp-star-float");
-                holder.appendChild(btn);
+                if (!toolbar || !native) return;
+                btn = makeButton(row, "", native);
+                toolbar.appendChild(btn);
             };
             attach();
             // Toolbars mount late (after streaming) and re-render; check again on changes inside the row.
