@@ -125,13 +125,38 @@ export default definePlugin({
                 btn.className = `${native.className} ccpp-star-btn ccpp-native${extra}${on ? " on" : ""}`;
                 for (const attr of [...native.attributes]) if (attr.name.startsWith("data-cds") || attr.name === "data-size") btn.setAttribute(attr.name, attr.value);
             }
-            btn.addEventListener("click", event => {
-                event.preventDefault();
-                event.stopPropagation();
-                toggle(row);
-            });
             return btn;
         };
+
+        /*
+         * Toggling happens on pointerdown, delegated from the document. claude.ai re-renders a message's action bar
+         * while the pointer is over it (hover state, focus moving into the bar), and the star is rebuilt with it; a
+         * click whose pointerdown and pointerup land on two different star nodes never fires, which is why clicks
+         * were lost now and then. pointerdown also stops claude.ai treating the press as one on its own bar.
+         */
+        const starAt = (event: Event) => event.composedPath().find((n): n is HTMLElement => n instanceof HTMLElement && n.classList.contains("ccpp-star-btn"));
+        const press = (star: HTMLElement) => {
+            const row = star.closest<HTMLElement>(SEL.transcriptRow);
+            if (row) toggle(row);
+        };
+        scope.listen(document, "pointerdown", (event: PointerEvent) => {
+            const star = event.button === 0 ? starAt(event) : undefined;
+            if (!star) return;
+            event.preventDefault();
+            event.stopPropagation();
+            press(star);
+        }, { capture: true });
+        for (const type of ["mousedown", "pointerup", "mouseup"]) {
+            scope.listen(document, type, (event: Event) => starAt(event) && (event.preventDefault(), event.stopPropagation()), { capture: true });
+        }
+        scope.listen(document, "click", (event: MouseEvent) => {
+            const star = starAt(event);
+            if (!star) return;
+            event.preventDefault();
+            event.stopPropagation();
+            // Enter / Space on a focused star (a click with no pointer behind it).
+            if (event.detail === 0) press(star);
+        }, { capture: true });
 
         watch(scope, SEL.transcriptRow, row => {
             let btn: HTMLElement | null = null;

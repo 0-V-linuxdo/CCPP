@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.48
+// @version      20261013.0.3.49
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -2226,7 +2226,7 @@ select.input { padding-right: 6px; }
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.48";
+  var version = "0.3.49";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -4592,13 +4592,34 @@ ${x.css}`)].join(`
             if (attr.name.startsWith("data-cds") || attr.name === "data-size")
               btn.setAttribute(attr.name, attr.value);
         }
-        btn.addEventListener("click", (event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          toggle(row);
-        });
         return btn;
       };
+      const starAt = (event) => event.composedPath().find((n) => n instanceof HTMLElement && n.classList.contains("ccpp-star-btn"));
+      const press = (star) => {
+        const row = star.closest(SEL.transcriptRow);
+        if (row)
+          toggle(row);
+      };
+      scope.listen(document, "pointerdown", (event) => {
+        const star = event.button === 0 ? starAt(event) : undefined;
+        if (!star)
+          return;
+        event.preventDefault();
+        event.stopPropagation();
+        press(star);
+      }, { capture: true });
+      for (const type of ["mousedown", "pointerup", "mouseup"]) {
+        scope.listen(document, type, (event) => starAt(event) && (event.preventDefault(), event.stopPropagation()), { capture: true });
+      }
+      scope.listen(document, "click", (event) => {
+        const star = starAt(event);
+        if (!star)
+          return;
+        event.preventDefault();
+        event.stopPropagation();
+        if (event.detail === 0)
+          press(star);
+      }, { capture: true });
       watch(scope, SEL.transcriptRow, (row) => {
         let btn = null;
         const attach = () => {
@@ -6319,7 +6340,7 @@ ${m.text.trim()}`).join(`
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.48",
+      version: "0.3.49",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -6336,7 +6357,7 @@ ${m.text.trim()}`).join(`
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.48";
+    win[FLAG] = "0.3.49";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -6353,7 +6374,7 @@ ${m.text.trim()}`).join(`
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.48"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.49"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();
