@@ -24,7 +24,8 @@ export const SEL = {
     transcriptFeed: '[role="feed"][aria-label]',
     transcriptRow: '[data-testid="transcript-row"]',
     scroller: '[data-autoscroll-container="true"]',
-    userMessage: '[data-testid="user-message"]',
+    /** Chats mark your messages with a test id; Claude Code project chats only with data-cds. */
+    userMessage: ':is([data-testid="user-message"], [data-cds="UserMessage"])',
     userMessageBody: ".cds-user-message-body",
     assistantMessage: '[data-testid="assistant-message"]',
     streaming: '[data-testid="assistant-message"][data-is-streaming="true"]',

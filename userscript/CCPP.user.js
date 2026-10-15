@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.51
+// @version      20261013.0.3.52
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -1001,7 +1001,7 @@
     transcriptFeed: '[role="feed"][aria-label]',
     transcriptRow: '[data-testid="transcript-row"]',
     scroller: '[data-autoscroll-container="true"]',
-    userMessage: '[data-testid="user-message"]',
+    userMessage: ':is([data-testid="user-message"], [data-cds="UserMessage"])',
     userMessageBody: ".cds-user-message-body",
     assistantMessage: '[data-testid="assistant-message"]',
     streaming: '[data-testid="assistant-message"][data-is-streaming="true"]',
@@ -2229,7 +2229,7 @@ select.input { padding-right: 6px; }
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.51";
+  var version = "0.3.52";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -4552,7 +4552,8 @@ ${x.css}`)].join(`
       return null;
     const role = message.matches(SEL.userMessage) ? "user" : "assistant";
     const keyed = row.querySelector("[data-turn-key]");
-    const key = keyed?.dataset.turnKey ? `${keyed.dataset.turnKey}:${role}` : `i${index}`;
+    const entry = row.querySelector("[data-epitaxy-entry]")?.dataset.epitaxyEntry;
+    const key = keyed?.dataset.turnKey ? `${keyed.dataset.turnKey}:${role}` : entry ? `${entry}:${role}` : `i${index}`;
     const body = role === "user" ? message.querySelector(SEL.userMessageBody) ?? message : message.querySelector(SEL.prose) ?? message;
     return { index, role, key, text: snippet(body.innerText, 200) };
   }
@@ -4647,6 +4648,8 @@ ${x.css}`)].join(`
       watch(scope, SEL.transcriptRow, (row) => {
         let btn = null;
         const attach = () => {
+          if (!rowInfo(row))
+            return;
           const toolbar = row.querySelector(SEL.messageActions) ?? row.querySelector('[role="toolbar"]');
           if (btn?.isConnected && (btn.classList.contains("ccpp-star-float") || !toolbar || toolbar.contains(btn)))
             return;
@@ -6364,7 +6367,7 @@ ${m.text.trim()}`).join(`
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.51",
+      version: "0.3.52",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -6381,7 +6384,7 @@ ${m.text.trim()}`).join(`
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.51";
+    win[FLAG] = "0.3.52";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -6398,7 +6401,7 @@ ${m.text.trim()}`).join(`
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.51"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.52"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();

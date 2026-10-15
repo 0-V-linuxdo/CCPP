@@ -56,7 +56,9 @@ function rowInfo(row: HTMLElement) {
     if (!Number.isFinite(index) || !message) return null;
     const role: Star["role"] = message.matches(SEL.userMessage) ? "user" : "assistant";
     const keyed = row.querySelector<HTMLElement>("[data-turn-key]");
-    const key = keyed?.dataset.turnKey ? `${keyed.dataset.turnKey}:${role}` : `i${index}`;
+    // Claude Code project chats give your messages no turn key, but every row carries its message id.
+    const entry = row.querySelector<HTMLElement>("[data-epitaxy-entry]")?.dataset.epitaxyEntry;
+    const key = keyed?.dataset.turnKey ? `${keyed.dataset.turnKey}:${role}` : entry ? `${entry}:${role}` : `i${index}`;
     const body = role === "user" ? message.querySelector<HTMLElement>(SEL.userMessageBody) ?? message : message.querySelector<HTMLElement>(SEL.prose) ?? message;
     return { index, role, key, text: snippet(body.innerText, 200) };
 }
@@ -162,6 +164,8 @@ export default definePlugin({
         watch(scope, SEL.transcriptRow, row => {
             let btn: HTMLElement | null = null;
             const attach = () => {
+                // No star where it couldn't be saved (a row whose message isn't recognised yet).
+                if (!rowInfo(row)) return;
                 const toolbar = row.querySelector<HTMLElement>(SEL.messageActions) ?? row.querySelector<HTMLElement>('[role="toolbar"]');
                 if (btn?.isConnected && (btn.classList.contains("ccpp-star-float") || !toolbar || toolbar.contains(btn))) return;
                 btn?.remove();
