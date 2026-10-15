@@ -273,7 +273,7 @@ function enhance(menu: HTMLElement, settingsItem: HTMLElement, options: UserMenu
     }
 
     if (options.entry) {
-        const name = h("span", { class: "min-w-0 flex-1 truncate" }, "CC++", h("span", { class: "text-muted", "data-ccpp-version": "", text: ` v${version}`, style: { fontSize: "var(--cds-font-size-caption, 12px)", marginInlineStart: "4px" } }));
+        const name = h("span", { class: "min-w-0 flex-1 truncate" }, "CC++", h("span", { class: "text-muted", "data-ccpp-version": "", text: ` v${version}`, style: { fontSize: "var(--cds-font-size-caption, 12px)", lineHeight: "1", verticalAlign: "middle", marginInlineStart: "4px" } }));
         const entry = row(icon("plug", 16), name, { sub: true, trailing: shortcutHint(settingsItem, options.shortcut) });
         top.attach(entry, "14rem", (scroll, child) => {
             fillCcpp(scroll, child);
