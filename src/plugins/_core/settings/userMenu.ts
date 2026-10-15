@@ -86,21 +86,27 @@ export function installUserMenu(scope: Scope, options: UserMenuOptions) {
  */
 export function shortcutHint(settingsItem: HTMLElement, keys: string[]): HTMLElement | null {
     if (!keys.length) return null;
-    const keyLike = (el: Element) => /^(?:[⌘⇧⌥⌃]|Ctrl|Shift|Alt|Win|.)$/.test(el.textContent?.trim() ?? "");
-    const native = [...settingsItem.querySelectorAll<HTMLElement>("kbd, span, div")].find(el => el.children.length >= 2 && [...el.children].every(keyLike) && /[⌘⇧⌥⌃]|Ctrl/.test(el.textContent ?? ""));
-    if (native) {
+    const native = settingsItem.querySelector<HTMLElement>('[data-cds="Shortcut"]');
+    const sample = native?.querySelector<HTMLElement>("kbd");
+    if (native && sample) {
         const hint = native.cloneNode(false) as HTMLElement;
-        const sample = native.firstElementChild!;
         for (const key of keys) {
             const part = sample.cloneNode(true) as HTMLElement;
-            part.textContent = key;
+            // Each key holds the glyph and a screen-reader name ("Shift", "Command").
+            const glyph = [...part.querySelectorAll<HTMLElement>("span")].find(el => !el.matches(".sr-only")) ?? null;
+            const name = part.querySelector<HTMLElement>(".sr-only");
+            if (glyph) glyph.textContent = key;
+            else part.textContent = key;
+            if (name) name.textContent = KEY_NAMES[key] ?? key;
             hint.appendChild(part);
         }
         hint.setAttribute("data-ccpp-shortcut", "");
         return hint;
     }
-    return h("span", { class: "shrink-0 text-muted", "data-ccpp-shortcut": "", text: keys.join(" "), style: { fontSize: "var(--cds-font-size-caption, 12px)", letterSpacing: ".08em" } });
+    return h("span", { class: "shrink-0 text-muted text-footnote", "data-ccpp-shortcut": "", "aria-hidden": "true", text: keys.join(" "), style: { letterSpacing: ".08em" } });
 }
+
+const KEY_NAMES: Record<string, string> = { "⇧": "Shift", "⌘": "Command", "⌥": "Option", "⌃": "Control", ".": "Period", ",": "Comma" };
 
 type Fill = (scroll: HTMLElement, child: Level) => void;
 interface Level {

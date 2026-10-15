@@ -60,7 +60,13 @@ function rowInfo(row: HTMLElement) {
     const entry = row.querySelector<HTMLElement>("[data-epitaxy-entry]")?.dataset.epitaxyEntry;
     const key = keyed?.dataset.turnKey ? `${keyed.dataset.turnKey}:${role}` : entry ? `${entry}:${role}` : `i${index}`;
     const body = role === "user" ? message.querySelector<HTMLElement>(SEL.userMessageBody) ?? message : message.querySelector<HTMLElement>(SEL.prose) ?? message;
-    return { index, role, key, text: snippet(body.innerText, 200) };
+    // Leave out controls inside the message, e.g. Claude Code's "Sent to 2 threads" chip.
+    let text = body.innerText ?? "";
+    for (const el of body.querySelectorAll<HTMLElement>('button, [role="button"], [role="status"]')) {
+        const extra = el.innerText?.trim();
+        if (extra) text = text.replace(extra, "");
+    }
+    return { index, role, key, text: snippet(text, 200) };
 }
 
 const SIDE_PANE = '[data-perf-region="side_pane"]';

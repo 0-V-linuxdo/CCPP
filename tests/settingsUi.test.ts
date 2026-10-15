@@ -123,10 +123,11 @@ describe("themes", () => {
 describe("account menu shortcut hint", () => {
     test("copies claude.ai's hint structure with our keys, else falls back to text", async () => {
         const { shortcutHint } = await import("../src/plugins/_core/settings/userMenu");
-        document.body.innerHTML = `<div id="s"><span>i</span><span>Settings</span><span class="hint"><kbd class="k">⇧</kbd><kbd class="k">⌘</kbd><kbd class="k">,</kbd></span></div>`;
+        const key = (g: string, n: string) => `<kbd class="k"><span>${g}</span><span class="sr-only">${n}</span></kbd>`;
+        document.body.innerHTML = `<div id="s"><span>i</span><span>Settings</span><span data-cds="Shortcut" class="hint text-footnote">${key("⇧", "Shift")}${key("⌘", "Command")}${key(",", ",")}</span></div>`;
         const hint = shortcutHint(document.getElementById("s")!, ["⇧", "⌘", "."])!;
-        expect(hint.className).toBe("hint");
-        expect([...hint.children].map(k => `${k.tagName}.${k.className}:${k.textContent}`)).toEqual(["KBD.k:⇧", "KBD.k:⌘", "KBD.k:."]);
+        expect(hint.className).toBe("hint text-footnote");
+        expect([...hint.children].map(k => `${k.tagName}.${k.className}:${k.firstElementChild!.textContent}|${k.lastElementChild!.textContent}`)).toEqual(["KBD.k:⇧|Shift", "KBD.k:⌘|Command", "KBD.k:.|Period"]);
         document.body.innerHTML = `<div id="s"><span>i</span><span>Settings</span></div>`;
         expect(shortcutHint(document.getElementById("s")!, ["⇧", "⌘", "."])!.textContent).toBe("⇧ ⌘ .");
         expect(shortcutHint(document.getElementById("s")!, [])).toBeNull();

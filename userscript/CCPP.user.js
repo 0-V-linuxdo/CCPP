@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.52
+// @version      20261013.0.3.53
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -2229,7 +2229,7 @@ select.input { padding-right: 6px; }
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.52";
+  var version = "0.3.53";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -2890,21 +2890,28 @@ select.input { padding-right: 6px; }
   function shortcutHint(settingsItem, keys) {
     if (!keys.length)
       return null;
-    const keyLike = (el) => /^(?:[⌘⇧⌥⌃]|Ctrl|Shift|Alt|Win|.)$/.test(el.textContent?.trim() ?? "");
-    const native = [...settingsItem.querySelectorAll("kbd, span, div")].find((el) => el.children.length >= 2 && [...el.children].every(keyLike) && /[⌘⇧⌥⌃]|Ctrl/.test(el.textContent ?? ""));
-    if (native) {
+    const native = settingsItem.querySelector('[data-cds="Shortcut"]');
+    const sample = native?.querySelector("kbd");
+    if (native && sample) {
       const hint = native.cloneNode(false);
-      const sample = native.firstElementChild;
       for (const key of keys) {
         const part = sample.cloneNode(true);
-        part.textContent = key;
+        const glyph = [...part.querySelectorAll("span")].find((el) => !el.matches(".sr-only")) ?? null;
+        const name = part.querySelector(".sr-only");
+        if (glyph)
+          glyph.textContent = key;
+        else
+          part.textContent = key;
+        if (name)
+          name.textContent = KEY_NAMES[key] ?? key;
         hint.appendChild(part);
       }
       hint.setAttribute("data-ccpp-shortcut", "");
       return hint;
     }
-    return h("span", { class: "shrink-0 text-muted", "data-ccpp-shortcut": "", text: keys.join(" "), style: { fontSize: "var(--cds-font-size-caption, 12px)", letterSpacing: ".08em" } });
+    return h("span", { class: "shrink-0 text-muted text-footnote", "data-ccpp-shortcut": "", "aria-hidden": "true", text: keys.join(" "), style: { letterSpacing: ".08em" } });
   }
+  var KEY_NAMES = { "⇧": "Shift", "⌘": "Command", "⌥": "Option", "⌃": "Control", ".": "Period", ",": "Comma" };
   function closeMenu(menu) {
     menu.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
   }
@@ -4555,7 +4562,13 @@ ${x.css}`)].join(`
     const entry = row.querySelector("[data-epitaxy-entry]")?.dataset.epitaxyEntry;
     const key = keyed?.dataset.turnKey ? `${keyed.dataset.turnKey}:${role}` : entry ? `${entry}:${role}` : `i${index}`;
     const body = role === "user" ? message.querySelector(SEL.userMessageBody) ?? message : message.querySelector(SEL.prose) ?? message;
-    return { index, role, key, text: snippet(body.innerText, 200) };
+    let text = body.innerText ?? "";
+    for (const el of body.querySelectorAll('button, [role="button"], [role="status"]')) {
+      const extra = el.innerText?.trim();
+      if (extra)
+        text = text.replace(extra, "");
+    }
+    return { index, role, key, text: snippet(text, 200) };
   }
   var SIDE_PANE = '[data-perf-region="side_pane"]';
   var keyOf = (el) => chatKeyFor(location.pathname, location.search, !!el?.closest(SIDE_PANE));
@@ -6367,7 +6380,7 @@ ${m.text.trim()}`).join(`
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.52",
+      version: "0.3.53",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -6384,7 +6397,7 @@ ${m.text.trim()}`).join(`
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.52";
+    win[FLAG] = "0.3.53";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -6401,7 +6414,7 @@ ${m.text.trim()}`).join(`
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.52"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.53"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();
