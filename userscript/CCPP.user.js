@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.62
+// @version      20261013.0.3.63
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -2230,7 +2230,7 @@ select.input { padding-right: 6px; }
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.62";
+  var version = "0.3.63";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -6362,13 +6362,13 @@ ${m.text.trim()}`).join(`
   // src/plugins/chatNoticeHider/index.ts
   var settings25 = definePluginSettings({
     disclaimer: { type: "boolean", label: { zh: "隐藏底部的 AI 声明（Claude is AI and can make mistakes.）", en: "Hide the AI notice under the input (Claude is AI and can make mistakes.)" }, default: true },
-    appPromo: { type: "boolean", label: { zh: "隐藏右上角的 App 下载提示", en: "Hide the app download prompt at the top right" }, default: true }
+    appPromo: { type: "boolean", label: { zh: "隐藏 App 下载提示（侧栏底部的「Get apps and extensions」按钮等）", en: "Hide app download prompts (the sidebar’s “Get apps and extensions” button and similar)" }, default: true }
   });
   var APP_PROMO_RE = /^(get the (desktop |mobile )?app|download (the )?(desktop |mobile )?app|download claude( for (mac|windows|desktop))?|get claude for (mac|windows|desktop)|下载(桌面|客户端|应用|App)|获取(桌面版|应用|App))/i;
   function chatNoticeCss(options) {
     return [
       options.disclaimer ? `[data-disclaimer="true"] { display: none !important; }` : "",
-      options.appPromo ? `[data-ccpp-app-promo] { display: none !important; }` : ""
+      options.appPromo ? `[data-ccpp-app-promo], a[href="/downloads"][data-cds-icon-only], a[aria-label="Get apps and extensions"] { display: none !important; }` : ""
     ].join(`
 `);
   }
@@ -6376,8 +6376,8 @@ ${m.text.trim()}`).join(`
     name: "ChatNoticeHider",
     title: { zh: "隐藏 AI 声明与 App 提示", en: "Hide AI notice and app prompt" },
     description: {
-      zh: "在聊天页隐藏输入框下方的 AI 声明，以及右上角的 App 下载提示（两项可分别开关）。",
-      en: "On chat pages, hides the AI notice under the input and the app download prompt at the top right (each switchable)."
+      zh: "在聊天页隐藏输入框下方的 AI 声明，以及侧栏底部的 App 下载按钮（两项可分别开关）。",
+      en: "On chat pages, hides the AI notice under the input and the app download button at the bottom of the sidebar (each switchable)."
     },
     category: "declutter",
     icon: "eyeOff",
@@ -6481,7 +6481,7 @@ ${RUNNING_PILL} {
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.62",
+      version: "0.3.63",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -6498,7 +6498,7 @@ ${RUNNING_PILL} {
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.62";
+    win[FLAG] = "0.3.63";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -6515,7 +6515,7 @@ ${RUNNING_PILL} {
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.62"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.63"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();

@@ -11,7 +11,7 @@ import { addStyle } from "@api/styles";
 
 const settings = definePluginSettings({
     disclaimer: { type: "boolean", label: { zh: "隐藏底部的 AI 声明（Claude is AI and can make mistakes.）", en: "Hide the AI notice under the input (Claude is AI and can make mistakes.)" }, default: true },
-    appPromo: { type: "boolean", label: { zh: "隐藏右上角的 App 下载提示", en: "Hide the app download prompt at the top right" }, default: true },
+    appPromo: { type: "boolean", label: { zh: "隐藏 App 下载提示（侧栏底部的「Get apps and extensions」按钮等）", en: "Hide app download prompts (the sidebar’s “Get apps and extensions” button and similar)" }, default: true },
 });
 
 const APP_PROMO_RE = /^(get the (desktop |mobile )?app|download (the )?(desktop |mobile )?app|download claude( for (mac|windows|desktop))?|get claude for (mac|windows|desktop)|下载(桌面|客户端|应用|App)|获取(桌面版|应用|App))/i;
@@ -19,7 +19,7 @@ const APP_PROMO_RE = /^(get the (desktop |mobile )?app|download (the )?(desktop 
 export function chatNoticeCss(options: { disclaimer: boolean; appPromo: boolean }) {
     return [
         options.disclaimer ? `[data-disclaimer="true"] { display: none !important; }` : "",
-        options.appPromo ? `[data-ccpp-app-promo] { display: none !important; }` : "",
+        options.appPromo ? `[data-ccpp-app-promo], a[href="/downloads"][data-cds-icon-only], a[aria-label="Get apps and extensions"] { display: none !important; }` : "",
     ].join("\n");
 }
 
@@ -27,8 +27,8 @@ export default definePlugin({
     name: "ChatNoticeHider",
     title: { zh: "隐藏 AI 声明与 App 提示", en: "Hide AI notice and app prompt" },
     description: {
-        zh: "在聊天页隐藏输入框下方的 AI 声明，以及右上角的 App 下载提示（两项可分别开关）。",
-        en: "On chat pages, hides the AI notice under the input and the app download prompt at the top right (each switchable).",
+        zh: "在聊天页隐藏输入框下方的 AI 声明，以及侧栏底部的 App 下载按钮（两项可分别开关）。",
+        en: "On chat pages, hides the AI notice under the input and the app download button at the bottom of the sidebar (each switchable).",
     },
     category: "declutter",
     icon: "eyeOff",
@@ -42,7 +42,6 @@ export default definePlugin({
         onDomChange(scope, () => {
             for (const el of document.querySelectorAll<HTMLElement>('a, button, [role="link"]')) {
                 if (el.dataset.ccppAppPromo !== undefined || el.closest('[data-ccpp], [role="menu"], nav')) continue;
-                // By text only: the sidebar's own "Get apps and extensions" icon also links to /downloads and stays.
                 if (APP_PROMO_RE.test(el.textContent?.trim() ?? "")) el.dataset.ccppAppPromo = "";
             }
         });
