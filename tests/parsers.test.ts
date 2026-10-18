@@ -15,6 +15,7 @@ import { toMarkdown } from "../src/plugins/exportChat";
 import { splitLinks } from "../src/plugins/betterLinks";
 import { isTelemetry } from "../src/plugins/noTelemetry";
 import { chatKeyFor, toggleStar } from "../src/plugins/messageStars/store";
+import { starSpot } from "../src/plugins/messageStars/index";
 import { computeState, faviconFor, parseMark } from "../src/plugins/chatFavicon";
 import { alignWithApi, outlineFromApi } from "../src/plugins/chatNavigator";
 import { parseChannelMessages } from "../src/plugins/_api/claude";
@@ -365,5 +366,25 @@ describe("Claude Code header slot", () => {
         const lone = codeHeaderAnchor(document.querySelector<HTMLElement>("[data-pane-title]")!);
         expect(lone.where).toBe("after");
         expect(lone.anchor.tagName).toBe("SPAN");
+    });
+});
+
+describe("starSpot", () => {
+    const html = (s: string) => {
+        document.body.innerHTML = s;
+        for (const b of document.querySelectorAll("button")) b.getBoundingClientRect = () => ({ width: b.dataset.w === "0" ? 0 : 24 }) as DOMRect;
+        return document.querySelector<HTMLElement>("[role=toolbar]")!;
+    };
+    test("after the last native button's top-level child", () => {
+        const bar = html(`<div role="toolbar"><button id="copy"></button><span class="star-host"><button class="ccpp-star-btn"></button></span><div id="more"><button></button></div></div>`);
+        expect(starSpot(bar)!.after.id).toBe("more");
+    });
+    test("a More options sibling outside the toolbar", () => {
+        const bar = html(`<div><div role="toolbar"><button></button></div><button class="ccpp-star-btn"></button><div id="more"><button></button></div></div>`);
+        expect(starSpot(bar)!.after.id).toBe("more");
+    });
+    test("placeholder only: no spot", () => {
+        const bar = html(`<div role="toolbar"><button data-w="0" aria-label="Show message actions"></button></div>`);
+        expect(starSpot(bar)).toBeNull();
     });
 });

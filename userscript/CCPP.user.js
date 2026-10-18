@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.55
+// @version      20261013.0.3.56
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -2229,7 +2229,7 @@ select.input { padding-right: 6px; }
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.55";
+  var version = "0.3.56";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -4571,6 +4571,25 @@ ${x.css}`)].join(`
   var keyOf = (el) => chatKeyFor(location.pathname, location.search, !!el?.closest(SIDE_PANE));
   var pageKeys = () => [keyOf(null), document.querySelector(SIDE_PANE) ? chatKeyFor(location.pathname, location.search, true) : null].filter((k) => k !== null);
   var isPlaceholder = (button) => /^Show message actions/i.test(button.getAttribute("aria-label") ?? "") || button.getBoundingClientRect().width < 4;
+  var nativeButtons = (el) => [...el.querySelectorAll("button:not(.ccpp-star-btn)")].filter((b) => !isPlaceholder(b));
+  function starSpot(toolbar) {
+    const hosts = [toolbar];
+    for (let el = toolbar.nextElementSibling;el; el = el.nextElementSibling)
+      if (!el.classList.contains("ccpp-star-btn"))
+        hosts.push(el);
+    for (const host of hosts.reverse()) {
+      const native = nativeButtons(host).pop() ?? (host.matches("button:not(.ccpp-star-btn)") && !isPlaceholder(host) ? host : undefined);
+      if (!native)
+        continue;
+      if (host !== toolbar)
+        return { native, after: host };
+      let after = native;
+      while (after.parentElement && after.parentElement !== toolbar)
+        after = after.parentElement;
+      return { native, after };
+    }
+    return null;
+  }
   var messageStars_default = definePlugin({
     name: "MessageStars",
     title: { zh: "消息收藏", en: "Message stars" },
@@ -4661,15 +4680,16 @@ ${x.css}`)].join(`
           if (!rowInfo(row))
             return;
           const toolbar = row.querySelector(SEL.messageActions) ?? row.querySelector('[role="toolbar"]');
-          if (btn?.isConnected && toolbar?.contains(btn))
+          const spot = toolbar ? starSpot(toolbar) : null;
+          if (!spot) {
+            btn?.remove();
+            btn = null;
             return;
-          const native = toolbar ? [...toolbar.querySelectorAll("button:not(.ccpp-star-btn)")].filter((b) => !isPlaceholder(b)).pop() : undefined;
-          btn?.remove();
-          btn = null;
-          if (!toolbar || !native)
+          }
+          if (btn?.isConnected && btn.previousElementSibling === spot.after)
             return;
-          btn = makeButton(row, "", native);
-          toolbar.appendChild(btn);
+          btn ??= makeButton(row, "", spot.native);
+          spot.after.after(btn);
         };
         attach();
         const observer = new MutationObserver(() => attach());
@@ -6366,7 +6386,7 @@ ${m.text.trim()}`).join(`
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.55",
+      version: "0.3.56",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -6383,7 +6403,7 @@ ${m.text.trim()}`).join(`
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.55";
+    win[FLAG] = "0.3.56";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -6400,7 +6420,7 @@ ${m.text.trim()}`).join(`
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.55"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.56"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();

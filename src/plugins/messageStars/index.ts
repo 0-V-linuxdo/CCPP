@@ -76,6 +76,23 @@ const pageKeys = () => [keyOf(null), document.querySelector(SIDE_PANE) ? chatKey
 /** A claude.ai placeholder for a toolbar it has not rendered yet (older replies' action bars mount on hover). */
 const isPlaceholder = (button: HTMLElement) => /^Show message actions/i.test(button.getAttribute("aria-label") ?? "") || button.getBoundingClientRect().width < 4;
 
+const nativeButtons = (el: Element) => [...el.querySelectorAll<HTMLElement>("button:not(.ccpp-star-btn)")].filter(b => !isPlaceholder(b));
+
+/** Where the star goes: after the last native action button, which can sit in the toolbar or in a sibling after it. */
+export function starSpot(toolbar: HTMLElement): { native: HTMLElement; after: Element } | null {
+    const hosts: Element[] = [toolbar];
+    for (let el = toolbar.nextElementSibling; el; el = el.nextElementSibling) if (!el.classList.contains("ccpp-star-btn")) hosts.push(el);
+    for (const host of hosts.reverse()) {
+        const native = nativeButtons(host).pop() ?? (host.matches("button:not(.ccpp-star-btn)") && !isPlaceholder(host as HTMLElement) ? host as HTMLElement : undefined);
+        if (!native) continue;
+        if (host !== toolbar) return { native, after: host };
+        let after: Element = native;
+        while (after.parentElement && after.parentElement !== toolbar) after = after.parentElement;
+        return { native, after };
+    }
+    return null;
+}
+
 export default definePlugin({
     name: "MessageStars",
     title: { zh: "消息收藏", en: "Message stars" },
@@ -170,15 +187,18 @@ export default definePlugin({
                 // No star where it couldn't be saved (a row whose message isn't recognised yet).
                 if (!rowInfo(row)) return;
                 const toolbar = row.querySelector<HTMLElement>(SEL.messageActions) ?? row.querySelector<HTMLElement>('[role="toolbar"]');
-                if (btn?.isConnected && toolbar?.contains(btn)) return;
-                // The star lives only in claude.ai's own action bar, like void++. Your messages' bars mount on hover
-                // (until then there is at most a hidden placeholder), so the star appears with them.
-                const native = toolbar ? [...toolbar.querySelectorAll<HTMLElement>("button:not(.ccpp-star-btn)")].filter(b => !isPlaceholder(b)).pop() : undefined;
-                btn?.remove();
-                btn = null;
-                if (!toolbar || !native) return;
-                btn = makeButton(row, "", native);
-                toolbar.appendChild(btn);
+                // The star lives only in claude.ai's own action bar, like void++, right after its last button. Your
+                // messages' bars mount on hover (until then there is at most a hidden placeholder), so the star appears
+                // with them. Buttons that mount later ("More options") land after the star, so it is moved back to the end.
+                const spot = toolbar ? starSpot(toolbar) : null;
+                if (!spot) {
+                    btn?.remove();
+                    btn = null;
+                    return;
+                }
+                if (btn?.isConnected && btn.previousElementSibling === spot.after) return;
+                btn ??= makeButton(row, "", spot.native);
+                spot.after.after(btn);
             };
             attach();
             // Toolbars mount late (after streaming) and re-render; check again on changes inside the row.
