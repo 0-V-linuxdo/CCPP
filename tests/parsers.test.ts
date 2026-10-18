@@ -388,3 +388,18 @@ describe("starSpot", () => {
         expect(starSpot(bar)).toBeNull();
     });
 });
+
+describe("starSpot outside message bars", () => {
+    const html = (s: string) => {
+        document.body.innerHTML = s;
+        for (const b of document.querySelectorAll("button")) b.getBoundingClientRect = () => ({ width: b.dataset.w === "0" ? 0 : 24 }) as DOMRect;
+        return document.querySelector<HTMLElement>("[role=toolbar]")!;
+    };
+    test("an empty bar doesn't borrow buttons from what follows", () => {
+        expect(starSpot(html(`<div><div role="toolbar"></div><div><button></button></div></div>`))).toBeNull();
+    });
+    test("the composer is never a host", () => {
+        expect(starSpot(html(`<div role="toolbar"><button></button><div contenteditable="true"></div></div>`))).toBeNull();
+        expect(starSpot(html(`<div><div role="toolbar"><button id="copy"></button></div><form><button></button></form></div>`))!.after.id).toBe("copy");
+    });
+});

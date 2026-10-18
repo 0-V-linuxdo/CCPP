@@ -76,12 +76,19 @@ const pageKeys = () => [keyOf(null), document.querySelector(SIDE_PANE) ? chatKey
 /** A claude.ai placeholder for a toolbar it has not rendered yet (older replies' action bars mount on hover). */
 const isPlaceholder = (button: HTMLElement) => /^Show message actions/i.test(button.getAttribute("aria-label") ?? "") || button.getBoundingClientRect().width < 4;
 
+const SEL_COMPOSER = 'textarea, [contenteditable="true"], [role="textbox"], form';
 const nativeButtons = (el: Element) => [...el.querySelectorAll<HTMLElement>("button:not(.ccpp-star-btn)")].filter(b => !isPlaceholder(b));
 
 /** Where the star goes: after the last native action button, which can sit in the toolbar or in a sibling after it. */
 export function starSpot(toolbar: HTMLElement): { native: HTMLElement; after: Element } | null {
+    // Only a real message action bar: it has native buttons of its own, and isn't part of the composer.
+    if (!nativeButtons(toolbar).length || toolbar.closest(SEL_COMPOSER) || toolbar.querySelector(SEL_COMPOSER)) return null;
     const hosts: Element[] = [toolbar];
-    for (let el = toolbar.nextElementSibling; el; el = el.nextElementSibling) if (!el.classList.contains("ccpp-star-btn")) hosts.push(el);
+    for (let el = toolbar.nextElementSibling; el; el = el.nextElementSibling) {
+        if (el.classList.contains("ccpp-star-btn")) continue;
+        if (el.matches(SEL_COMPOSER) || el.querySelector(SEL_COMPOSER)) break;
+        hosts.push(el);
+    }
     for (const host of hosts.reverse()) {
         const native = nativeButtons(host).pop() ?? (host.matches("button:not(.ccpp-star-btn)") && !isPlaceholder(host as HTMLElement) ? host as HTMLElement : undefined);
         if (!native) continue;
