@@ -267,6 +267,8 @@ export default definePlugin({
                 const count = pageKeys().reduce((n, k) => n + starsFor(k.key).length, 0);
                 const btn = slotButton(t(L.list), event => list.open(event.currentTarget as HTMLElement, renderList), icon("star", 16), count ? String(count) : "");
                 if (count) btn.classList.add("on");
+                // Not on Claude Code pages without a conversation (the /code landing page).
+                btn.hidden = location.pathname.startsWith("/code") && !pageKeys().length;
                 return btn;
             };
             // Chats have a header action row; Claude Code pages get the button in each pane's header instead.

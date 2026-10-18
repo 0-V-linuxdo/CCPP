@@ -43,6 +43,7 @@ const CSS = `
 /* Same colors and hover as claude.ai's ghost buttons next to it. */
 .ccpp-slot-btn:hover { color: var(--cds-text-primary, inherit); background: var(--cds-fill-ghost-hover, rgba(127,127,127,.14)); }
 .ccpp-slot-btn.on { color: #d97757; opacity: 1; }
+.ccpp-slot-btn[hidden] { display: none; }
 `;
 
 function place(item: Item, container: HTMLElement) {
@@ -148,7 +149,8 @@ export default definePlugin({
         });
         watch(scope, SEL.headerActions, el => mountIn("header", el, "prepend"));
         watch(scope, CODE_TITLE, el => {
-            if (!location.pathname.startsWith("/code")) return;
+            // Conversations only: the /code landing page has a pane title over its composer too.
+            if (!/^\/code\/[^/]/.test(location.pathname)) return;
             const { anchor, where } = codeHeaderAnchor(el);
             // Both title selectors can match inside one header; one slot per header.
             if (anchor.parentElement?.querySelector(":scope > .ccpp-slot-codeHeader")) return;
