@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.57
+// @version      20261013.0.3.58
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -2229,7 +2229,7 @@ select.input { padding-right: 6px; }
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.57";
+  var version = "0.3.58";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -6343,6 +6343,49 @@ ${m.text.trim()}`).join(`
     }
   });
 
+  // src/plugins/chatNoticeHider/index.ts
+  var settings24 = definePluginSettings({
+    disclaimer: { type: "boolean", label: { zh: "隐藏底部的 AI 声明（Claude is AI and can make mistakes.）", en: "Hide the AI notice under the input (Claude is AI and can make mistakes.)" }, default: true },
+    appPromo: { type: "boolean", label: { zh: "隐藏右上角的 App 下载提示", en: "Hide the app download prompt at the top right" }, default: true }
+  });
+  var APP_PROMO_RE = /^(get the (desktop |mobile )?app|download (the )?(desktop |mobile )?app|download claude( for (mac|windows|desktop))?|get claude for (mac|windows|desktop)|下载(桌面|客户端|应用|App)|获取(桌面版|应用|App))/i;
+  function chatNoticeCss(options) {
+    return [
+      options.disclaimer ? `[data-disclaimer="true"] { display: none !important; }` : "",
+      options.appPromo ? `[data-ccpp-app-promo] { display: none !important; }` : ""
+    ].join(`
+`);
+  }
+  var chatNoticeHider_default = definePlugin({
+    name: "ChatNoticeHider",
+    title: { zh: "隐藏 AI 声明与 App 提示", en: "Hide AI notice and app prompt" },
+    description: {
+      zh: "在聊天页隐藏输入框下方的 AI 声明，以及右上角的 App 下载提示（两项可分别开关）。",
+      en: "On chat pages, hides the AI notice under the input and the app download prompt at the top right (each switchable)."
+    },
+    category: "declutter",
+    icon: "eyeOff",
+    enabledByDefault: true,
+    updatedAt: "2026-10-18",
+    dependencies: ["StylesApi", "DomApi"],
+    settings: settings24,
+    start(scope) {
+      addStyle(scope, chatNoticeCss(settings24.store), "chat-notices");
+      if (!settings24.store.appPromo)
+        return;
+      onDomChange(scope, () => {
+        for (const el of document.querySelectorAll('a, button, [role="link"]')) {
+          if (el.dataset.ccppAppPromo !== undefined || el.closest('[data-ccpp], [role="menu"], nav'))
+            continue;
+          const href = el.getAttribute("href") ?? "";
+          if (/^\/downloads?(\/|\?|$)/.test(href) || APP_PROMO_RE.test(el.textContent?.trim() ?? ""))
+            el.dataset.ccppAppPromo = "";
+        }
+      });
+      scope.defer(() => document.querySelectorAll("[data-ccpp-app-promo]").forEach((el) => el.removeAttribute("data-ccpp-app-promo")));
+    }
+  });
+
   // src/plugins/index.ts
   var PLUGINS = [
     dom_default,
@@ -6384,7 +6427,8 @@ ${m.text.trim()}`).join(`
     betterLinks_default,
     noTelemetry_default,
     consoleJanitor_default,
-    sidebarDefaultCode_default
+    sidebarDefaultCode_default,
+    chatNoticeHider_default
   ];
 
   // src/index.ts
@@ -6393,7 +6437,7 @@ ${m.text.trim()}`).join(`
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.57",
+      version: "0.3.58",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -6410,7 +6454,7 @@ ${m.text.trim()}`).join(`
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.57";
+    win[FLAG] = "0.3.58";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -6427,7 +6471,7 @@ ${m.text.trim()}`).join(`
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.57"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.58"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();

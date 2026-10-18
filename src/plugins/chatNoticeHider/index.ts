@@ -1,0 +1,51 @@
+/*
+ * CC++, a userscript for claude.ai
+ * Copyright (c) 2026 CC++ Contributors
+ * SPDX-License-Identifier: MIT
+ */
+
+import { definePlugin } from "@kernel/plugins";
+import { definePluginSettings } from "@kernel/settings";
+import { onDomChange } from "@api/dom";
+import { addStyle } from "@api/styles";
+
+const settings = definePluginSettings({
+    disclaimer: { type: "boolean", label: { zh: "隐藏底部的 AI 声明（Claude is AI and can make mistakes.）", en: "Hide the AI notice under the input (Claude is AI and can make mistakes.)" }, default: true },
+    appPromo: { type: "boolean", label: { zh: "隐藏右上角的 App 下载提示", en: "Hide the app download prompt at the top right" }, default: true },
+});
+
+const APP_PROMO_RE = /^(get the (desktop |mobile )?app|download (the )?(desktop |mobile )?app|download claude( for (mac|windows|desktop))?|get claude for (mac|windows|desktop)|下载(桌面|客户端|应用|App)|获取(桌面版|应用|App))/i;
+
+export function chatNoticeCss(options: { disclaimer: boolean; appPromo: boolean }) {
+    return [
+        options.disclaimer ? `[data-disclaimer="true"] { display: none !important; }` : "",
+        options.appPromo ? `[data-ccpp-app-promo] { display: none !important; }` : "",
+    ].join("\n");
+}
+
+export default definePlugin({
+    name: "ChatNoticeHider",
+    title: { zh: "隐藏 AI 声明与 App 提示", en: "Hide AI notice and app prompt" },
+    description: {
+        zh: "在聊天页隐藏输入框下方的 AI 声明，以及右上角的 App 下载提示（两项可分别开关）。",
+        en: "On chat pages, hides the AI notice under the input and the app download prompt at the top right (each switchable).",
+    },
+    category: "declutter",
+    icon: "eyeOff",
+    enabledByDefault: true,
+    updatedAt: "2026-10-18",
+    dependencies: ["StylesApi", "DomApi"],
+    settings,
+    start(scope) {
+        addStyle(scope, chatNoticeCss(settings.store), "chat-notices");
+        if (!settings.store.appPromo) return;
+        onDomChange(scope, () => {
+            for (const el of document.querySelectorAll<HTMLElement>('a, button, [role="link"]')) {
+                if (el.dataset.ccppAppPromo !== undefined || el.closest('[data-ccpp], [role="menu"], nav')) continue;
+                const href = el.getAttribute("href") ?? "";
+                if (/^\/downloads?(\/|\?|$)/.test(href) || APP_PROMO_RE.test(el.textContent?.trim() ?? "")) el.dataset.ccppAppPromo = "";
+            }
+        });
+        scope.defer(() => document.querySelectorAll("[data-ccpp-app-promo]").forEach(el => el.removeAttribute("data-ccpp-app-promo")));
+    },
+});
