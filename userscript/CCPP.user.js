@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.61
+// @version      20261013.0.3.62
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -2230,7 +2230,7 @@ select.input { padding-right: 6px; }
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.61";
+  var version = "0.3.62";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -6311,19 +6311,33 @@ ${m.text.trim()}`).join(`
   // src/plugins/sidebarDefaultCode/index.ts
   var GIVE_UP_MS = 15000;
   var decided = false;
+  var settings24 = definePluginSettings({
+    onlyCodePages: {
+      type: "boolean",
+      label: { zh: "只在 claude.ai/code 开头的页面切换", en: "Only on claude.ai/code pages" },
+      description: {
+        zh: "打开后，只有网址以 https://claude.ai/code 开头时才切到 Code，首页和对话页保持原样。",
+        en: "When on, the switch moves to Code only on pages whose address starts with https://claude.ai/code; the home page and chats are left alone."
+      },
+      default: false
+    }
+  });
+  var isCodePage = () => location.pathname === "/code" || location.pathname.startsWith("/code/");
+  var allowedHere = () => settings24.store.onlyCodePages ? isCodePage() : currentRoute().kind === "new";
   var hasDraft = () => !!document.querySelector(SEL.editor)?.textContent?.trim();
   var sidebarDefaultCode_default = definePlugin({
     name: "SidebarDefaultCode",
     title: { zh: "侧栏默认 Code", en: "Sidebar defaults to Code" },
     description: {
-      zh: "打开 claude.ai 首页时，侧栏顶部的 Chat / Code 切换自动停在 Code（Claude Code）。只在页面加载时切一次，之后手动切回 Chat 不受影响；打开具体对话链接时不切。",
-      en: "When claude.ai opens on the home page, the Chat / Code switch at the top of the sidebar starts on Code (Claude Code). It switches once per page load, never after you pick Chat yourself, and never when you open a specific chat."
+      zh: "打开 claude.ai 首页时，侧栏顶部的 Chat / Code 切换自动停在 Code（Claude Code）。只在页面加载时切一次，之后手动切回 Chat 不受影响；打开具体对话链接时不切。可改为只在 claude.ai/code 开头的页面切换。",
+      en: "When claude.ai opens on the home page, the Chat / Code switch at the top of the sidebar starts on Code (Claude Code). It switches once per page load, never after you pick Chat yourself, and never when you open a specific chat. Can be limited to claude.ai/code pages."
     },
     category: "navigation",
     icon: "terminal",
     enabledByDefault: true,
-    updatedAt: "2026-10-13",
+    updatedAt: "2026-10-18",
     dependencies: ["DomApi", "RouterApi"],
+    settings: settings24,
     start(scope) {
       if (decided)
         return;
@@ -6337,7 +6351,7 @@ ${m.text.trim()}`).join(`
           return;
         decided = true;
         queueMicrotask(() => run.dispose());
-        if (currentRoute().kind !== "new" || hasDraft())
+        if (!allowedHere() || hasDraft())
           return;
         if (code.getAttribute("aria-checked") !== "true")
           code.click();
@@ -6346,7 +6360,7 @@ ${m.text.trim()}`).join(`
   });
 
   // src/plugins/chatNoticeHider/index.ts
-  var settings24 = definePluginSettings({
+  var settings25 = definePluginSettings({
     disclaimer: { type: "boolean", label: { zh: "隐藏底部的 AI 声明（Claude is AI and can make mistakes.）", en: "Hide the AI notice under the input (Claude is AI and can make mistakes.)" }, default: true },
     appPromo: { type: "boolean", label: { zh: "隐藏右上角的 App 下载提示", en: "Hide the app download prompt at the top right" }, default: true }
   });
@@ -6370,10 +6384,10 @@ ${m.text.trim()}`).join(`
     enabledByDefault: true,
     updatedAt: "2026-10-18",
     dependencies: ["StylesApi", "DomApi"],
-    settings: settings24,
+    settings: settings25,
     start(scope) {
-      addStyle(scope, chatNoticeCss(settings24.store), "chat-notices");
-      if (!settings24.store.appPromo)
+      addStyle(scope, chatNoticeCss(settings25.store), "chat-notices");
+      if (!settings25.store.appPromo)
         return;
       onDomChange(scope, () => {
         for (const el of document.querySelectorAll('a, button, [role="link"]')) {
@@ -6467,7 +6481,7 @@ ${RUNNING_PILL} {
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.61",
+      version: "0.3.62",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -6484,7 +6498,7 @@ ${RUNNING_PILL} {
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.61";
+    win[FLAG] = "0.3.62";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -6501,7 +6515,7 @@ ${RUNNING_PILL} {
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.61"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.62"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();

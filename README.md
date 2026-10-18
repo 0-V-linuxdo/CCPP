@@ -20,7 +20,7 @@ claude.ai 的插件化用户脚本：**一切皆插件**。内核只负责插件
 | 提示词预设 PromptPresets | 关 | 输入框旁一键插入常用提示词 |
 | 回复完成提醒 ReplyNotification | 开 | 后台回复完成时提示音 / 系统通知 / 页面提示条 |
 | 标签页状态 TabStatus | 开 | 标题前缀 ⏳ 回复中、✅ 后台已完成 |
-| 侧栏默认 Code SidebarDefaultCode | 开 | 打开首页时侧栏 Chat / Code 切换自动停在 Code，每次加载只切一次，打开具体对话时不切 |
+| 侧栏默认 Code SidebarDefaultCode | 开 | 打开首页时侧栏 Chat / Code 切换自动停在 Code，每次加载只切一次，打开具体对话时不切；可选只在 claude.ai/code 开头的页面切换 |
 | 最近对话切换 RecentChats | 开 | Ctrl+` 弹出最近对话卡片 |
 | 导出对话 ExportChat | 开 | 标题栏导出 Markdown / TXT / JSON，或复制为 Markdown |
 | 界面清理 Cleaner | 开 | 隐藏升级推销、Claude Code 推广提示等 |
