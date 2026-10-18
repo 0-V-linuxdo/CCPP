@@ -42,8 +42,8 @@ export default definePlugin({
         onDomChange(scope, () => {
             for (const el of document.querySelectorAll<HTMLElement>('a, button, [role="link"]')) {
                 if (el.dataset.ccppAppPromo !== undefined || el.closest('[data-ccpp], [role="menu"], nav')) continue;
-                const href = el.getAttribute("href") ?? "";
-                if (/^\/downloads?(\/|\?|$)/.test(href) || APP_PROMO_RE.test(el.textContent?.trim() ?? "")) el.dataset.ccppAppPromo = "";
+                // By text only: the sidebar's own "Get apps and extensions" icon also links to /downloads and stays.
+                if (APP_PROMO_RE.test(el.textContent?.trim() ?? "")) el.dataset.ccppAppPromo = "";
             }
         });
         scope.defer(() => document.querySelectorAll("[data-ccpp-app-promo]").forEach(el => el.removeAttribute("data-ccpp-app-promo")));
