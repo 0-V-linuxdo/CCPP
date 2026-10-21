@@ -13,6 +13,8 @@ const POPOVER_CSS = `
 .panel { position: fixed; width: var(--w, 300px); max-height: min(70vh, 560px); overflow: auto; padding: 12px; border-radius: 14px; background: var(--bg); border: 1px solid var(--line); box-shadow: var(--shadow); pointer-events: auto; display: flex; flex-direction: column; gap: 10px; animation: pop .12s ease-out; }
 @keyframes pop { from { opacity: 0; transform: translateY(4px); } }
 .top { display: flex; align-items: center; gap: 6px; } .top b { flex: 1; font-size: 14px; }
+/* A popover's header (and anything marked .sticky after it) stays put while its list scrolls. */
+.panel > .top { position: sticky; top: -12px; z-index: 2; margin: -12px -12px 0; padding: 12px 12px 4px; background: var(--bg); }
 .msg { color: var(--fg2); } .msg.bad { color: var(--bad); }
 .item { display: flex; align-items: flex-start; gap: 8px; width: 100%; padding: 7px 8px; border: 0; border-radius: 8px; background: transparent; text-align: left; }
 .item:hover, .item.active { background: var(--bg2); }

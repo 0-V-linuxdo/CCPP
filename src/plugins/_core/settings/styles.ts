@@ -6,12 +6,13 @@
 
 /** The CC++ pages (plugins, themes, Quick CSS). Mirrors claude.ai's settings panel and void++'s cards. */
 export const PANEL_CSS = `
+/* A page's toolbar (tabs, search, filters) stays at the top while its list scrolls under it. */
+.page-body > .sticky-top { position: sticky; top: -4px; z-index: 2; margin: -4px calc(-1 * var(--cds-pad-xl, 24px)) 0; padding: 4px var(--cds-pad-xl, 24px) 0; background: var(--bg); }
 .page { display: flex; flex-direction: column; min-height: 0; height: 100%; }
 .page-head { flex: none; display: flex; align-items: center; gap: 8px; padding: 0 var(--cds-pad-xl, 24px) 8px; }
 .page-head h2 { margin: 0; flex: 1; font-size: var(--cds-font-size-heading, 18px); font-weight: 600; }
 .page-body { flex: 1; min-height: 0; overflow-y: auto; padding: 4px var(--cds-pad-xl, 24px) 24px; scrollbar-gutter: stable; }
 
-.sticky-top { position: sticky; top: -4px; z-index: 2; margin: -4px calc(-1 * var(--cds-pad-xl, 24px)) 0; padding: 4px var(--cds-pad-xl, 24px) 0; background: var(--bg); }
 .bar { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; }
 .search { position: relative; flex: 1; min-width: 0; }
 .search svg { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--fg3); pointer-events: none; }
@@ -93,6 +94,9 @@ export const LAYER_CSS = `
 .d-head { display: flex; align-items: center; gap: 10px; padding: 16px 16px 4px 20px; }
 .d-head h2 { flex: 1; min-width: 0; margin: 0; font-size: var(--cds-font-size-heading, 17px); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .d-head .chip-icon { width: 1.75rem; height: 1.75rem; }
+/* Dialog toolbar: between the title and the scrolling body, so it never scrolls away. */
+.d-top { flex: none; padding: 4px 20px 0; }
+.d-top + .d-body { padding-top: 0; }
 .d-body { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 20px 16px; }
 .d-desc { color: var(--fg2); margin: 0 0 6px; }
 .d-meta { color: var(--fg3); font-size: var(--fs-xs); margin: 0 0 8px; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }

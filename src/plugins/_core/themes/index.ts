@@ -253,7 +253,7 @@ function renderThemes(container: HTMLElement) {
         { class: "input", "aria-label": t(L.all) },
         ...(["all", "enabled", "disabled", "online", "local"] as const).map(value => h("option", { value, text: t(value === "online" ? L.onlineShort : value === "local" ? L.localShort : L[value]), selected: ui.filter === value })),
     );
-    container.appendChild(h("div", { class: "bar" }, h("label", { class: "search" }, icon("search", 14), search), filter));
+    container.appendChild(h("div", { class: "sticky-top" }, h("div", { class: "bar" }, h("label", { class: "search" }, icon("search", 14), search), filter)));
     const body = h("div");
     container.appendChild(body);
 

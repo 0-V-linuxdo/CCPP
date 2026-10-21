@@ -98,13 +98,14 @@ export function closeAllModals() {
 }
 
 /** The standard dialog frame: head (icon, title, close), body, optional footer. */
-export function dialogFrame(options: { title: string; icon?: string; size?: "small" | "wide"; body: Node[]; foot?: Node[]; onClose: () => void }) {
+export function dialogFrame(options: { title: string; icon?: string; size?: "small" | "wide"; top?: Node[]; body: Node[]; foot?: Node[]; onClose: () => void }) {
     const close = h("button", { type: "button", class: "icon-btn", "aria-label": t(L.close), ...tipAttrs(t(L.close)) }, icon("x", 16));
     close.addEventListener("click", options.onClose);
     return h(
         "div",
         { class: `dialog${options.size ? ` ${options.size}` : ""}`, role: "dialog", "aria-modal": "true", "aria-label": options.title },
         h("div", { class: "d-head" }, options.icon ? h("span", { class: "chip-icon" }, icon(options.icon, 16)) : null, h("h2", { text: options.title }), close),
+        options.top?.length ? h("div", { class: "d-top" }, ...options.top) : null,
         h("div", { class: "d-body" }, ...options.body),
         options.foot?.length ? h("div", { class: "d-foot" }, ...options.foot) : null,
     );

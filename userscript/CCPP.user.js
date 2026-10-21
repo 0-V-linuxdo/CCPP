@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.74
+// @version      20261013.0.3.75
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -2058,12 +2058,13 @@ select.input { padding-right: 6px; }
 
   // src/plugins/_core/settings/styles.ts
   var PANEL_CSS = `
+/* A page's toolbar (tabs, search, filters) stays at the top while its list scrolls under it. */
+.page-body > .sticky-top { position: sticky; top: -4px; z-index: 2; margin: -4px calc(-1 * var(--cds-pad-xl, 24px)) 0; padding: 4px var(--cds-pad-xl, 24px) 0; background: var(--bg); }
 .page { display: flex; flex-direction: column; min-height: 0; height: 100%; }
 .page-head { flex: none; display: flex; align-items: center; gap: 8px; padding: 0 var(--cds-pad-xl, 24px) 8px; }
 .page-head h2 { margin: 0; flex: 1; font-size: var(--cds-font-size-heading, 18px); font-weight: 600; }
 .page-body { flex: 1; min-height: 0; overflow-y: auto; padding: 4px var(--cds-pad-xl, 24px) 24px; scrollbar-gutter: stable; }
 
-.sticky-top { position: sticky; top: -4px; z-index: 2; margin: -4px calc(-1 * var(--cds-pad-xl, 24px)) 0; padding: 4px var(--cds-pad-xl, 24px) 0; background: var(--bg); }
 .bar { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; }
 .search { position: relative; flex: 1; min-width: 0; }
 .search svg { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--fg3); pointer-events: none; }
@@ -2143,6 +2144,9 @@ select.input { padding-right: 6px; }
 .d-head { display: flex; align-items: center; gap: 10px; padding: 16px 16px 4px 20px; }
 .d-head h2 { flex: 1; min-width: 0; margin: 0; font-size: var(--cds-font-size-heading, 17px); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .d-head .chip-icon { width: 1.75rem; height: 1.75rem; }
+/* Dialog toolbar: between the title and the scrolling body, so it never scrolls away. */
+.d-top { flex: none; padding: 4px 20px 0; }
+.d-top + .d-body { padding-top: 0; }
 .d-body { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 20px 16px; }
 .d-desc { color: var(--fg2); margin: 0 0 6px; }
 .d-meta { color: var(--fg3); font-size: var(--fs-xs); margin: 0 0 8px; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
@@ -2242,7 +2246,7 @@ select.input { padding-right: 6px; }
   function dialogFrame(options) {
     const close = h("button", { type: "button", class: "icon-btn", "aria-label": t(L.close), ...tipAttrs(t(L.close)) }, icon("x", 16));
     close.addEventListener("click", options.onClose);
-    return h("div", { class: `dialog${options.size ? ` ${options.size}` : ""}`, role: "dialog", "aria-modal": "true", "aria-label": options.title }, h("div", { class: "d-head" }, options.icon ? h("span", { class: "chip-icon" }, icon(options.icon, 16)) : null, h("h2", { text: options.title }), close), h("div", { class: "d-body" }, ...options.body), options.foot?.length ? h("div", { class: "d-foot" }, ...options.foot) : null);
+    return h("div", { class: `dialog${options.size ? ` ${options.size}` : ""}`, role: "dialog", "aria-modal": "true", "aria-label": options.title }, h("div", { class: "d-head" }, options.icon ? h("span", { class: "chip-icon" }, icon(options.icon, 16)) : null, h("h2", { text: options.title }), close), options.top?.length ? h("div", { class: "d-top" }, ...options.top) : null, h("div", { class: "d-body" }, ...options.body), options.foot?.length ? h("div", { class: "d-foot" }, ...options.foot) : null);
   }
   function confirmDialog(options) {
     return new Promise((resolve) => {
@@ -2265,7 +2269,7 @@ select.input { padding-right: 6px; }
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.74";
+  var version = "0.3.75";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -3569,7 +3573,7 @@ ${x.css}`)].join(`
   function renderThemes(container) {
     const search = h("input", { class: "input", type: "search", placeholder: t(L8.search), value: ui.query, "aria-label": t(L8.search) });
     const filter = h("select", { class: "input", "aria-label": t(L8.all) }, ...["all", "enabled", "disabled", "online", "local"].map((value) => h("option", { value, text: t(value === "online" ? L8.onlineShort : value === "local" ? L8.localShort : L8[value]), selected: ui.filter === value })));
-    container.appendChild(h("div", { class: "bar" }, h("label", { class: "search" }, icon("search", 14), search), filter));
+    container.appendChild(h("div", { class: "sticky-top" }, h("div", { class: "bar" }, h("label", { class: "search" }, icon("search", 14), search), filter)));
     const body = h("div");
     container.appendChild(body);
     const matches = (name, extra, enabled) => (!ui.query || `${name} ${extra}`.toLowerCase().includes(ui.query.toLowerCase())) && (ui.filter === "enabled" ? enabled : ui.filter === "disabled" ? !enabled : true);
@@ -3732,6 +3736,8 @@ ${x.css}`)].join(`
 .panel { position: fixed; width: var(--w, 300px); max-height: min(70vh, 560px); overflow: auto; padding: 12px; border-radius: 14px; background: var(--bg); border: 1px solid var(--line); box-shadow: var(--shadow); pointer-events: auto; display: flex; flex-direction: column; gap: 10px; animation: pop .12s ease-out; }
 @keyframes pop { from { opacity: 0; transform: translateY(4px); } }
 .top { display: flex; align-items: center; gap: 6px; } .top b { flex: 1; font-size: 14px; }
+/* A popover's header (and anything marked .sticky after it) stays put while its list scrolls. */
+.panel > .top { position: sticky; top: -12px; z-index: 2; margin: -12px -12px 0; padding: 12px 12px 4px; background: var(--bg); }
 .msg { color: var(--fg2); } .msg.bad { color: var(--bad); }
 .item { display: flex; align-items: flex-start; gap: 8px; width: 100%; padding: 7px 8px; border: 0; border-radius: 8px; background: transparent; text-align: left; }
 .item:hover, .item.active { background: var(--bg2); }
@@ -4034,7 +4040,7 @@ ${x.css}`)].join(`
 .menu { position: absolute; top: 50%; right: calc(100% + 4px); width: min(288px, 70vw); max-height: var(--menu-h, 70vh); overflow: auto; padding: 6px; border-radius: 20px; background: var(--bg); box-shadow: var(--shadow); color: var(--fg); pointer-events: auto;
   opacity: 0; visibility: hidden; transform: translate(8px, -50%); transition: opacity .2s ease, visibility .2s ease, transform .2s ease; overscroll-behavior: contain; }
 .rail.open .menu { opacity: 1; visibility: visible; transform: translate(0, -50%); }
-.meta { padding: 4px 10px 6px; color: var(--fg2); font-size: var(--fs-xs); letter-spacing: -.2px; font-variant-numeric: tabular-nums; }
+.meta { position: sticky; top: -6px; z-index: 2; margin: -6px -6px 0; padding: 10px 16px 6px; background: var(--bg); border-radius: 20px 20px 0 0; color: var(--fg2); font-size: var(--fs-xs); letter-spacing: -.2px; font-variant-numeric: tabular-nums; }
 .list { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; list-style: none; }
 .item { display: flex; align-items: center; gap: 6px; width: 100%; padding: 6px 8px; border: 1px solid transparent; border-radius: 12px; background: transparent; color: var(--fg2); font-size: var(--fs); line-height: 1.4; letter-spacing: -.2px; text-align: start; }
 .item:hover, .item:focus-visible, .item.aim { background: var(--bg2); color: var(--fg); box-shadow: none; }
@@ -5212,15 +5218,16 @@ ${x.css}`)].join(`
       query = search.value;
       draw();
     });
+    const meta = h("div");
+    const top = h("div", {}, h("style", { text: LIST_CSS2 }), h("p", { class: "d-desc", text: t(L13.sub) }), search, meta);
     const draw = () => {
+      clear(meta);
       clear(body);
-      body.appendChild(h("style", { text: LIST_CSS2 }));
       const list = history2.get();
       const total = list.length;
       const needle = query.trim().toLowerCase();
       const rows = list.map((text, i) => ({ text, i, n: total - i })).filter((row) => !needle || row.text.toLowerCase().includes(needle));
-      if (total)
-        body.appendChild(search);
+      search.hidden = !total;
       const wipe = h("button", { type: "button", class: "btn", text: t(L13.clear), disabled: !total });
       wipe.addEventListener("click", async () => {
         if (!await confirmDialog({ title: t(L13.clear), body: t(L13.clearBody), ok: L13.clearOk, danger: true }))
@@ -5232,7 +5239,7 @@ ${x.css}`)].join(`
         open = null;
         draw();
       });
-      body.appendChild(h("div", { class: "ih-meta" }, h("span", { class: "ih-count", text: (needle ? t(L13.matches) : t(L13.stored)).replace("{n}", String(needle ? rows.length : total)) }), wipe));
+      meta.appendChild(h("div", { class: "ih-meta" }, h("span", { class: "ih-count", text: (needle ? t(L13.matches) : t(L13.stored)).replace("{n}", String(needle ? rows.length : total)) }), wipe));
       if (!total)
         return void body.appendChild(h("p", { class: "ih-empty", text: t(L13.empty) }));
       if (!rows.length)
@@ -5286,7 +5293,7 @@ ${x.css}`)].join(`
       if (cursor >= 0 && hudEditor?.isConnected)
         showHud(hudEditor);
     };
-    const close = openModal(dialogFrame({ title: t(L13.title), icon: "history", body: [h("p", { class: "d-desc", text: t(L13.sub) }), body], onClose: () => close() }), { onClose: done });
+    const close = openModal(dialogFrame({ title: t(L13.title), icon: "history", top: [top], body: [body], onClose: () => close() }), { onClose: done });
     draw();
   }
   function adopt(text, index) {
@@ -6818,7 +6825,7 @@ ${RUNNING_PILL} {
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.74",
+      version: "0.3.75",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -6835,7 +6842,7 @@ ${RUNNING_PILL} {
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.74";
+    win[FLAG] = "0.3.75";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -6852,7 +6859,7 @@ ${RUNNING_PILL} {
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.74"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.75"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();

@@ -77,7 +77,7 @@ const CSS = `
 .menu { position: absolute; top: 50%; right: calc(100% + 4px); width: min(288px, 70vw); max-height: var(--menu-h, 70vh); overflow: auto; padding: 6px; border-radius: 20px; background: var(--bg); box-shadow: var(--shadow); color: var(--fg); pointer-events: auto;
   opacity: 0; visibility: hidden; transform: translate(8px, -50%); transition: opacity .2s ease, visibility .2s ease, transform .2s ease; overscroll-behavior: contain; }
 .rail.open .menu { opacity: 1; visibility: visible; transform: translate(0, -50%); }
-.meta { padding: 4px 10px 6px; color: var(--fg2); font-size: var(--fs-xs); letter-spacing: -.2px; font-variant-numeric: tabular-nums; }
+.meta { position: sticky; top: -6px; z-index: 2; margin: -6px -6px 0; padding: 10px 16px 6px; background: var(--bg); border-radius: 20px 20px 0 0; color: var(--fg2); font-size: var(--fs-xs); letter-spacing: -.2px; font-variant-numeric: tabular-nums; }
 .list { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; list-style: none; }
 .item { display: flex; align-items: center; gap: 6px; width: 100%; padding: 6px 8px; border: 1px solid transparent; border-radius: 12px; background: transparent; color: var(--fg2); font-size: var(--fs); line-height: 1.4; letter-spacing: -.2px; text-align: start; }
 .item:hover, .item:focus-visible, .item.aim { background: var(--bg2); color: var(--fg); box-shadow: none; }

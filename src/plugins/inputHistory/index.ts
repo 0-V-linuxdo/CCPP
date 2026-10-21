@@ -235,15 +235,19 @@ function openHistory(picker: boolean) {
         query = search.value;
         draw();
     });
+    // Title, note, search and count stay fixed; only the list scrolls.
+    // The search box is never rebuilt, so typing keeps its focus.
+    const meta = h("div");
+    const top = h("div", {}, h("style", { text: LIST_CSS }), h("p", { class: "d-desc", text: t(L.sub) }), search, meta);
     const draw = () => {
+        clear(meta);
         clear(body);
-        body.appendChild(h("style", { text: LIST_CSS }));
         const list = history.get();
         const total = list.length;
         const needle = query.trim().toLowerCase();
         // Shown newest first; the number is the prompt's place counted from the oldest, as in the counter.
         const rows = list.map((text, i) => ({ text, i, n: total - i })).filter(row => !needle || row.text.toLowerCase().includes(needle));
-        if (total) body.appendChild(search);
+        search.hidden = !total;
         const wipe = h("button", { type: "button", class: "btn", text: t(L.clear), disabled: !total });
         wipe.addEventListener("click", async () => {
             if (!(await confirmDialog({ title: t(L.clear), body: t(L.clearBody), ok: L.clearOk, danger: true }))) return;
@@ -254,7 +258,7 @@ function openHistory(picker: boolean) {
             open = null;
             draw();
         });
-        body.appendChild(h("div", { class: "ih-meta" }, h("span", { class: "ih-count", text: (needle ? t(L.matches) : t(L.stored)).replace("{n}", String(needle ? rows.length : total)) }), wipe));
+        meta.appendChild(h("div", { class: "ih-meta" }, h("span", { class: "ih-count", text: (needle ? t(L.matches) : t(L.stored)).replace("{n}", String(needle ? rows.length : total)) }), wipe));
         if (!total) return void body.appendChild(h("p", { class: "ih-empty", text: t(L.empty) }));
         if (!rows.length) return void body.appendChild(h("p", { class: "ih-empty", text: t(L.noMatch) }));
         const listEl = h("div", { class: "ih-list" });
@@ -300,7 +304,7 @@ function openHistory(picker: boolean) {
         historyOpen = false;
         if (cursor >= 0 && hudEditor?.isConnected) showHud(hudEditor);
     };
-    const close = openModal(dialogFrame({ title: t(L.title), icon: "history", body: [h("p", { class: "d-desc", text: t(L.sub) }), body], onClose: () => close() }), { onClose: done });
+    const close = openModal(dialogFrame({ title: t(L.title), icon: "history", top: [top], body: [body], onClose: () => close() }), { onClose: done });
     draw();
 }
 
