@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.63
+// @version      20261013.0.3.64
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -1774,6 +1774,15 @@ select.input { padding-right: 6px; }
   var CODE_TITLE = '[data-pane-title], [data-perf-region="side_pane"] [data-top-right] [data-cds="OverflowTooltip"]';
   var isDragHandle = (b) => /(^|\s)tiles-drag-handle(\s|$)/.test(b.className) || b.matches("[data-drag-handle], [aria-roledescription='drag handle']");
   function codeHeaderAnchor(title) {
+    const toolbar = title.closest('[data-cds="Toolbar"]');
+    const last = toolbar && [...toolbar.querySelectorAll("button")].filter((b) => !b.closest(".ccpp-slot") && !isDragHandle(b) && !title.contains(b)).pop();
+    if (toolbar && last && title.compareDocumentPosition(last) & Node.DOCUMENT_POSITION_FOLLOWING) {
+      let group = last;
+      while (group.parentElement && group.parentElement !== toolbar && !group.parentElement.contains(title))
+        group = group.parentElement;
+      if (!group.contains(title) && group !== last)
+        return { anchor: group, where: "prepend" };
+    }
     let branch = title;
     for (let depth = 0;depth < 6 && branch.parentElement; depth++) {
       const row = branch.parentElement;
@@ -1827,7 +1836,7 @@ select.input { padding-right: 6px; }
         if (!/^\/code\/[^/]/.test(location.pathname))
           return;
         const { anchor, where } = codeHeaderAnchor(el);
-        if (anchor.parentElement?.querySelector(":scope > .ccpp-slot-codeHeader"))
+        if ((where === "prepend" ? anchor : anchor.parentElement)?.querySelector(":scope > .ccpp-slot-codeHeader"))
           return;
         return mountIn("codeHeader", anchor, where);
       });
@@ -2230,7 +2239,7 @@ select.input { padding-right: 6px; }
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.63";
+  var version = "0.3.64";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -6481,7 +6490,7 @@ ${RUNNING_PILL} {
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.63",
+      version: "0.3.64",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -6498,7 +6507,7 @@ ${RUNNING_PILL} {
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.63";
+    win[FLAG] = "0.3.64";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -6515,7 +6524,7 @@ ${RUNNING_PILL} {
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.63"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.64"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();

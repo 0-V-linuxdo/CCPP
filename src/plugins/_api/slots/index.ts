@@ -100,7 +100,15 @@ const CODE_TITLE = '[data-pane-title], [data-perf-region="side_pane"] [data-top-
 /** The side pane's grip between title and buttons is a button too, but not one of the header's actions. */
 const isDragHandle = (b: HTMLElement) => /(^|\s)tiles-drag-handle(\s|$)/.test(b.className) || b.matches("[data-drag-handle], [aria-roledescription='drag handle']");
 
-export function codeHeaderAnchor(title: HTMLElement): { anchor: HTMLElement; where: "before" | "after" } {
+export function codeHeaderAnchor(title: HTMLElement): { anchor: HTMLElement; where: "before" | "after" | "prepend" } {
+    // Headers are a toolbar with the title on the left and the native buttons grouped on the right: join that group.
+    const toolbar = title.closest<HTMLElement>('[data-cds="Toolbar"]');
+    const last = toolbar && [...toolbar.querySelectorAll<HTMLElement>("button")].filter(b => !b.closest(".ccpp-slot") && !isDragHandle(b) && !title.contains(b)).pop();
+    if (toolbar && last && title.compareDocumentPosition(last) & Node.DOCUMENT_POSITION_FOLLOWING) {
+        let group: HTMLElement = last;
+        while (group.parentElement && group.parentElement !== toolbar && !group.parentElement.contains(title)) group = group.parentElement;
+        if (!group.contains(title) && group !== last) return { anchor: group, where: "prepend" };
+    }
     let branch: HTMLElement = title;
     for (let depth = 0; depth < 6 && branch.parentElement; depth++) {
         const row = branch.parentElement;
@@ -153,7 +161,7 @@ export default definePlugin({
             if (!/^\/code\/[^/]/.test(location.pathname)) return;
             const { anchor, where } = codeHeaderAnchor(el);
             // Both title selectors can match inside one header; one slot per header.
-            if (anchor.parentElement?.querySelector(":scope > .ccpp-slot-codeHeader")) return;
+            if ((where === "prepend" ? anchor : anchor.parentElement)?.querySelector(":scope > .ccpp-slot-codeHeader")) return;
             return mountIn("codeHeader", anchor, where);
         });
     },

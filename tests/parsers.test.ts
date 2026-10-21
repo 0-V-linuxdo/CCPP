@@ -366,6 +366,13 @@ describe("Claude Code header slot", () => {
         const lone = codeHeaderAnchor(document.querySelector<HTMLElement>("[data-pane-title]")!);
         expect(lone.where).toBe("after");
         expect(lone.anchor.tagName).toBe("SPAN");
+        // Current Claude Code: the native buttons sit in a group at the right end of the header toolbar.
+        document.body.innerHTML = `<div data-cds="Toolbar"><div class="flex"><span><span><button data-pane-title>CC++</button><span class="contents"><button aria-haspopup="menu"></button></span></span></span><div class="spacer"></div><div id="end"><span class="contents"><button>x</button><span><button>Project settings</button></span></span></div></div></div>`;
+        const project = codeHeaderAnchor(document.querySelector<HTMLElement>("[data-pane-title]")!);
+        expect(project).toEqual({ anchor: document.getElementById("end")!, where: "prepend" });
+        document.body.innerHTML = `<div data-cds="Toolbar"><div><span><button>back</button><span data-cds="OverflowTooltip">Thread</span></span></div><div id="native"><button>Resolve</button><button>More</button><button>Close</button></div></div>`;
+        const thread = codeHeaderAnchor(document.querySelector<HTMLElement>('[data-cds="OverflowTooltip"]')!);
+        expect(thread).toEqual({ anchor: document.getElementById("native")!, where: "prepend" });
     });
 });
 
