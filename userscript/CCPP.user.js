@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.76
+// @version      20261013.0.3.77
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -1564,8 +1564,27 @@ select.input { padding-right: 6px; }
 .badge.bad { background: color-mix(in srgb, var(--bad) 16%, transparent); color: var(--bad); }
 @media (prefers-reduced-motion: reduce) { .ccpp * { transition: none !important; animation: none !important; } }
 `;
+  function isOurField(event) {
+    const target = event.composedPath()[0];
+    if (!(target instanceof HTMLElement))
+      return false;
+    const root = target.getRootNode();
+    if (!(root instanceof ShadowRoot) || !root.host.hasAttribute?.("data-ccpp-shadow"))
+      return false;
+    return target.matches("input, textarea, select") || target.isContentEditable;
+  }
+  try {
+    window.addEventListener("keydown", (event) => {
+      if (event.ctrlKey || event.metaKey || event.altKey)
+        return;
+      const typing = event.key.length === 1 || ["Backspace", "Delete", "Process"].includes(event.key) || event.isComposing;
+      if (typing && isOurField(event))
+        event.stopImmediatePropagation();
+    }, true);
+  } catch {}
   function shadowBox(css, tag = "div") {
     const host = document.createElement(tag);
+    host.setAttribute("data-ccpp-shadow", "");
     const root = host.attachShadow({ mode: "open" });
     root.appendChild(h("style", { text: BASE_CSS + css }));
     const box = h("div", { class: "ccpp" });
@@ -1624,7 +1643,7 @@ select.input { padding-right: 6px; }
   }
 
   // src/plugins/_api/notices/index.ts
-  var CSS = `
+  var CSS2 = `
 .stack { position: fixed; top: 64px; right: 16px; display: flex; flex-direction: column; gap: 8px; width: min(340px, calc(100vw - 32px)); pointer-events: none; }
 .toast { pointer-events: auto; display: flex; gap: 10px; align-items: flex-start; padding: 10px 10px 10px 12px; border-radius: 12px; background: var(--bg); border: 1px solid var(--line); box-shadow: var(--shadow); animation: in .18s ease-out; }
 .toast.click { cursor: pointer; }
@@ -1665,7 +1684,7 @@ select.input { padding-right: 6px; }
     icon: "bell",
     hidden: true,
     start(scope) {
-      host = createHost(scope, "notices", CSS);
+      host = createHost(scope, "notices", CSS2);
       stack = h("div", { class: "stack" });
       host.box.appendChild(stack);
       scope.defer(() => {
@@ -1716,7 +1735,7 @@ select.input { padding-right: 6px; }
   // src/plugins/_api/slots/index.ts
   var items = new Set;
   var containers = new Map([["composer", new Set], ["header", new Set], ["codeHeader", new Set]]);
-  var CSS2 = `
+  var CSS3 = `
 .ccpp-slot { display: inline-flex; align-items: center; gap: 4px; flex: none; }
 .ccpp-slot:empty { display: none; }
 .ccpp-slot-composer { margin-inline-end: 4px; }
@@ -1808,7 +1827,7 @@ select.input { padding-right: 6px; }
     hidden: true,
     dependencies: ["DomApi", "StylesApi"],
     start(scope) {
-      addStyle(scope, CSS2, "slots");
+      addStyle(scope, CSS3, "slots");
       const mountIn = (slot, anchor, where) => {
         const container = h("span", { class: `ccpp-slot ccpp-slot-${slot}`, "data-ccpp-slot": slot });
         if (where === "before")
@@ -2022,7 +2041,7 @@ select.input { padding-right: 6px; }
     markListeners.add(fn);
     scope.defer(() => markListeners.delete(fn));
   }
-  var CSS3 = `
+  var CSS4 = `
 @keyframes ccpp-flash { 0%, 70% { outline-color: var(--cds-text-primary, currentColor); } 100% { outline-color: transparent; } }
 .ccpp-flash { outline: 2px solid transparent; outline-offset: 4px; border-radius: 12px; animation: ccpp-flash 1.6s ease-out; }
 `;
@@ -2035,7 +2054,7 @@ select.input { padding-right: 6px; }
     hidden: true,
     dependencies: ["ClaudeApi", "RouterApi", "ChatStateApi", "StylesApi"],
     start(scope) {
-      addStyle(scope, CSS3, "transcript");
+      addStyle(scope, CSS4, "transcript");
       scope.on("reply:end", ({ chatId }) => invalidateConversation(chatId));
       const note = (event) => noteFeedActivity(event.target);
       scope.listen(document, "pointerdown", note, { capture: true, passive: true });
@@ -2276,7 +2295,7 @@ select.input { padding-right: 6px; }
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.76";
+  var version = "0.3.77";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -3753,6 +3772,11 @@ ${x.css}`)].join(`
 .clip2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .spin { animation: spin 1s linear infinite; } @keyframes spin { to { transform: rotate(360deg); } }
 `;
+  function successor(old) {
+    const label = old.getAttribute("aria-label");
+    const sel = old.tagName.toLowerCase() + [...old.classList].map((c) => `.${CSS.escape(c)}`).join("");
+    return [...document.querySelectorAll(sel)].find((el) => el.getAttribute("aria-label") === label) ?? null;
+  }
   function createPopover(scope, id, css = "", width = 300) {
     let sub = null;
     let panel = null;
@@ -3768,6 +3792,8 @@ ${x.css}`)].join(`
       if (!panel || !anchor || !renderFn)
         return;
       if (!anchor.isConnected)
+        anchor = successor(anchor);
+      if (!anchor)
         return close();
       clear(panel);
       renderFn(panel, close);
@@ -4029,7 +4055,7 @@ ${x.css}`)].join(`
     empty: { zh: "（空消息）", en: "(empty)" },
     goTo: { zh: "跳到第 {n} 条，共 {total} 条", en: "Go to message {n} of {total}" }
   };
-  var CSS4 = `
+  var CSS5 = `
 .rail { position: fixed; display: flex; align-items: center; pointer-events: none; }
 .ticks { display: flex; flex-direction: column; align-items: flex-end; max-height: 100%; overflow: hidden; pointer-events: auto; scrollbar-width: none; }
 .ticks::-webkit-scrollbar { display: none; }
@@ -4180,7 +4206,7 @@ ${x.css}`)].join(`
     dependencies: ["TranscriptApi", "RouterApi", "ChatStateApi"],
     settings: settings5,
     start(scope) {
-      const { box } = createHost(scope, "navigator", CSS4, { layer: "page" });
+      const { box } = createHost(scope, "navigator", CSS5, { layer: "page" });
       const navs = new Map;
       const createNav = (scroller) => {
         const ticks = h("div", { class: "ticks", role: "navigation", "aria-label": t(L10.title) });
@@ -4593,7 +4619,7 @@ ${x.css}`)].join(`
     none: { zh: "还没有收藏。悬停消息，点操作栏里的 ☆。", en: "Nothing starred yet. Hover a message and click ☆ in its action bar." },
     you: { zh: "你", en: "You" }
   };
-  var CSS5 = `
+  var CSS6 = `
 .ccpp-star-btn:not(.ccpp-native) { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 8px; border: 0; background: transparent; color: var(--cds-text-secondary, inherit); cursor: pointer; }
 .ccpp-star-btn:not(.ccpp-native):hover { color: var(--cds-text-primary, inherit); background: var(--cds-fill-ghost-hover, rgba(127,127,127,.14)); }
 /* Like void++: a starred message is marked only by its star, orange on a faint orange tint; the message itself is left alone. */
@@ -4662,7 +4688,7 @@ ${x.css}`)].join(`
     dependencies: ["DomApi", "StylesApi", "SlotsApi", "TranscriptApi", "RouterApi", "ChatStateApi"],
     settings: settings6,
     start(scope) {
-      addStyle(scope, CSS5, "stars");
+      addStyle(scope, CSS6, "stars");
       const isStarred = (row, key) => starsFor(keyOf(row)?.key ?? null).some((s) => s.key === key);
       const toggle = (row) => {
         const chat = keyOf(row);
@@ -4893,7 +4919,7 @@ ${x.css}`)].join(`
   var PROJECT_ROW = '[data-group-list^="chan_"]';
   var ROW = "[data-row]";
   var ICON_HOLDER = ".df-leading-slot .relative, [data-leading-slot] .relative";
-  var CSS6 = `
+  var CSS7 = `
 [data-ccpp-corner] { position: absolute; top: -1px; inset-inline-end: -2px; display: flex; pointer-events: none; }
 [data-ccpp-corner] .status-dot { width: 6px; height: 6px; border-radius: 50%; display: block; box-shadow: 0 0 0 1.5px var(--cds-surface-1, var(--df-bg, #1f1e1d)); }
 [data-ccpp-corner] .status-dot[data-kind="clay"] { background-color: #d97757; animation: ccpp-breathe 3s ease-in-out infinite; }
@@ -4940,7 +4966,7 @@ ${x.css}`)].join(`
     dependencies: ["ClaudeApi", "DomApi", "StylesApi", "RouterApi"],
     settings: settings7,
     start(scope) {
-      addStyle(scope, CSS6, "project-status");
+      addStyle(scope, CSS7, "project-status");
       const activity = new Map;
       const rows = new Map;
       let busy = false;
@@ -6254,7 +6280,7 @@ ${targets.map((t) => `${t}:hover`).join(`,
     next[index] = { ...next[index], title };
     return next;
   }
-  var CSS7 = `
+  var CSS8 = `
 .overlay { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(0,0,0,.25); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); pointer-events: auto; animation: in .12s ease-out; }
 @keyframes in { from { opacity: 0; } }
 .box { width: min(860px, calc(100vw - 32px)); padding: 16px; border-radius: 18px; background: color-mix(in srgb, var(--bg) 88%, transparent); border: 1px solid var(--line); box-shadow: var(--shadow); }
@@ -6297,7 +6323,7 @@ ${targets.map((t) => `${t}:hover`).join(`,
         if (next !== list)
           visits.set(next);
       }, 3000);
-      const { box } = createHost(scope, "recent-chats", CSS7, { layer: "page" });
+      const { box } = createHost(scope, "recent-chats", CSS8, { layer: "page" });
       let selected = 0;
       let open = false;
       const close = () => {
@@ -6495,7 +6521,7 @@ ${m.text.trim()}`).join(`
     lines: { type: "number", label: { zh: "超过多少行折叠（行）", en: "Collapse code longer than (lines)" }, default: 30, min: 8, max: 200, step: 2 }
   });
   var L18 = { expand: { zh: "展开全部代码（{n} 行）", en: "Show all {n} lines" }, collapse: { zh: "收起代码", en: "Collapse code" } };
-  var CSS8 = `
+  var CSS9 = `
 .ccpp-code-collapsed { max-height: var(--ccpp-code-max, 30lh) !important; overflow: hidden !important; -webkit-mask-image: linear-gradient(#000 70%, transparent); mask-image: linear-gradient(#000 70%, transparent); }
 .ccpp-code-toggle { display: block; margin: 4px auto 8px; padding: 2px 12px; border-radius: 999px; border: 1px solid rgba(127,127,127,.3); background: transparent; color: inherit; font: 12px/20px ui-sans-serif, system-ui, sans-serif; opacity: .8; cursor: pointer; }
 .ccpp-code-toggle:hover { opacity: 1; }
@@ -6510,7 +6536,7 @@ ${m.text.trim()}`).join(`
     dependencies: ["DomApi", "StylesApi"],
     settings: settings22,
     start(scope) {
-      addStyle(scope, CSS8, "collapse-code");
+      addStyle(scope, CSS9, "collapse-code");
       const max = settings22.store.lines;
       watch(scope, `${SEL.assistantMessage}[data-is-streaming="false"] pre`, (pre) => {
         const lines = (pre.textContent ?? "").split(`
@@ -6761,7 +6787,7 @@ ${m.text.trim()}`).join(`
   // src/plugins/runningPill/index.ts
   var RUNNING_PILL = '[aria-busy="true"].rounded-full:has(> [data-cds="Spinner"])';
   var BRAND = "var(--cds-fill-brand, #c6613f)";
-  var CSS9 = `
+  var CSS10 = `
 ${RUNNING_PILL} {
     color: ${BRAND} !important;
     border-color: color-mix(in srgb, ${BRAND} 55%, transparent) !important;
@@ -6782,7 +6808,7 @@ ${RUNNING_PILL} {
     updatedAt: "2026-10-18",
     dependencies: ["StylesApi"],
     start(scope) {
-      addStyle(scope, CSS9, "running-pill");
+      addStyle(scope, CSS10, "running-pill");
     }
   });
 
@@ -6838,7 +6864,7 @@ ${RUNNING_PILL} {
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.76",
+      version: "0.3.77",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -6855,7 +6881,7 @@ ${RUNNING_PILL} {
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.76";
+    win[FLAG] = "0.3.77";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -6872,7 +6898,7 @@ ${RUNNING_PILL} {
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.76"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.77"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();

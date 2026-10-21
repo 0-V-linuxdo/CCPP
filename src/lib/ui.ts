@@ -73,9 +73,32 @@ export interface Host {
  * A fixed, isolated layer: our CSS never leaks into claude.ai and claude.ai's never into us.
  * It follows claude.ai's light/dark mode and is removed when the scope ends.
  */
+/**
+ * claude.ai sends stray typing to its composer: a key pressed while focus is in our shadow DOM looks to it like
+ * typing on a bare element (the event is retargeted to our host), so it grabs focus and the text lands in the
+ * composer instead of our search box. Registered before claude.ai's own scripts (the userscript runs at
+ * document-start), this stops those keys from reaching any page listener. Nothing is prevented: the character
+ * still goes into our field, and Enter, Escape, Tab and arrows pass through as usual.
+ */
+function isOurField(event: KeyboardEvent) {
+    const target = event.composedPath()[0];
+    if (!(target instanceof HTMLElement)) return false;
+    const root = target.getRootNode();
+    if (!(root instanceof ShadowRoot) || !(root.host as HTMLElement).hasAttribute?.("data-ccpp-shadow")) return false;
+    return target.matches("input, textarea, select") || target.isContentEditable;
+}
+try {
+    window.addEventListener("keydown", (event: KeyboardEvent) => {
+        if (event.ctrlKey || event.metaKey || event.altKey) return;
+        const typing = event.key.length === 1 || ["Backspace", "Delete", "Process"].includes(event.key) || event.isComposing;
+        if (typing && isOurField(event)) event.stopImmediatePropagation();
+    }, true);
+} catch {}
+
 /** A shadow root carrying BASE_CSS whose wrapper follows claude.ai's theme and font. Not attached anywhere. */
 export function shadowBox(css: string, tag: keyof HTMLElementTagNameMap = "div") {
     const host = document.createElement(tag);
+    host.setAttribute("data-ccpp-shadow", "");
     const root = host.attachShadow({ mode: "open" });
     root.appendChild(h("style", { text: BASE_CSS + css }));
     const box = h("div", { class: "ccpp" });

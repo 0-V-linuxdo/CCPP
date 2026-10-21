@@ -32,6 +32,13 @@ export interface Popover {
     isOpen(): boolean;
 }
 
+/** The element that replaced a re-rendered anchor: same tag, classes and label. */
+function successor(old: HTMLElement): HTMLElement | null {
+    const label = old.getAttribute("aria-label");
+    const sel = old.tagName.toLowerCase() + [...old.classList].map(c => `.${CSS.escape(c)}`).join("");
+    return [...document.querySelectorAll<HTMLElement>(sel)].find(el => el.getAttribute("aria-label") === label) ?? null;
+}
+
 /** A panel anchored to a button; closes on outside click, Escape, resize, or a second click on the anchor. */
 export function createPopover(scope: Scope, id: string, css = "", width = 300): Popover {
     let sub: Scope | null = null;
@@ -47,7 +54,9 @@ export function createPopover(scope: Scope, id: string, css = "", width = 300): 
     };
     const draw = () => {
         if (!panel || !anchor || !renderFn) return;
-        if (!anchor.isConnected) return close();
+        // The button may have been re-rendered (e.g. fresh data): follow its replacement, else close.
+        if (!anchor.isConnected) anchor = successor(anchor);
+        if (!anchor) return close();
         clear(panel);
         renderFn(panel, close);
         anchorPosition(anchor, panel);
