@@ -176,13 +176,17 @@ function showHud(editor: HTMLElement) {
     count.textContent = label;
     count.setAttribute("aria-label", t(L.showAll).replace("{n}", label));
     const bar = composerBox(editor);
-    requestAnimationFrame(() => {
+    const place = () => {
         if (historyOpen || !bar.isConnected || cursor < 0) return;
         const r = bar.getBoundingClientRect();
         el.style.left = `${r.left + r.width / 2}px`;
         el.style.top = `${r.top - 8}px`;
         el.classList.add("on");
-    });
+    };
+    // A multi-line prompt lands a moment later and grows the card upward; follow it.
+    requestAnimationFrame(place);
+    setTimeout(place, 120);
+    setTimeout(place, 300);
 }
 
 /** The composer card around an editor; Claude Code composers (project chat, thread pane) have no ChatComposer mark. */
@@ -339,6 +343,8 @@ export default definePlugin({
             const now = Date.now();
             if (text === lastSent.text && now - lastSent.at < CAPTURE_DEDUPE_MS) return;
             lastSent = { text, at: now };
+            // Other tabs may have added prompts since this one last looked.
+            history.reload();
             history.set(remember(history.get(), text, settings.store.max));
             resetBrowse();
         });

@@ -51,7 +51,7 @@ export function persisted<T>(key: string, fallback: T, valid: (value: unknown) =
         return valid(value) ? value : fallback;
     };
     let value = load();
-    return {
+    const store = {
         get: () => value,
         set(next: T) {
             value = next;
@@ -67,4 +67,11 @@ export function persisted<T>(key: string, fallback: T, valid: (value: unknown) =
             return () => void listeners.delete(listener);
         },
     };
+    // Another claude.ai tab changed it: pick that up, so this tab doesn't write back a stale copy.
+    try {
+        globalThis.addEventListener?.("storage", (event: StorageEvent) => {
+            if (event.key === PREFIX + key || event.key === null) store.reload();
+        });
+    } catch {}
+    return store;
 }

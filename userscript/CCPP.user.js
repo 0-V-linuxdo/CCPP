@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.75
+// @version      20261013.0.3.76
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -170,7 +170,7 @@
       return valid(value) ? value : fallback;
     };
     let value = load();
-    return {
+    const store = {
       get: () => value,
       set(next) {
         value = next;
@@ -188,6 +188,13 @@
         return () => void listeners.delete(listener);
       }
     };
+    try {
+      globalThis.addEventListener?.("storage", (event) => {
+        if (event.key === PREFIX + key || event.key === null)
+          store.reload();
+      });
+    } catch {}
+    return store;
   }
 
   // src/kernel/settings.ts
@@ -2269,7 +2276,7 @@ select.input { padding-right: 6px; }
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.75";
+  var version = "0.3.76";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -4665,7 +4672,7 @@ ${x.css}`)].join(`
         const { next } = toggleStar(chat.key, chatTitle(), { ...info, at: Date.now() }, book.get(), chat.url);
         book.set(next);
       };
-      const paint = () => {
+      const paint = (track = false) => {
         const starred = new Map;
         const seen = new Map;
         for (const row of document.querySelectorAll(SEL.transcriptRow)) {
@@ -4688,6 +4695,8 @@ ${x.css}`)].join(`
           }
         }
         setMarks("stars", starsFor(keyOf(null)?.key ?? null).map((s) => s.index));
+        if (!track)
+          return;
         let next = book.get();
         for (const [chat, keys] of seen)
           next = reindex(next, chat, keys) ?? next;
@@ -4740,7 +4749,7 @@ ${x.css}`)].join(`
       let paintTimer = 0;
       const schedulePaint = () => {
         clearTimeout(paintTimer);
-        paintTimer = window.setTimeout(paint, 300);
+        paintTimer = window.setTimeout(() => paint(true), 300);
       };
       scope.defer(() => clearTimeout(paintTimer));
       watch(scope, SEL.transcriptRow, (row) => {
@@ -4831,7 +4840,7 @@ ${x.css}`)].join(`
           const label = h("span");
           const btn = slotButton(t(L11.list), (event) => {
             listFrom = event.currentTarget;
-            paint();
+            paint(true);
             list.open(listFrom, renderList);
           }, icon("star", 16), label);
           const sync = () => {
@@ -5163,14 +5172,17 @@ ${x.css}`)].join(`
     count.textContent = label;
     count.setAttribute("aria-label", t(L13.showAll).replace("{n}", label));
     const bar = composerBox(editor);
-    requestAnimationFrame(() => {
+    const place = () => {
       if (historyOpen || !bar.isConnected || cursor < 0)
         return;
       const r = bar.getBoundingClientRect();
       el.style.left = `${r.left + r.width / 2}px`;
       el.style.top = `${r.top - 8}px`;
       el.classList.add("on");
-    });
+    };
+    requestAnimationFrame(place);
+    setTimeout(place, 120);
+    setTimeout(place, 300);
   }
   function composerBox(editor) {
     const marked = editor.closest(SEL.composer);
@@ -5328,6 +5340,7 @@ ${x.css}`)].join(`
         if (text === lastSent.text && now - lastSent.at < CAPTURE_DEDUPE_MS)
           return;
         lastSent = { text, at: now };
+        history2.reload();
         history2.set(remember(history2.get(), text, settings8.store.max));
         resetBrowse();
       });
@@ -6825,7 +6838,7 @@ ${RUNNING_PILL} {
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.75",
+      version: "0.3.76",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -6842,7 +6855,7 @@ ${RUNNING_PILL} {
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.75";
+    win[FLAG] = "0.3.76";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -6859,7 +6872,7 @@ ${RUNNING_PILL} {
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.75"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.76"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();

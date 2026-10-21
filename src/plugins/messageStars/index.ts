@@ -121,7 +121,9 @@ export default definePlugin({
             book.set(next);
         };
 
-        const paint = () => {
+        // `track` stores starred rows' current positions; only for this tab's own row changes, so two tabs never
+        // keep rewriting each other's copy.
+        const paint = (track = false) => {
             const starred = new Map<string, Set<string>>();
             const seen = new Map<string, Map<string, number>>();
             for (const row of document.querySelectorAll<HTMLElement>(SEL.transcriptRow)) {
@@ -143,6 +145,7 @@ export default definePlugin({
             }
             setMarks("stars", starsFor(keyOf(null)?.key ?? null).map(s => s.index));
             // Rows added above a starred message shift its index; store where it is now (this repaints once more).
+            if (!track) return;
             let next = book.get();
             for (const [chat, keys] of seen) next = reindex(next, chat, keys) ?? next;
             if (next !== book.get()) book.set(next);
@@ -198,7 +201,7 @@ export default definePlugin({
         let paintTimer = 0;
         const schedulePaint = () => {
             clearTimeout(paintTimer);
-            paintTimer = window.setTimeout(paint, 300);
+            paintTimer = window.setTimeout(() => paint(true), 300);
         };
         scope.defer(() => clearTimeout(paintTimer));
 
@@ -303,7 +306,7 @@ export default definePlugin({
                 const label = h("span");
                 const btn = slotButton(t(L.list), event => {
                     listFrom = event.currentTarget as HTMLElement;
-                    paint();
+                    paint(true);
                     list.open(listFrom as HTMLElement, renderList);
                 }, icon("star", 16), label);
                 // The count is this header's own conversation, known once the button is in place.
