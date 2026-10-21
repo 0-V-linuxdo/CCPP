@@ -71,10 +71,19 @@ function caretAtEdge(editor: HTMLElement, edge: "start" | "end") {
     const range = selection.getRangeAt(0);
     if (!editor.contains(range.startContainer)) return false;
     const caret = range.getClientRects()[0] ?? (range.startContainer as Element).getBoundingClientRect?.();
-    const box = editor.getBoundingClientRect();
     if (!caret || (!caret.height && !caret.width)) return true;
-    const lineHeight = parseFloat(getComputedStyle(editor).lineHeight) || 20;
-    return edge === "start" ? caret.top - box.top < lineHeight * 1.2 : box.bottom - caret.bottom < lineHeight * 1.2;
+    // The tops of the text's visual lines (wrapped lines and paragraphs alike), as void++ measures them.
+    const all = document.createRange();
+    all.selectNodeContents(editor);
+    const tops: number[] = [];
+    for (const rect of all.getClientRects()) {
+        if (rect.height < 1 && rect.width < 1) continue;
+        if (!tops.some(top => Math.abs(top - rect.top) < 4)) tops.push(rect.top);
+    }
+    if (tops.length < 2) return true;
+    tops.sort((x, y) => x - y);
+    const line = tops.reduce((best, top, i) => (Math.abs(top - caret.top) < Math.abs(tops[best] - caret.top) ? i : best), 0);
+    return edge === "start" ? line === 0 : line === tops.length - 1;
 }
 
 function placeCaret(editor: HTMLElement, atStart: boolean) {
@@ -204,8 +213,9 @@ function cycle(older: boolean, editor: HTMLElement) {
     if (cursor < 0) draft = getText(editor);
     cursor += older ? 1 : -1;
     if (cursor < 0) {
+        const saved = draft;
         resetBrowse();
-        fill(editor, draft, false);
+        fill(editor, saved, false);
         return;
     }
     fill(editor, list[cursor], older);

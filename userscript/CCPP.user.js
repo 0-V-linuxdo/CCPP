@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.73
+// @version      20261013.0.3.74
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -2265,7 +2265,7 @@ select.input { padding-right: 6px; }
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.73";
+  var version = "0.3.74";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -5059,11 +5059,22 @@ ${x.css}`)].join(`
     if (!editor.contains(range.startContainer))
       return false;
     const caret = range.getClientRects()[0] ?? range.startContainer.getBoundingClientRect?.();
-    const box = editor.getBoundingClientRect();
     if (!caret || !caret.height && !caret.width)
       return true;
-    const lineHeight = parseFloat(getComputedStyle(editor).lineHeight) || 20;
-    return edge === "start" ? caret.top - box.top < lineHeight * 1.2 : box.bottom - caret.bottom < lineHeight * 1.2;
+    const all = document.createRange();
+    all.selectNodeContents(editor);
+    const tops = [];
+    for (const rect of all.getClientRects()) {
+      if (rect.height < 1 && rect.width < 1)
+        continue;
+      if (!tops.some((top) => Math.abs(top - rect.top) < 4))
+        tops.push(rect.top);
+    }
+    if (tops.length < 2)
+      return true;
+    tops.sort((x, y) => x - y);
+    const line = tops.reduce((best, top, i) => Math.abs(top - caret.top) < Math.abs(tops[best] - caret.top) ? i : best, 0);
+    return edge === "start" ? line === 0 : line === tops.length - 1;
   }
   function placeCaret(editor, atStart) {
     editor.focus();
@@ -5182,8 +5193,9 @@ ${x.css}`)].join(`
       draft = getText(editor);
     cursor += older ? 1 : -1;
     if (cursor < 0) {
+      const saved = draft;
       resetBrowse();
-      fill3(editor, draft, false);
+      fill3(editor, saved, false);
       return;
     }
     fill3(editor, list[cursor], older);
@@ -6806,7 +6818,7 @@ ${RUNNING_PILL} {
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.73",
+      version: "0.3.74",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -6823,7 +6835,7 @@ ${RUNNING_PILL} {
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.73";
+    win[FLAG] = "0.3.74";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -6840,7 +6852,7 @@ ${RUNNING_PILL} {
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.73"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.74"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();
