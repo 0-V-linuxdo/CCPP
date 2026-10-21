@@ -35,7 +35,7 @@ const DOC_CSS = `
 [data-ccpp-panel] > :not(:first-child):not([data-ccpp-host]) { display: none !important; }
 [data-ccpp-active] li:not([data-ccpp-nav]) > button[aria-current] { background: transparent !important; font-weight: inherit !important; color: var(--cds-text-secondary, inherit) !important; }
 [data-ccpp-active] li:not([data-ccpp-nav]) > button[aria-current]:hover { background: var(--cds-fill-ghost-hover, transparent) !important; color: var(--cds-text-primary, inherit) !important; }
-[data-ccpp-host] { display: flex; flex-direction: column; flex: 1 1 0%; min-height: 0; min-width: 0; }
+[data-ccpp-host] { display: flex; flex-direction: column; flex: 1 1 0%; min-height: 0; min-width: 0; height: 100%; max-height: 100%; }
 [data-ccpp-nav-head] { display: flex !important; align-items: baseline; gap: 6px; }
 [data-ccpp-nav-version] { opacity: .7; font-size: .92em; font-variant-numeric: tabular-nums; }
 `;

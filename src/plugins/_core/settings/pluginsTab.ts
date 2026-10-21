@@ -202,7 +202,6 @@ export function renderPluginsTab(container: HTMLElement) {
         });
         tabBar.appendChild(button);
     }
-    container.appendChild(tabBar);
 
     search.addEventListener("input", () => {
         view.query = search.value;
@@ -217,7 +216,8 @@ export function renderPluginsTab(container: HTMLElement) {
         view.filter = filter.value as typeof view.filter;
         renderList();
     });
-    container.appendChild(h("div", { class: "bar" }, h("label", { class: "search" }, icon("search", 14), search), filter));
+    // Tabs and search stay at the top while the cards scroll under them.
+    container.appendChild(h("div", { class: "sticky-top" }, tabBar, h("div", { class: "bar" }, h("label", { class: "search" }, icon("search", 14), search), filter)));
 
     const pending = pendingRestart();
     if (pending.length) {

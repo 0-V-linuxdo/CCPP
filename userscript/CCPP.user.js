@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.70
+// @version      20261013.0.3.71
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -2071,6 +2071,7 @@ select.input { padding-right: 6px; }
 .page-head h2 { margin: 0; flex: 1; font-size: var(--cds-font-size-heading, 18px); font-weight: 600; }
 .page-body { flex: 1; min-height: 0; overflow-y: auto; padding: 4px var(--cds-pad-xl, 24px) 24px; scrollbar-gutter: stable; }
 
+.sticky-top { position: sticky; top: -4px; z-index: 2; margin: -4px calc(-1 * var(--cds-pad-xl, 24px)) 0; padding: 4px var(--cds-pad-xl, 24px) 0; background: var(--bg); }
 .bar { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; }
 .search { position: relative; flex: 1; min-width: 0; }
 .search svg { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--fg3); pointer-events: none; }
@@ -2272,7 +2273,7 @@ select.input { padding-right: 6px; }
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.70";
+  var version = "0.3.71";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -2323,7 +2324,7 @@ select.input { padding-right: 6px; }
 [data-ccpp-panel] > :not(:first-child):not([data-ccpp-host]) { display: none !important; }
 [data-ccpp-active] li:not([data-ccpp-nav]) > button[aria-current] { background: transparent !important; font-weight: inherit !important; color: var(--cds-text-secondary, inherit) !important; }
 [data-ccpp-active] li:not([data-ccpp-nav]) > button[aria-current]:hover { background: var(--cds-fill-ghost-hover, transparent) !important; color: var(--cds-text-primary, inherit) !important; }
-[data-ccpp-host] { display: flex; flex-direction: column; flex: 1 1 0%; min-height: 0; min-width: 0; }
+[data-ccpp-host] { display: flex; flex-direction: column; flex: 1 1 0%; min-height: 0; min-width: 0; height: 100%; max-height: 100%; }
 [data-ccpp-nav-head] { display: flex !important; align-items: baseline; gap: 6px; }
 [data-ccpp-nav-version] { opacity: .7; font-size: .92em; font-variant-numeric: tabular-nums; }
 `;
@@ -2801,7 +2802,6 @@ select.input { padding-right: 6px; }
       });
       tabBar.appendChild(button);
     }
-    container.appendChild(tabBar);
     search.addEventListener("input", () => {
       view.query = search.value;
       renderList();
@@ -2811,7 +2811,7 @@ select.input { padding-right: 6px; }
       view.filter = filter.value;
       renderList();
     });
-    container.appendChild(h("div", { class: "bar" }, h("label", { class: "search" }, icon("search", 14), search), filter));
+    container.appendChild(h("div", { class: "sticky-top" }, tabBar, h("div", { class: "bar" }, h("label", { class: "search" }, icon("search", 14), search), filter)));
     const pending = pendingRestart();
     if (pending.length) {
       const reload = h("button", { type: "button", class: "btn primary", text: t(L3.reload) });
@@ -6574,7 +6574,7 @@ ${RUNNING_PILL} {
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.70",
+      version: "0.3.71",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -6591,7 +6591,7 @@ ${RUNNING_PILL} {
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.70";
+    win[FLAG] = "0.3.71";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -6608,7 +6608,7 @@ ${RUNNING_PILL} {
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.70"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.71"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();

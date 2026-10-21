@@ -1,6 +1,6 @@
 {
   "name": "ccpp",
-  "version": "0.3.70",
+  "version": "0.3.71",
   "private": true,
   "description": "CC++ — a clean-room, everything-is-a-plugin userscript for claude.ai.",
   "type": "module",
