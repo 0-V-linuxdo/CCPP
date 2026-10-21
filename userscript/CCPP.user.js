@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.67
+// @version      20261013.0.3.68
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -2249,7 +2249,7 @@ select.input { padding-right: 6px; }
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.67";
+  var version = "0.3.68";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -4759,13 +4759,33 @@ ${x.css}`)].join(`
         const key = el?.isConnected ? keyOf(el) : null;
         return key ? [key] : el?.isConnected ? [] : pageKeys().slice(0, 1);
       };
+      let pending = 0;
+      const jumpWhenLoaded = async (side, star) => {
+        const mine = ++pending;
+        const pane = () => getScrollers().find((el) => !!el.closest(SIDE_PANE) === side) ?? null;
+        const go = (scroller) => void jumpTo(star.index, { scroller, entry: star.key.replace(/:(user|assistant)$/, "") });
+        const ready = pane();
+        if (ready && getRows(ready).length)
+          return go(ready);
+        let count = 0;
+        let steady = 0;
+        for (let waited = 0;waited < 15000 && mine === pending; waited += 150) {
+          await new Promise((r) => setTimeout(r, 150));
+          const scroller = pane();
+          const rows = scroller ? getRows(scroller).length : 0;
+          steady = rows && rows === count ? steady + 150 : 0;
+          count = rows;
+          if (steady >= 450 && mine === pending)
+            return go(scroller);
+        }
+      };
+      scope.defer(() => void pending++);
       const renderList = (panel, close) => {
         const stars = keysFor(listFrom).flatMap((k) => starsFor(k.key).map((star) => ({ star, side: k.key.includes(":") })));
         panel.appendChild(h("div", { class: "top" }, icon("star", 16), h("b", { text: t(L11.list) })));
         for (const { star, side } of stars) {
-          const scroller = getScrollers().find((el) => !!el.closest(SIDE_PANE) === side) ?? null;
           const row = h("button", { type: "button", class: "item" }, h("span", { class: "star", text: "★" }), h("span", { class: "grow" }, h("div", { class: "clip2", text: star.text || "…" }), h("div", { class: "sub", text: `${star.role === "user" ? t(L11.you) : "Claude"} · #${star.index + 1} · ${agoText(star.at)}` })));
-          row.addEventListener("click", () => (close(), void jumpTo(star.index, { scroller, entry: star.key.replace(/:(user|assistant)$/, "") })));
+          row.addEventListener("click", () => (close(), void jumpWhenLoaded(side, star)));
           panel.appendChild(row);
         }
         if (!stars.length)
@@ -6518,7 +6538,7 @@ ${RUNNING_PILL} {
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.67",
+      version: "0.3.68",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -6535,7 +6555,7 @@ ${RUNNING_PILL} {
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.67";
+    win[FLAG] = "0.3.68";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -6552,7 +6572,7 @@ ${RUNNING_PILL} {
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.67"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.68"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();

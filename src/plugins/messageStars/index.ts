@@ -18,7 +18,7 @@ import { SEL, watch } from "@api/dom";
 import { onRoute } from "@api/router";
 import { addSlotItem, refreshSlotItem, slotButton } from "@api/slots";
 import { addStyle } from "@api/styles";
-import { getScrollers, jumpTo, setMarks } from "@api/transcript";
+import { getRows, getScrollers, jumpTo, setMarks } from "@api/transcript";
 
 import { book, chatKeyFor, reindex, type Star, starsFor, toggleStar } from "./store";
 
@@ -246,18 +246,41 @@ export default definePlugin({
             const key = el?.isConnected ? keyOf(el) : null;
             return key ? [key] : el?.isConnected ? [] : pageKeys().slice(0, 1);
         };
+        /**
+         * A pane that is still loading has no rows yet (or not even its scroller), and claude.ai scrolls it to the
+         * bottom once they arrive. Wait for its rows to settle, then jump.
+         */
+        let pending = 0;
+        const jumpWhenLoaded = async (side: boolean, star: Star) => {
+            const mine = ++pending;
+            const pane = () => getScrollers().find(el => !!el.closest(SIDE_PANE) === side) ?? null;
+            const go = (scroller: HTMLElement | null) => void jumpTo(star.index, { scroller, entry: star.key.replace(/:(user|assistant)$/, "") });
+            const ready = pane();
+            if (ready && getRows(ready).length) return go(ready);
+            let count = 0;
+            let steady = 0;
+            for (let waited = 0; waited < 15_000 && mine === pending; waited += 150) {
+                await new Promise(r => setTimeout(r, 150));
+                const scroller = pane();
+                const rows = scroller ? getRows(scroller).length : 0;
+                steady = rows && rows === count ? steady + 150 : 0;
+                count = rows;
+                if (steady >= 450 && mine === pending) return go(scroller);
+            }
+        };
+        scope.defer(() => void pending++);
+
         const renderList = (panel: HTMLElement, close: () => void) => {
             const stars = keysFor(listFrom).flatMap(k => starsFor(k.key).map(star => ({ star, side: k.key.includes(":") })));
             panel.appendChild(h("div", { class: "top" }, icon("star", 16), h("b", { text: t(L.list) })));
             for (const { star, side } of stars) {
-                const scroller = getScrollers().find(el => !!el.closest(SIDE_PANE) === side) ?? null;
                 const row = h(
                     "button",
                     { type: "button", class: "item" },
                     h("span", { class: "star", text: "★" }),
                     h("span", { class: "grow" }, h("div", { class: "clip2", text: star.text || "…" }), h("div", { class: "sub", text: `${star.role === "user" ? t(L.you) : "Claude"} · #${star.index + 1} · ${agoText(star.at)}` })),
                 );
-                row.addEventListener("click", () => (close(), void jumpTo(star.index, { scroller, entry: star.key.replace(/:(user|assistant)$/, "") })));
+                row.addEventListener("click", () => (close(), void jumpWhenLoaded(side, star)));
                 panel.appendChild(row);
             }
             if (!stars.length) panel.appendChild(h("div", { class: "msg", text: t(L.none) }));
