@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.69
+// @version      20261013.0.3.70
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -2272,7 +2272,7 @@ select.input { padding-right: 6px; }
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.69";
+  var version = "0.3.70";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -4792,14 +4792,27 @@ ${x.css}`)].join(`
           return go(ready);
         let count = 0;
         let steady = 0;
-        for (let waited = 0;waited < 15000 && mine === pending; waited += 150) {
-          await new Promise((r) => setTimeout(r, 150));
-          const scroller = pane();
-          const rows = scroller ? getRows(scroller).length : 0;
-          steady = rows && rows === count ? steady + 150 : 0;
-          count = rows;
-          if (steady >= 450 && mine === pending)
-            return go(scroller);
+        let gaveUp = false;
+        const giveUp = (e) => {
+          if (!(e.target instanceof Element && e.target.closest("#ccpp-stars-list")))
+            gaveUp = true;
+        };
+        const events = ["wheel", "touchstart", "pointerdown", "keydown"];
+        for (const type of events)
+          document.addEventListener(type, giveUp, { passive: true, capture: true });
+        try {
+          for (let waited = 0;waited < 45000 && mine === pending && !gaveUp; waited += 150) {
+            await new Promise((r) => setTimeout(r, 150));
+            const scroller = pane();
+            const rows = scroller ? getRows(scroller).length : 0;
+            steady = rows && rows === count ? steady + 150 : 0;
+            count = rows;
+            if (steady >= 450 && mine === pending && !gaveUp)
+              return go(scroller);
+          }
+        } finally {
+          for (const type of events)
+            document.removeEventListener(type, giveUp, { capture: true });
         }
       };
       scope.defer(() => void pending++);
@@ -6561,7 +6574,7 @@ ${RUNNING_PILL} {
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.69",
+      version: "0.3.70",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -6578,7 +6591,7 @@ ${RUNNING_PILL} {
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.69";
+    win[FLAG] = "0.3.70";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -6595,7 +6608,7 @@ ${RUNNING_PILL} {
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.69"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.70"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();

@@ -257,15 +257,26 @@ export default definePlugin({
             const go = (scroller: HTMLElement | null) => void jumpTo(star.index, { scroller, entry: star.key.replace(/:(user|assistant)$/, "") });
             const ready = pane();
             if (ready && getRows(ready).length) return go(ready);
+            // Threads can take 20s or more to load. Wait that long, unless the reader scrolls, clicks or types first.
             let count = 0;
             let steady = 0;
-            for (let waited = 0; waited < 15_000 && mine === pending; waited += 150) {
-                await new Promise(r => setTimeout(r, 150));
-                const scroller = pane();
-                const rows = scroller ? getRows(scroller).length : 0;
-                steady = rows && rows === count ? steady + 150 : 0;
-                count = rows;
-                if (steady >= 450 && mine === pending) return go(scroller);
+            let gaveUp = false;
+            const giveUp = (e: Event) => {
+                if (!(e.target instanceof Element && e.target.closest("#ccpp-stars-list"))) gaveUp = true;
+            };
+            const events = ["wheel", "touchstart", "pointerdown", "keydown"] as const;
+            for (const type of events) document.addEventListener(type, giveUp, { passive: true, capture: true });
+            try {
+                for (let waited = 0; waited < 45_000 && mine === pending && !gaveUp; waited += 150) {
+                    await new Promise(r => setTimeout(r, 150));
+                    const scroller = pane();
+                    const rows = scroller ? getRows(scroller).length : 0;
+                    steady = rows && rows === count ? steady + 150 : 0;
+                    count = rows;
+                    if (steady >= 450 && mine === pending && !gaveUp) return go(scroller);
+                }
+            } finally {
+                for (const type of events) document.removeEventListener(type, giveUp, { capture: true });
             }
         };
         scope.defer(() => void pending++);
