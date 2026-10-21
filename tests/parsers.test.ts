@@ -81,9 +81,11 @@ describe("feature helpers", () => {
         expect([level(10, 70, 90), level(75, 70, 90), level(95, 70, 90)]).toEqual(["ok", "warn", "bad"]);
     });
 
-    test("input history dedupes newest first", () => {
-        expect(remember(["b", "a"], " a ", 3)).toEqual(["a", "b"]);
+    test("input history keeps every send newest first, except a repeat of the last one (void++)", () => {
+        expect(remember(["b", "a"], "a ", 3)).toEqual(["a", "b", "a"]);
+        expect(remember(["a", "b"], "a", 3)).toEqual(["a", "b"]);
         expect(remember(["c", "b", "a"], "d", 3)).toEqual(["d", "c", "b"]);
+        expect(remember(["x"], "  ", 3)).toEqual(["x"]);
     });
 
     test("presets", () => {

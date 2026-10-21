@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.71
+// @version      20261013.0.3.72
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -1191,17 +1191,6 @@
     selection?.removeAllRanges();
     selection?.addRange(range);
   }
-  function caretToEnd(editor = getEditor()) {
-    if (!editor)
-      return;
-    editor.focus();
-    const range = document.createRange();
-    range.selectNodeContents(editor);
-    range.collapse(false);
-    const selection = getSelection();
-    selection?.removeAllRanges();
-    selection?.addRange(range);
-  }
   function insertText(text, editor = getEditor()) {
     if (!editor)
       return false;
@@ -2273,7 +2262,7 @@ select.input { padding-right: 6px; }
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.71";
+  var version = "0.3.72";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -5024,120 +5013,345 @@ ${x.css}`)].join(`
   });
 
   // src/plugins/inputHistory/index.ts
-  var settings8 = definePluginSettings({
-    max: { type: "number", label: { zh: "最多保存几条", en: "Prompts to keep" }, default: 100, min: 10, max: 1000, step: 10 },
-    button: { type: "boolean", label: { zh: "在输入框旁显示历史按钮", en: "History button next to the model picker" }, default: false },
-    clear: { type: "action", label: { zh: "清空历史", en: "Clear history" }, button: { zh: "清空", en: "Clear" }, confirm: { zh: "清空全部输入历史？", en: "Clear all prompt history?" }, run: () => history2.set([]) }
-  });
+  var MAX_DEFAULT = 100;
+  var CAPTURE_DEDUPE_MS = 2000;
+  var APPLY_QUIET_MS = 300;
   var L13 = {
-    title: { zh: "输入历史", en: "Prompt history" },
-    empty: { zh: "还没有历史。发送过的提问会出现在这里。", en: "No history yet. Prompts you send show up here." },
-    hint: { zh: "在空输入框里按 ↑ / ↓ 翻阅，Esc 恢复草稿", en: "↑ / ↓ in the input to browse, Esc restores your draft" }
+    title: { zh: "输入历史", en: "Input history" },
+    sub: { zh: "保存在这台设备上。", en: "Stored on this device." },
+    open: { zh: "浏览输入历史", en: "Browse input history" },
+    openBtn: { zh: "打开", en: "Open" },
+    empty: { zh: "还没有保存的提问。", en: "No stored prompts." },
+    noMatch: { zh: "没有匹配的提问。", en: "No matches." },
+    search: { zh: "搜索提问", en: "Search prompts" },
+    stored: { zh: "已保存 {n} 条提问", en: "{n} stored prompts" },
+    matches: { zh: "{n} 条匹配", en: "{n} matches" },
+    clear: { zh: "清空历史", en: "Clear history" },
+    clearBody: { zh: "删除这里保存的全部提问？无法撤销。", en: "Delete all stored prompts? This cannot be undone." },
+    clearOk: { zh: "清空", en: "Clear" },
+    use: { zh: "使用", en: "Use" },
+    copy: { zh: "复制", en: "Copy" },
+    remove: { zh: "删除", en: "Delete" },
+    exit: { zh: "退出历史", en: "Exit history" },
+    showAll: { zh: "查看输入历史（{n}）", en: "Show input history ({n})" }
   };
   var history2 = persisted("input-history", [], (v) => Array.isArray(v) && v.every((x) => typeof x === "string"));
+  var settings8 = definePluginSettings({
+    max: { type: "number", label: { zh: "最多保存几条", en: "Maximum stored prompts" }, default: MAX_DEFAULT, min: 10, max: 500, step: 10 },
+    browse: { type: "action", label: L13.open, button: L13.openBtn, run: () => openHistory(false) },
+    button: { type: "boolean", label: { zh: "在输入框旁显示历史按钮", en: "History button next to the model picker" }, default: false }
+  });
   function remember(list, text, max) {
-    const clean = text.trim();
-    if (!clean)
-      return list;
-    return [clean, ...list.filter((item) => item !== clean)].slice(0, max);
+    const clean = text.replace(/​/g, "").replace(/\r\n?/g, `
+`).replace(/\s+$/, "");
+    if (!clean.trim() || list[0] === clean)
+      return list.slice(0, max);
+    return [clean, ...list].slice(0, max);
   }
   function caretAtEdge(editor, edge) {
     const selection = getSelection();
     if (!selection?.rangeCount || !selection.isCollapsed)
       return false;
     const range = selection.getRangeAt(0);
+    if (!editor.contains(range.startContainer))
+      return false;
     const caret = range.getClientRects()[0] ?? range.startContainer.getBoundingClientRect?.();
     const box = editor.getBoundingClientRect();
-    if (!caret)
+    if (!caret || !caret.height && !caret.width)
       return true;
     const lineHeight = parseFloat(getComputedStyle(editor).lineHeight) || 20;
     return edge === "start" ? caret.top - box.top < lineHeight * 1.2 : box.bottom - caret.bottom < lineHeight * 1.2;
+  }
+  function placeCaret(editor, atStart) {
+    editor.focus();
+    const range = document.createRange();
+    range.selectNodeContents(editor);
+    range.collapse(atStart);
+    const selection = getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+  }
+  var HUD_CSS = `
+.ccpp-ih-hud { position: fixed; z-index: 2147483646; display: flex; align-items: center; gap: 2px; padding: 4px 8px; border: 1px solid var(--cds-border-subtle, rgba(127,127,127,.25)); border-radius: 8px; background: var(--cds-surface-raised, var(--cds-bg-primary, #262624)); color: var(--cds-text-secondary, #a3a3a3); font-size: 12px; font-variant-numeric: tabular-nums; line-height: 1.2; pointer-events: none; opacity: 0; transform: translate(-50%, -100%); transition: opacity .12s ease; }
+.ccpp-ih-hud.on { opacity: 1; }
+.ccpp-ih-hud.on button { pointer-events: auto; cursor: pointer; }
+.ccpp-ih-hud button { margin: 0; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; line-height: inherit; }
+.ccpp-ih-hud .x { width: 14px; font-size: 14px; line-height: 1; }
+.ccpp-ih-hud button:hover { color: var(--cds-text-primary, #fff); }
+`;
+  var LIST_CSS2 = `
+.ih-meta { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
+.ih-count { flex: 1; min-width: 0; color: var(--fg3); font-size: var(--fs-sm); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ih-list { display: flex; flex-direction: column; gap: 2px; }
+.ih-item { display: flex; align-items: flex-start; gap: 8px; padding: 6px 4px 6px 8px; border-radius: var(--radius); }
+.ih-item:hover, .ih-item.on { background: var(--bg2); }
+.ih-item.live { box-shadow: inset 0 0 0 1px var(--field-ring); }
+.ih-index { flex: none; min-width: 1.75rem; padding-top: 3px; color: var(--fg3); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; text-align: right; }
+.ih-main { flex: 1; min-width: 0; padding-top: 2px; cursor: pointer; white-space: pre-wrap; word-break: break-word; }
+.ih-main.clamp { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.ih-actions { flex: none; display: flex; gap: 0; }
+.ih-empty { margin: 12px 0; color: var(--fg3); }
+`;
+  var cursor = -1;
+  var draft = "";
+  var applying = 0;
+  var hudEditor = null;
+  var historyOpen = false;
+  var hudEl = null;
+  function resetBrowse() {
+    cursor = -1;
+    draft = "";
+    hideHud();
+  }
+  function fill3(editor, text, atStart) {
+    applying = Date.now();
+    setText(text, editor);
+    const place = () => editor.isConnected && placeCaret(editor, atStart);
+    requestAnimationFrame(place);
+    setTimeout(place, 90);
+  }
+  function hud() {
+    if (hudEl?.isConnected)
+      return hudEl;
+    const count = h("button", { type: "button", class: "count" });
+    count.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      openHistory(true);
+    });
+    const close = h("button", { type: "button", class: "x", "aria-label": t(L13.exit), text: "×" });
+    close.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      cancelBrowse(hudEditor?.isConnected ? hudEditor : getEditor());
+    });
+    hudEl = h("div", { class: "ccpp-ih-hud", role: "group", "aria-live": "polite", "aria-label": t(L13.title) }, count, close);
+    document.body.appendChild(hudEl);
+    return hudEl;
+  }
+  function hideHud() {
+    hudEl?.classList.remove("on");
+  }
+  function showHud(editor) {
+    const list = history2.get();
+    if (historyOpen || cursor < 0 || cursor >= list.length)
+      return;
+    hudEditor = editor;
+    const el = hud();
+    const label = `${list.length - cursor} / ${list.length}`;
+    const count = el.querySelector(".count");
+    count.textContent = label;
+    count.setAttribute("aria-label", t(L13.showAll).replace("{n}", label));
+    const bar = editor.closest(SEL.composer) ?? editor;
+    requestAnimationFrame(() => {
+      if (historyOpen || !bar.isConnected || cursor < 0)
+        return;
+      const r = bar.getBoundingClientRect();
+      el.style.left = `${r.left + r.width / 2}px`;
+      el.style.top = `${r.top - 8}px`;
+      el.classList.add("on");
+    });
+  }
+  function cancelBrowse(editor) {
+    const saved = draft;
+    resetBrowse();
+    if (editor?.isConnected)
+      fill3(editor, saved, false);
+  }
+  function cycle(older, editor) {
+    const list = history2.get();
+    if (cursor < 0)
+      draft = getText(editor);
+    cursor += older ? 1 : -1;
+    if (cursor < 0) {
+      resetBrowse();
+      fill3(editor, draft, false);
+      return;
+    }
+    fill3(editor, list[cursor], older);
+    showHud(editor);
+  }
+  function openHistory(picker) {
+    historyOpen = true;
+    hideHud();
+    let query = "";
+    let open = null;
+    const body = h("div");
+    const search = h("input", { class: "input", type: "search", placeholder: t(L13.search), "aria-label": t(L13.search) });
+    search.addEventListener("input", () => {
+      query = search.value;
+      draw();
+    });
+    const draw = () => {
+      clear(body);
+      body.appendChild(h("style", { text: LIST_CSS2 }));
+      const list = history2.get();
+      const total = list.length;
+      const needle = query.trim().toLowerCase();
+      const rows = list.map((text, i) => ({ text, i, n: total - i })).filter((row) => !needle || row.text.toLowerCase().includes(needle));
+      if (total)
+        body.appendChild(search);
+      const wipe = h("button", { type: "button", class: "btn", text: t(L13.clear), disabled: !total });
+      wipe.addEventListener("click", async () => {
+        if (!await confirmDialog({ title: t(L13.clear), body: t(L13.clearBody), ok: L13.clearOk, danger: true }))
+          return;
+        history2.set([]);
+        resetBrowse();
+        query = "";
+        search.value = "";
+        open = null;
+        draw();
+      });
+      body.appendChild(h("div", { class: "ih-meta" }, h("span", { class: "ih-count", text: (needle ? t(L13.matches) : t(L13.stored)).replace("{n}", String(needle ? rows.length : total)) }), wipe));
+      if (!total)
+        return void body.appendChild(h("p", { class: "ih-empty", text: t(L13.empty) }));
+      if (!rows.length)
+        return void body.appendChild(h("p", { class: "ih-empty", text: t(L13.noMatch) }));
+      const listEl = h("div", { class: "ih-list" });
+      for (const row of rows) {
+        const expanded = open === row.i;
+        const main = h("div", { class: `ih-main${expanded ? "" : " clamp"}`, role: "button", tabindex: "0", text: row.text });
+        const toggle = () => {
+          open = expanded ? null : row.i;
+          draw();
+        };
+        main.addEventListener("click", toggle);
+        main.addEventListener("keydown", (event) => {
+          if (event.key !== "Enter" && event.key !== " ")
+            return;
+          event.preventDefault();
+          toggle();
+        });
+        const action = (name, label, run) => {
+          const button = h("button", { type: "button", class: "icon-btn", "aria-label": t(label), ...tipAttrs(t(label)) }, icon(name, 16));
+          button.addEventListener("click", run);
+          return button;
+        };
+        const actions = h("div", { class: "ih-actions" });
+        if (picker)
+          actions.appendChild(action("pencil", L13.use, () => {
+            close();
+            adopt(row.text, row.i);
+          }));
+        actions.appendChild(action("copy", L13.copy, () => void navigator.clipboard?.writeText(row.text).catch(() => {})));
+        actions.appendChild(action("trash", L13.remove, () => {
+          if (open === row.i)
+            open = null;
+          const next = history2.get().filter((_, i) => i !== row.i);
+          history2.set(next);
+          if (cursor >= next.length || cursor === row.i)
+            resetBrowse();
+          else if (cursor > row.i)
+            cursor--;
+          draw();
+        }));
+        const live = picker && row.i === cursor;
+        listEl.appendChild(h("div", { class: `ih-item${expanded ? " on" : ""}${live ? " live" : ""}` }, h("span", { class: "ih-index", text: String(row.n) }), main, actions));
+      }
+      body.appendChild(listEl);
+      listEl.querySelector(".live")?.scrollIntoView({ block: "nearest" });
+    };
+    const done = () => {
+      historyOpen = false;
+      if (cursor >= 0 && hudEditor?.isConnected)
+        showHud(hudEditor);
+    };
+    const close = openModal(dialogFrame({ title: t(L13.title), icon: "history", body: [h("p", { class: "d-desc", text: t(L13.sub) }), body], onClose: () => close() }), { onClose: done });
+    draw();
+  }
+  function adopt(text, index) {
+    const editor = hudEditor?.isConnected ? hudEditor : getEditor();
+    if (!editor)
+      return;
+    if (cursor < 0)
+      draft = getText(editor);
+    cursor = index;
+    fill3(editor, text, false);
+    historyOpen = false;
+    showHud(editor);
   }
   var inputHistory_default = definePlugin({
     name: "InputHistory",
     title: { zh: "输入历史", en: "Input history" },
     description: {
-      zh: "像终端一样用 ↑ / ↓ 调出之前发送过的提问，Esc 恢复草稿；可选在输入框旁显示历史列表。",
-      en: "Recall earlier prompts with ↑ / ↓ like a shell; Esc restores the draft. Optional history list next to the model picker."
+      zh: "像终端一样用 ↑ / ↓ 调出之前发送过的提问，Esc 恢复草稿；浏览时输入框上方显示计数，点计数打开历史列表。",
+      en: "Recall previous prompts with ↑ and ↓, like a shell. Esc restores your draft. Click the counter to browse history."
     },
     category: "composer",
     icon: "history",
     enabledByDefault: true,
-    dependencies: ["ComposerApi", "SlotsApi"],
+    dependencies: ["ComposerApi", "SlotsApi", "StylesApi", "Settings"],
     settings: settings8,
     start(scope) {
-      let cursor = -1;
-      let draft = "";
-      let applied = "";
+      addStyle(scope, HUD_CSS, "input-history");
+      resetBrowse();
+      let lastSent = { text: "", at: 0 };
       onSubmit(scope, (text) => {
+        const now = Date.now();
+        if (text === lastSent.text && now - lastSent.at < CAPTURE_DEDUPE_MS)
+          return;
+        lastSent = { text, at: now };
         history2.set(remember(history2.get(), text, settings8.store.max));
-        cursor = -1;
-        draft = "";
+        resetBrowse();
       });
-      const show = (text) => {
-        applied = text;
-        setText(text);
-        requestAnimationFrame(() => caretToEnd());
-      };
+      scope.listen(document, "input", (event) => {
+        if (cursor < 0 || Date.now() - applying < APPLY_QUIET_MS)
+          return;
+        if (!event.target?.closest?.(SEL.editor))
+          return;
+        resetBrowse();
+      }, { capture: true });
       scope.listen(document, "keydown", (event) => {
-        if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || event.isComposing)
+        if (event.isComposing || event.keyCode === 229)
+          return;
+        if (event.key === "Escape" && !event.altKey && !event.shiftKey && !event.ctrlKey && !event.metaKey) {
+          if (cursor < 0 || historyOpen)
+            return;
+          const editor = event.target?.closest?.(SEL.editor);
+          cancelBrowse(editor ?? (hudEditor?.isConnected ? hudEditor : getEditor()));
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          return;
+        }
+        if (event.key !== "ArrowUp" && event.key !== "ArrowDown")
+          return;
+        if (event.ctrlKey || event.metaKey || event.shiftKey || historyOpen)
           return;
         const editor = event.target?.closest?.(SEL.editor);
         if (!editor)
           return;
-        const list = history2.get();
-        const current = getText(editor);
-        if (cursor >= 0 && current !== applied)
-          cursor = -1;
-        if (event.key === "ArrowUp") {
-          if (!list.length || current && cursor < 0 || !caretAtEdge(editor, "start"))
-            return;
-          if (cursor >= list.length - 1)
-            return;
-          if (cursor < 0)
-            draft = current;
-          cursor++;
-        } else if (event.key === "ArrowDown") {
-          if (cursor < 0 || !caretAtEdge(editor, "end"))
-            return;
-          cursor--;
-          if (cursor < 0) {
-            event.preventDefault();
-            event.stopPropagation();
-            show(draft);
-            return;
-          }
-        } else if (event.key === "Escape") {
-          if (cursor < 0)
-            return;
-          cursor = -1;
-          event.preventDefault();
-          event.stopPropagation();
-          show(draft);
+        const older = event.key === "ArrowUp";
+        if (!event.altKey && !caretAtEdge(editor, older ? "start" : "end"))
           return;
-        } else
+        const list = history2.get();
+        if (older ? cursor >= list.length - 1 : cursor < 0)
           return;
         event.preventDefault();
-        event.stopPropagation();
-        show(list[cursor]);
+        event.stopImmediatePropagation();
+        cycle(older, editor);
       }, { capture: true });
+      onRoute(scope, () => resetBrowse(), false);
+      scope.defer(() => {
+        resetBrowse();
+        hudEl?.remove();
+        hudEl = null;
+        hudEditor = null;
+      });
       if (settings8.store.button) {
         const popover = createPopover(scope, "input-history", "", 360);
         addSlotItem(scope, "composer", "input-history", () => slotButton(t(L13.title), (event) => popover.open(event.currentTarget, (panel, close) => {
           panel.appendChild(h("div", { class: "top" }, icon("history", 16), h("b", { text: t(L13.title) })));
-          panel.appendChild(h("div", { class: "msg", text: t(L13.hint), style: { fontSize: "12px" } }));
           const list = history2.get();
           if (!list.length)
             panel.appendChild(h("div", { class: "msg", text: t(L13.empty) }));
-          for (const text of list.slice(0, 50)) {
+          list.slice(0, 50).forEach((text, i) => {
             const item = h("button", { type: "button", class: "item" }, h("span", { class: "grow clip2", text: snippet(text, 200) }));
             item.addEventListener("click", () => {
               close();
-              getEditor()?.focus();
-              show(text);
+              adopt(text, i);
             });
             panel.appendChild(item);
-          }
+          });
         }), icon("history", 16)), 20);
       }
     }
@@ -6574,7 +6788,7 @@ ${RUNNING_PILL} {
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.71",
+      version: "0.3.72",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -6591,7 +6805,7 @@ ${RUNNING_PILL} {
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.71";
+    win[FLAG] = "0.3.72";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -6608,7 +6822,7 @@ ${RUNNING_PILL} {
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.71"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.72"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();
