@@ -117,6 +117,7 @@ const jumpTokens = new WeakMap<HTMLElement, number>();
 
 async function stepTo(scroller: HTMLElement, index: number, options: { behavior?: ScrollBehavior; flash?: boolean; entry?: string | null }, stopped: () => boolean): Promise<HTMLElement | null> {
     let nearby = false;
+    let waited = 0;
     for (let attempt = 0; attempt < 24; attempt++) {
         if (stopped()) return null;
         const rows = getRows(scroller);
@@ -136,6 +137,8 @@ async function stepTo(scroller: HTMLElement, index: number, options: { behavior?
             return row.el;
         }
         if (!rows.length) {
+            // A pane that is still loading its messages (Claude Code threads can take several seconds): wait for them.
+            if (waited++ < 120) attempt--;
             await sleep(120);
             continue;
         }

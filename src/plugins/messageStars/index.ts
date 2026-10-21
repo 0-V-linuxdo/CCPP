@@ -194,7 +194,16 @@ export default definePlugin({
             if (event.detail === 0) press(star);
         }, { capture: true });
 
+        // Rows mount and move as you scroll; repaint shortly after so stored positions follow them.
+        let paintTimer = 0;
+        const schedulePaint = () => {
+            clearTimeout(paintTimer);
+            paintTimer = window.setTimeout(paint, 300);
+        };
+        scope.defer(() => clearTimeout(paintTimer));
+
         watch(scope, SEL.transcriptRow, row => {
+            schedulePaint();
             let btn: HTMLElement | null = null;
             const attach = () => {
                 // No star where it couldn't be saved (a row whose message isn't recognised yet).
@@ -260,6 +269,7 @@ export default definePlugin({
                 const label = h("span");
                 const btn = slotButton(t(L.list), event => {
                     listFrom = event.currentTarget as HTMLElement;
+                    paint();
                     list.open(listFrom as HTMLElement, renderList);
                 }, icon("star", 16), label);
                 // The count is this header's own conversation, known once the button is in place.

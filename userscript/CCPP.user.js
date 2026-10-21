@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.66
+// @version      20261013.0.3.67
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -1913,6 +1913,7 @@ select.input { padding-right: 6px; }
   var jumpTokens = new WeakMap;
   async function stepTo(scroller, index, options, stopped) {
     let nearby = false;
+    let waited = 0;
     for (let attempt = 0;attempt < 24; attempt++) {
       if (stopped())
         return null;
@@ -1932,6 +1933,8 @@ select.input { padding-right: 6px; }
         return row.el;
       }
       if (!rows.length) {
+        if (waited++ < 120)
+          attempt--;
         await sleep(120);
         continue;
       }
@@ -2246,7 +2249,7 @@ select.input { padding-right: 6px; }
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.66";
+  var version = "0.3.67";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -4713,7 +4716,14 @@ ${x.css}`)].join(`
         if (event.detail === 0)
           press(star);
       }, { capture: true });
+      let paintTimer = 0;
+      const schedulePaint = () => {
+        clearTimeout(paintTimer);
+        paintTimer = window.setTimeout(paint, 300);
+      };
+      scope.defer(() => clearTimeout(paintTimer));
       watch(scope, SEL.transcriptRow, (row) => {
+        schedulePaint();
         let btn = null;
         const attach = () => {
           if (!rowInfo(row))
@@ -4767,6 +4777,7 @@ ${x.css}`)].join(`
           const label = h("span");
           const btn = slotButton(t(L11.list), (event) => {
             listFrom = event.currentTarget;
+            paint();
             list.open(listFrom, renderList);
           }, icon("star", 16), label);
           const sync = () => {
@@ -6507,7 +6518,7 @@ ${RUNNING_PILL} {
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.66",
+      version: "0.3.67",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -6524,7 +6535,7 @@ ${RUNNING_PILL} {
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.66";
+    win[FLAG] = "0.3.67";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -6541,7 +6552,7 @@ ${RUNNING_PILL} {
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.66"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.67"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();
