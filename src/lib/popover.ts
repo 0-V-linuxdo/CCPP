@@ -55,8 +55,23 @@ export function createPopover(scope: Scope, id: string, css = "", width = 300): 
     const draw = () => {
         if (!panel || !anchor || !renderFn) return;
         // The button may have been re-rendered (e.g. fresh data): follow its replacement, else close.
-        if (!anchor.isConnected) anchor = successor(anchor);
-        if (!anchor) return close();
+        if (!anchor.isConnected) {
+            const next = successor(anchor);
+            // Mid re-render (old button gone, new one not in yet): look again next frame before giving up.
+            if (!next) {
+                const old = anchor;
+                requestAnimationFrame(() => {
+                    if (anchor !== old) return;
+                    const late = successor(old);
+                    if (late) {
+                        anchor = late;
+                        draw();
+                    } else close();
+                });
+                return;
+            }
+            anchor = next;
+        }
         clear(panel);
         renderFn(panel, close);
         anchorPosition(anchor, panel);

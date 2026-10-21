@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.77
+// @version      20261013.0.3.78
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -2295,7 +2295,7 @@ select.input { padding-right: 6px; }
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.77";
+  var version = "0.3.78";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -3791,10 +3791,24 @@ ${x.css}`)].join(`
     const draw = () => {
       if (!panel || !anchor || !renderFn)
         return;
-      if (!anchor.isConnected)
-        anchor = successor(anchor);
-      if (!anchor)
-        return close();
+      if (!anchor.isConnected) {
+        const next = successor(anchor);
+        if (!next) {
+          const old = anchor;
+          requestAnimationFrame(() => {
+            if (anchor !== old)
+              return;
+            const late = successor(old);
+            if (late) {
+              anchor = late;
+              draw();
+            } else
+              close();
+          });
+          return;
+        }
+        anchor = next;
+      }
       clear(panel);
       renderFn(panel, close);
       anchorPosition(anchor, panel);
@@ -6864,7 +6878,7 @@ ${RUNNING_PILL} {
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.77",
+      version: "0.3.78",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -6881,7 +6895,7 @@ ${RUNNING_PILL} {
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.77";
+    win[FLAG] = "0.3.78";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -6898,7 +6912,7 @@ ${RUNNING_PILL} {
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.77"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.78"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();
