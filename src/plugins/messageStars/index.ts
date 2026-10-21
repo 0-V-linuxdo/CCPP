@@ -20,7 +20,7 @@ import { addSlotItem, refreshSlotItem, slotButton } from "@api/slots";
 import { addStyle } from "@api/styles";
 import { getScrollers, jumpTo, setMarks } from "@api/transcript";
 
-import { book, chatKeyFor, type Star, starsFor, toggleStar } from "./store";
+import { book, chatKeyFor, reindex, type Star, starsFor, toggleStar } from "./store";
 
 const settings = definePluginSettings({
     headerButton: { type: "boolean", label: { zh: "在对话标题栏显示收藏列表按钮", en: "Starred list button in the chat header" }, default: true },
@@ -123,12 +123,17 @@ export default definePlugin({
 
         const paint = () => {
             const starred = new Map<string, Set<string>>();
+            const seen = new Map<string, Map<string, number>>();
             for (const row of document.querySelectorAll<HTMLElement>(SEL.transcriptRow)) {
                 const info = rowInfo(row);
                 const chat = keyOf(row)?.key ?? "";
                 if (!starred.has(chat)) starred.set(chat, new Set(starsFor(chat || null).map(s => s.key)));
                 const on = !!info && starred.get(chat)!.has(info.key);
                 row.classList.toggle("ccpp-starred-row", on);
+                if (on && chat) {
+                    if (!seen.has(chat)) seen.set(chat, new Map());
+                    seen.get(chat)!.set(info!.key, info!.index);
+                }
                 for (const btn of row.querySelectorAll<HTMLElement>(".ccpp-star-btn")) {
                     btn.classList.toggle("on", on);
                     btn.setAttribute("data-ccpp-tip", t(on ? L.unstar : L.star));
@@ -137,6 +142,10 @@ export default definePlugin({
                 }
             }
             setMarks("stars", starsFor(keyOf(null)?.key ?? null).map(s => s.index));
+            // Rows added above a starred message shift its index; store where it is now (this repaints once more).
+            let next = book.get();
+            for (const [chat, keys] of seen) next = reindex(next, chat, keys) ?? next;
+            if (next !== book.get()) book.set(next);
         };
 
         /** In a native toolbar the button borrows a neighbour's classes and icon size, so it reads as one of them. */
@@ -239,7 +248,7 @@ export default definePlugin({
                     h("span", { class: "star", text: "★" }),
                     h("span", { class: "grow" }, h("div", { class: "clip2", text: star.text || "…" }), h("div", { class: "sub", text: `${star.role === "user" ? t(L.you) : "Claude"} · #${star.index + 1} · ${agoText(star.at)}` })),
                 );
-                row.addEventListener("click", () => (close(), void jumpTo(star.index, { scroller })));
+                row.addEventListener("click", () => (close(), void jumpTo(star.index, { scroller, entry: star.key.replace(/:(user|assistant)$/, "") })));
                 panel.appendChild(row);
             }
             if (!stars.length) panel.appendChild(h("div", { class: "msg", text: t(L.none) }));

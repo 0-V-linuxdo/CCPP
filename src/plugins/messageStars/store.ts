@@ -47,6 +47,14 @@ export function toggleStar(chatId: string, title: string, star: Star, current = 
     return { next, starred: !exists };
 }
 
+/** Starred messages move when rows are added above them; keep each one's index current. Returns null if nothing changed. */
+export function reindex(current: StarBook, chatId: string, seen: Map<string, number>): StarBook | null {
+    const chat = current[chatId];
+    if (!chat?.stars.some(s => seen.has(s.key) && seen.get(s.key) !== s.index)) return null;
+    const stars = chat.stars.map(s => (seen.has(s.key) ? { ...s, index: seen.get(s.key)! } : s)).sort((a, b) => a.index - b.index);
+    return { ...current, [chatId]: { ...chat, stars } };
+}
+
 export interface ChatKey {
     key: string;
     url: string;

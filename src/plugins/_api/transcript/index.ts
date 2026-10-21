@@ -116,12 +116,20 @@ export async function jumpTo(index: number, options: { behavior?: ScrollBehavior
 const jumpTokens = new WeakMap<HTMLElement, number>();
 
 async function stepTo(scroller: HTMLElement, index: number, options: { behavior?: ScrollBehavior; flash?: boolean; entry?: string | null }, stopped: () => boolean): Promise<HTMLElement | null> {
+    let nearby = false;
     for (let attempt = 0; attempt < 24; attempt++) {
         if (stopped()) return null;
         const rows = getRows(scroller);
         // A message id is exact; the index may only be an estimate (project pages), so it just gets us close.
-        const byEntry = options.entry ? rows.find(r => r.entry === options.entry) : undefined;
+        const byEntry = options.entry ? rows.find(r => r.entry === options.entry || r.turnKey === options.entry) : undefined;
         const row = byEntry ?? rows.find(r => r.index === index);
+        // Near the estimated index but the exact message isn't rendered yet: look again once the rows around it are.
+        if (row && !byEntry && options.entry && !nearby) {
+            nearby = true;
+            scrollRowIntoView(scroller, row.el, "auto");
+            await sleep(120);
+            continue;
+        }
         if (row) {
             scrollRowIntoView(scroller, row.el, options.behavior ?? "smooth");
             if (options.flash !== false) flash(row.el);

@@ -14,7 +14,7 @@ import { pickPhrase, fillPhrase } from "../src/plugins/customGreeting";
 import { toMarkdown } from "../src/plugins/exportChat";
 import { splitLinks } from "../src/plugins/betterLinks";
 import { isTelemetry } from "../src/plugins/noTelemetry";
-import { chatKeyFor, toggleStar } from "../src/plugins/messageStars/store";
+import { chatKeyFor, reindex, toggleStar } from "../src/plugins/messageStars/store";
 import { starSpot } from "../src/plugins/messageStars/index";
 import { computeState, faviconFor, parseMark } from "../src/plugins/chatFavicon";
 import { alignWithApi, outlineFromApi } from "../src/plugins/chatNavigator";
@@ -408,5 +408,14 @@ describe("starSpot outside message bars", () => {
     test("the composer is never a host", () => {
         expect(starSpot(html(`<div role="toolbar"><button></button><div contenteditable="true"></div></div>`))).toBeNull();
         expect(starSpot(html(`<div><div role="toolbar"><button id="copy"></button></div><form><button></button></form></div>`))!.after.id).toBe("copy");
+    });
+});
+
+describe("reindex", () => {
+    test("moves stars to where their rows are now", () => {
+        const star = (key: string, index: number) => ({ key, index, role: "assistant" as const, text: "", at: 1 });
+        const book = { c: { title: "t", stars: [star("a", 92), star("b", 95)] } };
+        expect(reindex(book, "c", new Map([["b", 95]]))).toBeNull();
+        expect(reindex(book, "c", new Map([["a", 94]]))!.c.stars.map(s => [s.key, s.index])).toEqual([["a", 94], ["b", 95]]);
     });
 });

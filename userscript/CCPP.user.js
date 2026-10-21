@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.65
+// @version      20261013.0.3.66
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -1912,12 +1912,19 @@ select.input { padding-right: 6px; }
   }
   var jumpTokens = new WeakMap;
   async function stepTo(scroller, index, options, stopped) {
+    let nearby = false;
     for (let attempt = 0;attempt < 24; attempt++) {
       if (stopped())
         return null;
       const rows = getRows(scroller);
-      const byEntry = options.entry ? rows.find((r) => r.entry === options.entry) : undefined;
+      const byEntry = options.entry ? rows.find((r) => r.entry === options.entry || r.turnKey === options.entry) : undefined;
       const row = byEntry ?? rows.find((r) => r.index === index);
+      if (row && !byEntry && options.entry && !nearby) {
+        nearby = true;
+        scrollRowIntoView(scroller, row.el, "auto");
+        await sleep(120);
+        continue;
+      }
       if (row) {
         scrollRowIntoView(scroller, row.el, options.behavior ?? "smooth");
         if (options.flash !== false)
@@ -2239,7 +2246,7 @@ select.input { padding-right: 6px; }
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.65";
+  var version = "0.3.66";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -4520,6 +4527,13 @@ ${x.css}`)].join(`
       delete next[chatId];
     return { next, starred: !exists };
   }
+  function reindex(current, chatId, seen) {
+    const chat = current[chatId];
+    if (!chat?.stars.some((s) => seen.has(s.key) && seen.get(s.key) !== s.index))
+      return null;
+    const stars = chat.stars.map((s) => seen.has(s.key) ? { ...s, index: seen.get(s.key) } : s).sort((a, b) => a.index - b.index);
+    return { ...current, [chatId]: { ...chat, stars } };
+  }
   function chatKeyFor(path, search, inSidePane) {
     const chat = /^\/chat\/([0-9a-f-]{36})/i.exec(path);
     if (chat)
@@ -4629,6 +4643,7 @@ ${x.css}`)].join(`
       };
       const paint = () => {
         const starred = new Map;
+        const seen = new Map;
         for (const row of document.querySelectorAll(SEL.transcriptRow)) {
           const info = rowInfo(row);
           const chat = keyOf(row)?.key ?? "";
@@ -4636,6 +4651,11 @@ ${x.css}`)].join(`
             starred.set(chat, new Set(starsFor(chat || null).map((s) => s.key)));
           const on = !!info && starred.get(chat).has(info.key);
           row.classList.toggle("ccpp-starred-row", on);
+          if (on && chat) {
+            if (!seen.has(chat))
+              seen.set(chat, new Map);
+            seen.get(chat).set(info.key, info.index);
+          }
           for (const btn of row.querySelectorAll(".ccpp-star-btn")) {
             btn.classList.toggle("on", on);
             btn.setAttribute("data-ccpp-tip", t(on ? L11.unstar : L11.star));
@@ -4644,6 +4664,11 @@ ${x.css}`)].join(`
           }
         }
         setMarks("stars", starsFor(keyOf(null)?.key ?? null).map((s) => s.index));
+        let next = book.get();
+        for (const [chat, keys] of seen)
+          next = reindex(next, chat, keys) ?? next;
+        if (next !== book.get())
+          book.set(next);
       };
       const makeButton = (row, extra = "", native) => {
         const info = rowInfo(row);
@@ -4730,7 +4755,7 @@ ${x.css}`)].join(`
         for (const { star, side } of stars) {
           const scroller = getScrollers().find((el) => !!el.closest(SIDE_PANE) === side) ?? null;
           const row = h("button", { type: "button", class: "item" }, h("span", { class: "star", text: "★" }), h("span", { class: "grow" }, h("div", { class: "clip2", text: star.text || "…" }), h("div", { class: "sub", text: `${star.role === "user" ? t(L11.you) : "Claude"} · #${star.index + 1} · ${agoText(star.at)}` })));
-          row.addEventListener("click", () => (close(), void jumpTo(star.index, { scroller })));
+          row.addEventListener("click", () => (close(), void jumpTo(star.index, { scroller, entry: star.key.replace(/:(user|assistant)$/, "") })));
           panel.appendChild(row);
         }
         if (!stars.length)
@@ -6482,7 +6507,7 @@ ${RUNNING_PILL} {
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.65",
+      version: "0.3.66",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -6499,7 +6524,7 @@ ${RUNNING_PILL} {
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.65";
+    win[FLAG] = "0.3.66";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -6516,7 +6541,7 @@ ${RUNNING_PILL} {
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.65"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.66"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();
