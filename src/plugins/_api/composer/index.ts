@@ -102,7 +102,10 @@ export function onSubmit(scope: Scope, fn: (text: string) => void) {
         (event: MouseEvent) => {
             const button = (event.target as HTMLElement | null)?.closest?.(SEL.sendButton) as HTMLButtonElement | null;
             if (!button || button.disabled) return;
-            const text = getText();
+            // The editor next to this button: a project page can show two composers (the chat and a thread).
+            let near: HTMLElement | null = button;
+            while (near && !near.querySelector(SEL.editor)) near = near.parentElement;
+            const text = getText(near?.querySelector<HTMLElement>(SEL.editor) ?? getEditor());
             if (text) fn(text);
         },
         { capture: true },

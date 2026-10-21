@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.72
+// @version      20261013.0.3.73
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -1235,7 +1235,10 @@
       const button = event.target?.closest?.(SEL.sendButton);
       if (!button || button.disabled)
         return;
-      const text = getText();
+      let near = button;
+      while (near && !near.querySelector(SEL.editor))
+        near = near.parentElement;
+      const text = getText(near?.querySelector(SEL.editor) ?? getEditor());
       if (text)
         fn(text);
     }, { capture: true });
@@ -2262,7 +2265,7 @@ select.input { padding-right: 6px; }
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.72";
+  var version = "0.3.73";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -5142,7 +5145,7 @@ ${x.css}`)].join(`
     const count = el.querySelector(".count");
     count.textContent = label;
     count.setAttribute("aria-label", t(L13.showAll).replace("{n}", label));
-    const bar = editor.closest(SEL.composer) ?? editor;
+    const bar = composerBox(editor);
     requestAnimationFrame(() => {
       if (historyOpen || !bar.isConnected || cursor < 0)
         return;
@@ -5151,6 +5154,21 @@ ${x.css}`)].join(`
       el.style.top = `${r.top - 8}px`;
       el.classList.add("on");
     });
+  }
+  function composerBox(editor) {
+    const marked = editor.closest(SEL.composer);
+    if (marked)
+      return marked;
+    let box = editor;
+    for (let el = editor.parentElement;el && el !== document.body; el = el.parentElement) {
+      if (el.querySelectorAll(SEL.editor).length > 1)
+        break;
+      if (el.querySelector(SEL.sendButton)) {
+        box = el;
+        break;
+      }
+    }
+    return box;
   }
   function cancelBrowse(editor) {
     const saved = draft;
@@ -6788,7 +6806,7 @@ ${RUNNING_PILL} {
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.72",
+      version: "0.3.73",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -6805,7 +6823,7 @@ ${RUNNING_PILL} {
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.72";
+    win[FLAG] = "0.3.73";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -6822,7 +6840,7 @@ ${RUNNING_PILL} {
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.72"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.73"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();

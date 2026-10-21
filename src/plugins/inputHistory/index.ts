@@ -166,7 +166,7 @@ function showHud(editor: HTMLElement) {
     const count = el.querySelector<HTMLElement>(".count")!;
     count.textContent = label;
     count.setAttribute("aria-label", t(L.showAll).replace("{n}", label));
-    const bar = editor.closest<HTMLElement>(SEL.composer) ?? editor;
+    const bar = composerBox(editor);
     requestAnimationFrame(() => {
         if (historyOpen || !bar.isConnected || cursor < 0) return;
         const r = bar.getBoundingClientRect();
@@ -174,6 +174,22 @@ function showHud(editor: HTMLElement) {
         el.style.top = `${r.top - 8}px`;
         el.classList.add("on");
     });
+}
+
+/** The composer card around an editor; Claude Code composers (project chat, thread pane) have no ChatComposer mark. */
+function composerBox(editor: HTMLElement): HTMLElement {
+    const marked = editor.closest<HTMLElement>(SEL.composer);
+    if (marked) return marked;
+    // Climb to the outermost box that still holds this composer's send button and no other editor.
+    let box: HTMLElement = editor;
+    for (let el = editor.parentElement; el && el !== document.body; el = el.parentElement) {
+        if (el.querySelectorAll(SEL.editor).length > 1) break;
+        if (el.querySelector(SEL.sendButton)) {
+            box = el;
+            break;
+        }
+    }
+    return box;
 }
 
 function cancelBrowse(editor: HTMLElement | null) {
