@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.68
+// @version      20261013.0.3.69
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -1930,7 +1930,10 @@ select.input { padding-right: 6px; }
         scrollRowIntoView(scroller, row.el, options.behavior ?? "smooth");
         if (options.flash !== false)
           flash(row.el);
-        return row.el;
+        return settle(scroller, row.el, () => {
+          const now = getRows(scroller);
+          return (options.entry ? now.find((r) => r.entry === options.entry || r.turnKey === options.entry) : undefined) ?? now.find((r) => r.index === row.index);
+        }, stopped);
       }
       if (!rows.length) {
         if (waited++ < 120)
@@ -1948,6 +1951,26 @@ select.input { padding-right: 6px; }
       await sleep(90);
     }
     return null;
+  }
+  async function settle(scroller, el, find, stopped) {
+    let target = el;
+    let stable = 0;
+    for (let i = 0;i < 20 && stable < 3; i++) {
+      await sleep(100);
+      if (stopped())
+        break;
+      target = find()?.el ?? target;
+      if (!target.isConnected)
+        break;
+      const delta = target.getBoundingClientRect().top - scroller.getBoundingClientRect().top - JUMP_OFFSET;
+      if (Math.abs(delta) <= 4)
+        stable++;
+      else {
+        stable = 0;
+        scroller.scrollBy({ top: delta, behavior: "auto" });
+      }
+    }
+    return target;
   }
   function flash(el) {
     const target = el.querySelector(`${SEL.userMessage}, ${SEL.assistantMessage}, [role="article"]`) ?? el;
@@ -2249,7 +2272,7 @@ select.input { padding-right: 6px; }
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.68";
+  var version = "0.3.69";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -6538,7 +6561,7 @@ ${RUNNING_PILL} {
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.68",
+      version: "0.3.69",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -6555,7 +6578,7 @@ ${RUNNING_PILL} {
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.68";
+    win[FLAG] = "0.3.69";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -6572,7 +6595,7 @@ ${RUNNING_PILL} {
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.68"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.69"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();

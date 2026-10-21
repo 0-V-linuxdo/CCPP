@@ -134,7 +134,10 @@ async function stepTo(scroller: HTMLElement, index: number, options: { behavior?
         if (row) {
             scrollRowIntoView(scroller, row.el, options.behavior ?? "smooth");
             if (options.flash !== false) flash(row.el);
-            return row.el;
+            return settle(scroller, row.el, () => {
+                const now = getRows(scroller);
+                return (options.entry ? now.find(r => r.entry === options.entry || r.turnKey === options.entry) : undefined) ?? now.find(r => r.index === row.index);
+            }, stopped);
         }
         if (!rows.length) {
             // A pane that is still loading its messages (Claude Code threads can take several seconds): wait for them.
@@ -152,6 +155,28 @@ async function stepTo(scroller: HTMLElement, index: number, options: { behavior?
         await sleep(90);
     }
     return null;
+}
+
+/**
+ * Rows above the target only get their real heights once rendered, which pushes the target away after the first
+ * scroll. Keep it at the jump offset until it stops moving (about 2s at most), unless the reader takes over.
+ */
+async function settle(scroller: HTMLElement, el: HTMLElement, find: () => RowInfo | undefined, stopped: () => boolean): Promise<HTMLElement> {
+    let target = el;
+    let stable = 0;
+    for (let i = 0; i < 20 && stable < 3; i++) {
+        await sleep(100);
+        if (stopped()) break;
+        target = find()?.el ?? target;
+        if (!target.isConnected) break;
+        const delta = target.getBoundingClientRect().top - scroller.getBoundingClientRect().top - JUMP_OFFSET;
+        if (Math.abs(delta) <= 4) stable++;
+        else {
+            stable = 0;
+            scroller.scrollBy({ top: delta, behavior: "auto" });
+        }
+    }
+    return target;
 }
 
 export function flash(el: HTMLElement) {
