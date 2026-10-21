@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.64
+// @version      20261013.0.3.65
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -2239,7 +2239,7 @@ select.input { padding-right: 6px; }
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.64";
+  var version = "0.3.65";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -4539,15 +4539,12 @@ ${x.css}`)].join(`
 
   // src/plugins/messageStars/index.ts
   var settings6 = definePluginSettings({
-    headerButton: { type: "boolean", label: { zh: "在对话标题栏显示收藏列表按钮", en: "Starred list button in the chat header" }, default: true },
-    otherChats: { type: "boolean", label: { zh: "列表里同时显示其它对话的收藏", en: "Also list stars from other chats" }, default: true }
+    headerButton: { type: "boolean", label: { zh: "在对话标题栏显示收藏列表按钮", en: "Starred list button in the chat header" }, default: true }
   });
   var L11 = {
     star: { zh: "收藏这条消息", en: "Star this message" },
     unstar: { zh: "取消收藏", en: "Unstar" },
     list: { zh: "收藏的消息", en: "Starred messages" },
-    here: { zh: "本对话", en: "This chat" },
-    others: { zh: "其它对话", en: "Other chats" },
     none: { zh: "还没有收藏。悬停消息，点操作栏里的 ☆。", en: "Nothing starred yet. Hover a message and click ☆ in its action bar." },
     you: { zh: "你", en: "You" }
   };
@@ -4722,45 +4719,40 @@ ${x.css}`)].join(`
         };
       });
       const list = createPopover(scope, "stars-list", LIST_CSS, 340);
+      let listFrom = null;
+      const keysFor = (el) => {
+        const key = el?.isConnected ? keyOf(el) : null;
+        return key ? [key] : el?.isConnected ? [] : pageKeys().slice(0, 1);
+      };
       const renderList = (panel, close) => {
-        const keys = pageKeys();
-        const here = keys.flatMap((k) => starsFor(k.key).map((star) => ({ star, side: k.key.includes(":") })));
+        const stars = keysFor(listFrom).flatMap((k) => starsFor(k.key).map((star) => ({ star, side: k.key.includes(":") })));
         panel.appendChild(h("div", { class: "top" }, icon("star", 16), h("b", { text: t(L11.list) })));
-        const item = (star, onClick, sub) => {
-          const row = h("button", { type: "button", class: "item" }, h("span", { class: "star", text: "★" }), h("span", { class: "grow" }, h("div", { class: "clip2", text: star.text || "…" }), h("div", { class: "sub", text: sub })));
-          row.addEventListener("click", onClick);
-          return row;
-        };
-        if (here.length) {
-          panel.appendChild(h("div", { class: "sec", text: t(L11.here) }));
-          for (const { star, side } of here) {
-            const scroller = getScrollers().find((el) => !!el.closest(SIDE_PANE) === side) ?? null;
-            panel.appendChild(item(star, () => (close(), void jumpTo(star.index, { scroller })), `${star.role === "user" ? t(L11.you) : "Claude"} · #${star.index + 1} · ${agoText(star.at)}`));
-          }
+        for (const { star, side } of stars) {
+          const scroller = getScrollers().find((el) => !!el.closest(SIDE_PANE) === side) ?? null;
+          const row = h("button", { type: "button", class: "item" }, h("span", { class: "star", text: "★" }), h("span", { class: "grow" }, h("div", { class: "clip2", text: star.text || "…" }), h("div", { class: "sub", text: `${star.role === "user" ? t(L11.you) : "Claude"} · #${star.index + 1} · ${agoText(star.at)}` })));
+          row.addEventListener("click", () => (close(), void jumpTo(star.index, { scroller })));
+          panel.appendChild(row);
         }
-        const others = settings6.store.otherChats ? Object.entries(book.get()).filter(([id]) => !keys.some((k) => k.key === id)) : [];
-        if (others.length) {
-          panel.appendChild(h("div", { class: "sec", text: t(L11.others) }));
-          for (const [id, chat] of others.slice(0, 30)) {
-            for (const star of chat.stars.slice(0, 5)) {
-              panel.appendChild(item(star, () => {
-                close();
-                location.assign(chat.url ?? `/chat/${id}`);
-              }, `${chat.title || id.slice(0, 8)} · #${star.index + 1}`));
-            }
-          }
-        }
-        if (!here.length && !others.length)
+        if (!stars.length)
           panel.appendChild(h("div", { class: "msg", text: t(L11.none) }));
       };
       const headerItems = [];
       if (settings6.store.headerButton) {
         const render = () => {
-          const count = pageKeys().reduce((n, k) => n + starsFor(k.key).length, 0);
-          const btn = slotButton(t(L11.list), (event) => list.open(event.currentTarget, renderList), icon("star", 16), count ? String(count) : "");
-          if (count)
-            btn.classList.add("on");
-          btn.hidden = location.pathname.startsWith("/code") && !pageKeys().length;
+          const label = h("span");
+          const btn = slotButton(t(L11.list), (event) => {
+            listFrom = event.currentTarget;
+            list.open(listFrom, renderList);
+          }, icon("star", 16), label);
+          const sync = () => {
+            const keys = keysFor(btn.isConnected ? btn : null);
+            const count = keys.reduce((n, k) => n + starsFor(k.key).length, 0);
+            label.textContent = count ? String(count) : "";
+            btn.classList.toggle("on", count > 0);
+            btn.hidden = location.pathname.startsWith("/code") && !keys.length;
+          };
+          sync();
+          queueMicrotask(sync);
           return btn;
         };
         headerItems.push(addSlotItem(scope, "header", "stars", render, 10), addSlotItem(scope, "codeHeader", "stars", render, 10));
@@ -6490,7 +6482,7 @@ ${RUNNING_PILL} {
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.64",
+      version: "0.3.65",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -6507,7 +6499,7 @@ ${RUNNING_PILL} {
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.64";
+    win[FLAG] = "0.3.65";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -6524,7 +6516,7 @@ ${RUNNING_PILL} {
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.64"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.65"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();

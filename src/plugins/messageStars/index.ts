@@ -24,15 +24,12 @@ import { book, chatKeyFor, type Star, starsFor, toggleStar } from "./store";
 
 const settings = definePluginSettings({
     headerButton: { type: "boolean", label: { zh: "在对话标题栏显示收藏列表按钮", en: "Starred list button in the chat header" }, default: true },
-    otherChats: { type: "boolean", label: { zh: "列表里同时显示其它对话的收藏", en: "Also list stars from other chats" }, default: true },
 });
 
 const L = {
     star: { zh: "收藏这条消息", en: "Star this message" },
     unstar: { zh: "取消收藏", en: "Unstar" },
     list: { zh: "收藏的消息", en: "Starred messages" },
-    here: { zh: "本对话", en: "This chat" },
-    others: { zh: "其它对话", en: "Other chats" },
     none: { zh: "还没有收藏。悬停消息，点操作栏里的 ☆。", en: "Nothing starred yet. Hover a message and click ☆ in its action bar." },
     you: { zh: "你", en: "You" },
 };
@@ -225,50 +222,48 @@ export default definePlugin({
         /* ---------- list ---------- */
 
         const list = createPopover(scope, "stars-list", LIST_CSS, 340);
+        // Each header's list holds only the conversation shown under it: the main chat, or the thread in the side pane.
+        let listFrom: Element | null = null;
+        const keysFor = (el: Element | null) => {
+            const key = el?.isConnected ? keyOf(el) : null;
+            return key ? [key] : el?.isConnected ? [] : pageKeys().slice(0, 1);
+        };
         const renderList = (panel: HTMLElement, close: () => void) => {
-            const keys = pageKeys();
-            const here = keys.flatMap(k => starsFor(k.key).map(star => ({ star, side: k.key.includes(":") })));
+            const stars = keysFor(listFrom).flatMap(k => starsFor(k.key).map(star => ({ star, side: k.key.includes(":") })));
             panel.appendChild(h("div", { class: "top" }, icon("star", 16), h("b", { text: t(L.list) })));
-            const item = (star: Star, onClick: () => void, sub: string) => {
+            for (const { star, side } of stars) {
+                const scroller = getScrollers().find(el => !!el.closest(SIDE_PANE) === side) ?? null;
                 const row = h(
                     "button",
                     { type: "button", class: "item" },
                     h("span", { class: "star", text: "★" }),
-                    h("span", { class: "grow" }, h("div", { class: "clip2", text: star.text || "…" }), h("div", { class: "sub", text: sub })),
+                    h("span", { class: "grow" }, h("div", { class: "clip2", text: star.text || "…" }), h("div", { class: "sub", text: `${star.role === "user" ? t(L.you) : "Claude"} · #${star.index + 1} · ${agoText(star.at)}` })),
                 );
-                row.addEventListener("click", onClick);
-                return row;
-            };
-            if (here.length) {
-                panel.appendChild(h("div", { class: "sec", text: t(L.here) }));
-                for (const { star, side } of here) {
-                    const scroller = getScrollers().find(el => !!el.closest(SIDE_PANE) === side) ?? null;
-                    panel.appendChild(item(star, () => (close(), void jumpTo(star.index, { scroller })), `${star.role === "user" ? t(L.you) : "Claude"} · #${star.index + 1} · ${agoText(star.at)}`));
-                }
+                row.addEventListener("click", () => (close(), void jumpTo(star.index, { scroller })));
+                panel.appendChild(row);
             }
-            const others = settings.store.otherChats ? Object.entries(book.get()).filter(([id]) => !keys.some(k => k.key === id)) : [];
-            if (others.length) {
-                panel.appendChild(h("div", { class: "sec", text: t(L.others) }));
-                for (const [id, chat] of others.slice(0, 30)) {
-                    for (const star of chat.stars.slice(0, 5)) {
-                        panel.appendChild(item(star, () => {
-                            close();
-                            location.assign(chat.url ?? `/chat/${id}`);
-                        }, `${chat.title || id.slice(0, 8)} · #${star.index + 1}`));
-                    }
-                }
-            }
-            if (!here.length && !others.length) panel.appendChild(h("div", { class: "msg", text: t(L.none) }));
+            if (!stars.length) panel.appendChild(h("div", { class: "msg", text: t(L.none) }));
         };
 
         const headerItems: ReturnType<typeof addSlotItem>[] = [];
         if (settings.store.headerButton) {
             const render = () => {
-                const count = pageKeys().reduce((n, k) => n + starsFor(k.key).length, 0);
-                const btn = slotButton(t(L.list), event => list.open(event.currentTarget as HTMLElement, renderList), icon("star", 16), count ? String(count) : "");
-                if (count) btn.classList.add("on");
-                // Not on Claude Code pages without a conversation (the /code landing page).
-                btn.hidden = location.pathname.startsWith("/code") && !pageKeys().length;
+                const label = h("span");
+                const btn = slotButton(t(L.list), event => {
+                    listFrom = event.currentTarget as HTMLElement;
+                    list.open(listFrom as HTMLElement, renderList);
+                }, icon("star", 16), label);
+                // The count is this header's own conversation, known once the button is in place.
+                const sync = () => {
+                    const keys = keysFor(btn.isConnected ? btn : null);
+                    const count = keys.reduce((n, k) => n + starsFor(k.key).length, 0);
+                    label.textContent = count ? String(count) : "";
+                    btn.classList.toggle("on", count > 0);
+                    // Not where there is no conversation (the /code landing page).
+                    btn.hidden = location.pathname.startsWith("/code") && !keys.length;
+                };
+                sync();
+                queueMicrotask(sync);
                 return btn;
             };
             // Chats have a header action row; Claude Code pages get the button in each pane's header instead.
