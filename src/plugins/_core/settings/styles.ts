@@ -4,6 +4,8 @@
  * SPDX-License-Identifier: MIT
  */
 
+import { IMAGE_FIELD_CSS } from "./imageField";
+
 /** The CC++ pages (plugins, themes, Quick CSS). Mirrors claude.ai's settings panel and void++'s cards. */
 export const PANEL_CSS = `
 /* A page's toolbar (tabs, search, filters) stays at the top while its list scrolls under it. */
@@ -80,7 +82,7 @@ export const PANEL_CSS = `
 .editor { width: 100%; min-height: 360px; }
 .muted { color: var(--fg3); }
 .hint { color: var(--fg3); font-size: var(--fs-sm); margin: 0 0 10px; }
-`;
+${IMAGE_FIELD_CSS}`;
 
 /** Our own dialogs: plugin settings, confirmations, theme editors, and the standalone shell. */
 export const LAYER_CSS = `

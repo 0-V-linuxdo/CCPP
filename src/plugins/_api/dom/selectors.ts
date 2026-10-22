@@ -17,6 +17,8 @@ export const SEL = {
     userMenuButton: '[data-testid="user-menu-button"]',
     userMenuName: '[data-testid="user-menu-button"] .df-user-menu-trailing',
     avatar: '[data-cds="Avatar"]',
+    /** claude.ai's account menu (the popup of the avatar button), told apart from other menus by its Settings row. */
+    accountMenu: '[role="menu"]:has([data-testid="user-menu-settings"])',
     chatHeader: '[data-testid="chat-header"]',
     headerActions: "#dframe-header-actions-slot",
     shareButton: '[data-testid="wiggle-controls-actions-share"]',

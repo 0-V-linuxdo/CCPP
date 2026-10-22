@@ -55,6 +55,14 @@ export interface ColorOption extends Base {
     /** #rrggbb */
     default: string;
 }
+/** A picture: an http(s) URL or a data:image URL, "" for none. The settings panel can paste, drop, pick and crop it. */
+export interface ImageOption extends Base {
+    type: "image";
+    default: string;
+    placeholder?: Text;
+    /** Edge of the square, in pixels, that picked pictures are cropped and scaled to. */
+    size?: number;
+}
 /** A button; stores nothing. */
 export interface ActionOption extends Base {
     type: "action";
@@ -63,7 +71,7 @@ export interface ActionOption extends Base {
     run(): void;
 }
 
-export type Option = BooleanOption | NumberOption | SelectOption | StringOption | TextOption | ColorOption | ActionOption;
+export type Option = BooleanOption | NumberOption | SelectOption | StringOption | TextOption | ColorOption | ImageOption | ActionOption;
 export type OptionsDef = Record<string, Option>;
 
 export type Values<D extends OptionsDef> = {
@@ -162,6 +170,19 @@ export function coerce(option: Option, value: Value | undefined): Value | undefi
             return typeof value === "string" ? value.slice(0, option.maxLength ?? 2000) : option.default;
         case "text":
             return typeof value === "string" ? value : option.default;
+        case "image":
+            return typeof value === "string" && isImageUrl(value) ? value : option.default;
+    }
+}
+
+/** What an image option accepts: nothing, an http(s) URL, or an inline data:image URL. */
+export function isImageUrl(value: string) {
+    const v = value.trim();
+    if (!v || v.startsWith("data:image/")) return true;
+    try {
+        return /^https?:$/.test(new URL(v).protocol);
+    } catch {
+        return false;
     }
 }
 

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.79
+// @version      20261013.0.3.80
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -284,6 +284,18 @@
         return typeof value === "string" ? value.slice(0, option.maxLength ?? 2000) : option.default;
       case "text":
         return typeof value === "string" ? value : option.default;
+      case "image":
+        return typeof value === "string" && isImageUrl(value) ? value : option.default;
+    }
+  }
+  function isImageUrl(value) {
+    const v = value.trim();
+    if (!v || v.startsWith("data:image/"))
+      return true;
+    try {
+      return /^https?:$/.test(new URL(v).protocol);
+    } catch {
+      return false;
     }
   }
   function definePluginSettings(def) {
@@ -1001,6 +1013,7 @@
     userMenuButton: '[data-testid="user-menu-button"]',
     userMenuName: '[data-testid="user-menu-button"] .df-user-menu-trailing',
     avatar: '[data-cds="Avatar"]',
+    accountMenu: '[role="menu"]:has([data-testid="user-menu-settings"])',
     chatHeader: '[data-testid="chat-header"]',
     headerActions: "#dframe-header-actions-slot",
     shareButton: '[data-testid="wiggle-controls-actions-share"]',
@@ -2082,6 +2095,323 @@ select.input { padding-right: 6px; }
     new MutationObserver(() => mode === "auto" && (lang = detect())).observe(document.documentElement, { attributes: true, attributeFilter: ["lang"] });
   } catch {}
 
+  // src/plugins/_core/settings/imageField.ts
+  var L = {
+    pick: { zh: "选择图片…", en: "Choose picture…" },
+    clear: { zh: "清除", en: "Clear" },
+    reset: { zh: "重置裁切", en: "Reset crop" },
+    placeholder: { zh: "粘贴图片，或输入 https://…", en: "Paste a picture, or https://…" },
+    hint: { zh: "也可以把图片拖到圆圈上，或在这里直接粘贴。拖动圆圈调整位置，滚轮或滑块缩放。", en: "You can also drop a picture on the circle or paste one here. Drag the circle to pan; scroll or use the slider to zoom." },
+    zoom: { zh: "缩放", en: "Zoom" },
+    loading: { zh: "正在读取图片…", en: "Loading the picture…" },
+    remoteFail: { zh: "读取不到这张网络图片，无法裁切；已原样保存链接，但 claude.ai 可能拦截它。建议下载后粘贴或拖进来。", en: "Couldn't load that picture, so it can't be cropped; the link is saved as is, but claude.ai may block it. Download it and paste or drop it instead." },
+    badFile: { zh: "这不是可读取的图片。", en: "That isn't a readable picture." }
+  };
+  var SOURCE_PX = 1024;
+  var ZOOM_MIN = 1;
+  var ZOOM_MAX = 4;
+  var clamp = (n, min, max) => Math.min(max, Math.max(min, n));
+  function cropRect(w, hgt, crop) {
+    const zoom = clamp(crop.zoom, ZOOM_MIN, ZOOM_MAX);
+    const side = Math.min(w, hgt) / zoom;
+    const x = clamp(crop.x * w, side / 2, Math.max(side / 2, w - side / 2));
+    const y = clamp(crop.y * hgt, side / 2, Math.max(side / 2, hgt - side / 2));
+    return { side, x, y, zoom, crop: { x: x / w, y: y / hgt, zoom } };
+  }
+  function loadImage(src) {
+    return new Promise((resolve) => {
+      const img = new Image;
+      img.onload = () => resolve(img.naturalWidth && img.naturalHeight ? img : null);
+      img.onerror = () => resolve(null);
+      img.src = src;
+    });
+  }
+  function canvasUrl(canvas) {
+    const webp = canvas.toDataURL("image/webp", 0.9);
+    return webp.startsWith("data:image/webp") ? webp : canvas.toDataURL("image/png");
+  }
+  function draw(img, w, hgt, from) {
+    const canvas = h("canvas", { width: w, height: hgt });
+    const ctx = canvas.getContext("2d");
+    if (!ctx)
+      return null;
+    ctx.imageSmoothingQuality = "high";
+    if (from)
+      ctx.drawImage(img, from.x - from.side / 2, from.y - from.side / 2, from.side, from.side, 0, 0, w, hgt);
+    else
+      ctx.drawImage(img, 0, 0, w, hgt);
+    try {
+      return canvasUrl(canvas);
+    } catch {
+      return null;
+    }
+  }
+  async function capped(src) {
+    const img = await loadImage(src);
+    if (!img)
+      return null;
+    const scale = Math.min(1, SOURCE_PX / Math.max(img.naturalWidth, img.naturalHeight));
+    return draw(img, Math.max(1, Math.round(img.naturalWidth * scale)), Math.max(1, Math.round(img.naturalHeight * scale)));
+  }
+  async function bake(src, crop, size) {
+    const img = await loadImage(src);
+    if (!img)
+      return null;
+    const r = cropRect(img.naturalWidth, img.naturalHeight, crop);
+    return draw(img, size, size, r);
+  }
+  var blobToDataUrl = (blob) => new Promise((resolve) => {
+    const reader = new FileReader;
+    reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : null);
+    reader.onerror = () => resolve(null);
+    reader.readAsDataURL(blob);
+  });
+  function fetchImage(url) {
+    const fromBlob = (blob) => blob && blob.type.startsWith("image/") ? blobToDataUrl(blob) : Promise.resolve(null);
+    if (typeof GM_xmlhttpRequest === "function") {
+      return new Promise((resolve) => GM_xmlhttpRequest({
+        method: "GET",
+        url,
+        timeout: 15000,
+        responseType: "blob",
+        onload: (r) => void (r.status >= 200 && r.status < 300 ? fromBlob(r.response).then(resolve) : resolve(null)),
+        onerror: () => resolve(null),
+        ontimeout: () => resolve(null)
+      }));
+    }
+    return fetch(url, { credentials: "omit", referrerPolicy: "no-referrer" }).then((r) => r.ok ? r.blob() : null).then(fromBlob).catch(() => null);
+  }
+  function imageFile(data) {
+    if (!data)
+      return null;
+    for (const file of data.files)
+      if (file.type.startsWith("image/"))
+        return file;
+    for (const item of data.items)
+      if (item.kind === "file" && item.type.startsWith("image/"))
+        return item.getAsFile();
+    return null;
+  }
+  function imageField(option, value, set) {
+    const size = option.size ?? 256;
+    let current = value;
+    let source = value.startsWith("data:image/") ? value : "";
+    let natural = null;
+    let crop = { x: 0.5, y: 0.5, zoom: 1 };
+    let generation = 0;
+    let bakeTimer = null;
+    const stageImg = h("img", { alt: "", draggable: "false", referrerpolicy: "no-referrer" });
+    const stage = h("div", { class: "img-stage", title: t(L.hint) }, stageImg);
+    const zoom = h("input", { type: "range", min: ZOOM_MIN, max: ZOOM_MAX, step: 0.05, value: "1", "aria-label": t(L.zoom) });
+    const zoomOut = h("output", { text: "100%" });
+    const resetBtn = h("button", { type: "button", class: "btn", text: t(L.reset) });
+    const url = h("input", { class: "input", placeholder: option.placeholder ? t(option.placeholder) : t(L.placeholder), "aria-label": t(option.label) });
+    const file = h("input", { type: "file", accept: "image/*", style: { display: "none" } });
+    const pick = h("button", { type: "button", class: "btn", text: t(L.pick) });
+    const clearBtn = h("button", { type: "button", class: "btn", text: t(L.clear) });
+    const note = h("div", { class: "row-desc img-note" });
+    const zoomRow = h("div", { class: "img-zoom" }, zoom, zoomOut, resetBtn);
+    const field = h("div", { class: "img-field" }, stage, h("div", { class: "img-side" }, h("div", { class: "img-line" }, url, pick, clearBtn), zoomRow, note), file);
+    const say = (text) => note.textContent = text;
+    const save = (next) => {
+      current = next;
+      set(next);
+    };
+    const paint = () => {
+      const shown = source || current;
+      stage.classList.toggle("empty", !shown);
+      if (!shown)
+        stageImg.removeAttribute("src");
+      else if (stageImg.getAttribute("src") !== shown)
+        stageImg.src = shown;
+      zoomRow.hidden = !source;
+      zoom.value = String(crop.zoom);
+      zoomOut.textContent = `${Math.round(crop.zoom * 100)}%`;
+      if (!url.matches(":focus"))
+        url.value = current.startsWith("data:") ? "" : current;
+      clearBtn.disabled = !current;
+      if (!source || !natural) {
+        Object.assign(stageImg.style, { width: "100%", height: "100%", left: "0", top: "0" });
+        return;
+      }
+      const r = cropRect(natural.w, natural.h, crop);
+      Object.assign(stageImg.style, {
+        width: `${natural.w / r.side * 100}%`,
+        height: `${natural.h / r.side * 100}%`,
+        left: `${(0.5 - r.x / r.side) * 100}%`,
+        top: `${(0.5 - r.y / r.side) * 100}%`
+      });
+    };
+    const commit = (next, immediate = false) => {
+      if (!source || !natural)
+        return;
+      crop = cropRect(natural.w, natural.h, next).crop;
+      paint();
+      if (bakeTimer)
+        clearTimeout(bakeTimer);
+      const src = source;
+      const run = () => {
+        const at = { ...crop };
+        bake(src, at, size).then((out) => {
+          if (out && src === source)
+            save(out);
+        });
+      };
+      if (immediate)
+        run();
+      else
+        bakeTimer = setTimeout(run, 120);
+    };
+    const adopt = async (src, keep = false) => {
+      const gen = ++generation;
+      const img = await loadImage(src);
+      if (gen !== generation)
+        return;
+      if (!img) {
+        say(t(L.badFile));
+        return;
+      }
+      source = src;
+      natural = { w: img.naturalWidth, h: img.naturalHeight };
+      crop = { x: 0.5, y: 0.5, zoom: 1 };
+      say("");
+      if (keep)
+        paint();
+      else
+        commit(crop, true);
+    };
+    const takeBlob = async (blob) => {
+      const gen = ++generation;
+      say(t(L.loading));
+      const raw = await blobToDataUrl(blob);
+      const src = raw && await capped(raw);
+      if (gen !== generation)
+        return;
+      if (!src)
+        return say(t(L.badFile));
+      await adopt(src);
+    };
+    const takeText = async (raw) => {
+      const text = raw.trim();
+      const gen = ++generation;
+      if (!text) {
+        source = "";
+        natural = null;
+        say("");
+        save("");
+        return paint();
+      }
+      if (!isImageUrl(text))
+        return say(t(L.badFile));
+      if (text.startsWith("data:image/")) {
+        const src = await capped(text);
+        if (gen !== generation)
+          return;
+        return src ? adopt(src) : say(t(L.badFile));
+      }
+      say(t(L.loading));
+      const fetched = await fetchImage(text);
+      const src = fetched && await capped(fetched);
+      if (gen !== generation)
+        return;
+      if (src)
+        return adopt(src);
+      source = "";
+      natural = null;
+      save(text);
+      say(t(L.remoteFail));
+      paint();
+    };
+    const onPaste = (event) => {
+      const found = imageFile(event.clipboardData);
+      if (!found)
+        return;
+      event.preventDefault();
+      takeBlob(found);
+    };
+    url.addEventListener("change", () => void takeText(url.value));
+    url.addEventListener("paste", onPaste);
+    field.addEventListener("paste", onPaste);
+    pick.addEventListener("click", () => file.click());
+    file.addEventListener("change", () => {
+      const picked = file.files?.[0];
+      file.value = "";
+      if (picked)
+        takeBlob(picked);
+    });
+    clearBtn.addEventListener("click", () => {
+      url.value = "";
+      takeText("");
+    });
+    resetBtn.addEventListener("click", () => commit({ x: 0.5, y: 0.5, zoom: 1 }, true));
+    zoom.addEventListener("input", () => commit({ ...crop, zoom: Number(zoom.value) }));
+    stage.addEventListener("dragover", (event) => {
+      if (imageFile(event.dataTransfer))
+        event.preventDefault();
+    });
+    stage.addEventListener("drop", (event) => {
+      const found = imageFile(event.dataTransfer);
+      if (!found)
+        return;
+      event.preventDefault();
+      takeBlob(found);
+    });
+    stage.addEventListener("wheel", (event) => {
+      if (!source)
+        return;
+      event.preventDefault();
+      commit({ ...crop, zoom: crop.zoom * (event.deltaY < 0 ? 1.08 : 1 / 1.08) });
+    }, { passive: false });
+    let drag = null;
+    stage.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0 || !source || !natural)
+        return;
+      stage.setPointerCapture(event.pointerId);
+      drag = { px: event.clientX, py: event.clientY, from: { ...crop } };
+    });
+    stage.addEventListener("pointermove", (event) => {
+      if (!drag || !natural || !stage.clientWidth)
+        return;
+      const { side } = cropRect(natural.w, natural.h, drag.from);
+      const perPx = side / stage.clientWidth;
+      crop = cropRect(natural.w, natural.h, {
+        x: drag.from.x - (event.clientX - drag.px) * perPx / natural.w,
+        y: drag.from.y - (event.clientY - drag.py) * perPx / natural.h,
+        zoom: drag.from.zoom
+      }).crop;
+      paint();
+    });
+    const endDrag = () => {
+      if (!drag)
+        return;
+      drag = null;
+      commit(crop, true);
+    };
+    stage.addEventListener("pointerup", endDrag);
+    stage.addEventListener("pointercancel", endDrag);
+    if (source)
+      adopt(source, true);
+    paint();
+    return field;
+  }
+  var IMAGE_FIELD_CSS = `
+.img-field { display: flex; gap: 14px; align-items: flex-start; }
+.img-stage { position: relative; flex: none; width: 96px; height: 96px; border-radius: 50%; overflow: hidden; background: color-mix(in srgb, var(--fg3) 14%, transparent); box-shadow: inset 0 0 0 1px var(--field-ring); cursor: grab; touch-action: none; user-select: none; }
+.img-stage:active { cursor: grabbing; }
+.img-stage.empty { cursor: default; }
+.img-stage img { position: absolute; max-width: none; pointer-events: none; object-fit: cover; }
+.img-stage.empty img { display: none; }
+.img-side { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.img-line { display: flex; gap: 8px; align-items: center; }
+.img-line .input { flex: 1; min-width: 0; }
+.img-line .btn { flex: none; }
+.img-zoom { display: flex; gap: 8px; align-items: center; }
+.img-zoom[hidden] { display: none; }
+.img-zoom input { flex: 1; min-width: 0; accent-color: var(--fg); }
+.img-zoom output { min-width: 44px; text-align: right; font-variant-numeric: tabular-nums; color: var(--fg2); }
+.img-note:empty { display: none; }
+`;
+
   // src/plugins/_core/settings/styles.ts
   var PANEL_CSS = `
 /* A page's toolbar (tabs, search, filters) stays at the top while its list scrolls under it. */
@@ -2158,7 +2488,7 @@ select.input { padding-right: 6px; }
 .editor { width: 100%; min-height: 360px; }
 .muted { color: var(--fg3); }
 .hint { color: var(--fg3); font-size: var(--fs-sm); margin: 0 0 10px; }
-`;
+${IMAGE_FIELD_CSS}`;
   var LAYER_CSS = `
 .backdrop { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: auto; background: color-mix(in srgb, #000 30%, transparent); animation: fade .15s ease-out; }
 .backdrop.clear { background: transparent; }
@@ -2199,7 +2529,7 @@ select.input { padding-right: 6px; }
 
   // src/plugins/_core/settings/layer.ts
   var NATIVE_DIALOG = '[role="dialog"][data-perf-overlay="settings_modal"]';
-  var L = {
+  var L2 = {
     close: { zh: "关闭", en: "Close" },
     ok: { zh: "确定", en: "OK" },
     cancel: { zh: "取消", en: "Cancel" }
@@ -2270,7 +2600,7 @@ select.input { padding-right: 6px; }
       clear(shadow.box);
   }
   function dialogFrame(options) {
-    const close = h("button", { type: "button", class: "icon-btn", "aria-label": t(L.close), ...tipAttrs(t(L.close)) }, icon("x", 16));
+    const close = h("button", { type: "button", class: "icon-btn", "aria-label": t(L2.close), ...tipAttrs(t(L2.close)) }, icon("x", 16));
     close.addEventListener("click", options.onClose);
     return h("div", { class: `dialog${options.size ? ` ${options.size}` : ""}`, role: "dialog", "aria-modal": "true", "aria-label": options.title }, h("div", { class: "d-head" }, options.icon ? h("span", { class: "chip-icon" }, icon(options.icon, 16)) : null, h("h2", { text: options.title }), close), options.top?.length ? h("div", { class: "d-top" }, ...options.top) : null, h("div", { class: "d-body" }, ...options.body), options.foot?.length ? h("div", { class: "d-foot" }, ...options.foot) : null);
   }
@@ -2284,9 +2614,9 @@ select.input { padding-right: 6px; }
         close();
         resolve(value);
       };
-      const ok = h("button", { type: "button", class: `btn ${options.danger ? "danger-solid" : "primary"}`, text: t(options.ok ?? L.ok) });
+      const ok = h("button", { type: "button", class: `btn ${options.danger ? "danger-solid" : "primary"}`, text: t(options.ok ?? L2.ok) });
       ok.addEventListener("click", () => done(true));
-      const cancel = h("button", { type: "button", class: "btn", text: t(options.cancel ?? L.cancel) });
+      const cancel = h("button", { type: "button", class: "btn", text: t(options.cancel ?? L2.cancel) });
       cancel.addEventListener("click", () => done(false));
       const frame = dialogFrame({ title: options.title, size: "small", body: [h("p", { class: "d-desc", text: options.body })], foot: [cancel, ok], onClose: () => done(false) });
       const close = openModal(frame, { onClose: () => done(false) });
@@ -2295,7 +2625,7 @@ select.input { padding-right: 6px; }
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.79";
+  var version = "0.3.80";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -2338,7 +2668,7 @@ select.input { padding-right: 6px; }
   var bootHash = typeof location === "object" ? location.hash : "";
   var hashTab = (hash) => hash.startsWith(HASH) ? hash.slice(HASH.length) : null;
   var PANEL = '[data-perf-region="settings_panel"]';
-  var L2 = {
+  var L3 = {
     group: "CC++",
     close: { zh: "关闭", en: "Close" }
   };
@@ -2416,7 +2746,7 @@ select.input { padding-right: 6px; }
         const list = sortedTabs();
         if (!group || group.dataset.tabs !== list.map((tab) => tab.id).join(",") || group.dataset.lang !== t({ zh: "zh", en: "en" })) {
           group?.remove();
-          const ul = h("ul", { class: c.list, "aria-label": L2.group });
+          const ul = h("ul", { class: c.list, "aria-label": L3.group });
           for (const tab of list) {
             const button = h("button", { type: "button", class: c.off, "data-tab": tab.id }, h("span", { class: c.icon, "aria-hidden": "true", style: { display: "inline-flex", width: "1.25rem", justifyContent: "center" } }, icon(tab.icon, 18)), h("span", { class: c.label, text: t(tab.title) }));
             button.addEventListener("click", (event) => {
@@ -2425,7 +2755,7 @@ select.input { padding-right: 6px; }
             });
             ul.appendChild(h("li", { "data-ccpp-nav": tab.id }, button));
           }
-          group = h("div", { "data-ccpp-nav-group": "", "data-tabs": list.map((tab) => tab.id).join(","), "data-lang": t({ zh: "zh", en: "en" }), style: { display: "contents" } }, h("div", { class: c.header, "data-ccpp-nav-head": "" }, h("span", { text: L2.group }), h("span", { "data-ccpp-nav-version": "", text: `v${version}` })), ul);
+          group = h("div", { "data-ccpp-nav-group": "", "data-tabs": list.map((tab) => tab.id).join(","), "data-lang": t({ zh: "zh", en: "en" }), style: { display: "contents" } }, h("div", { class: c.header, "data-ccpp-nav-head": "" }, h("span", { text: L3.group }), h("span", { "data-ccpp-nav-version": "", text: `v${version}` })), ul);
           scroller.appendChild(group);
         }
         const wantFirst = navPosition() === "above";
@@ -2578,10 +2908,10 @@ select.input { padding-right: 6px; }
   function openStandalone(tabId) {
     standaloneClose?.();
     let current = tabs.has(tabId) ? tabId : sortedTabs()[0]?.id;
-    const nav = h("nav", { class: "shell-nav" }, h("div", { class: "group" }, L2.group, h("span", { class: "ver", text: ` v${version}` })));
+    const nav = h("nav", { class: "shell-nav" }, h("div", { class: "group" }, L3.group, h("span", { class: "ver", text: ` v${version}` })));
     const main = h("div", { class: "shell-main" });
     const pageBox = h("div", { style: { flex: "1", minHeight: "0", display: "flex", flexDirection: "column" } });
-    const closeBtn = h("button", { type: "button", class: "icon-btn", "aria-label": t(L2.close), ...tipAttrs(t(L2.close)) }, icon("x", 16));
+    const closeBtn = h("button", { type: "button", class: "icon-btn", "aria-label": t(L3.close), ...tipAttrs(t(L3.close)) }, icon("x", 16));
     main.append(h("div", { class: "shell-top" }, closeBtn), pageBox);
     const draw = () => {
       for (const old of nav.querySelectorAll("button"))
@@ -2667,6 +2997,8 @@ select.input { padding-right: 6px; }
         area.addEventListener("change", () => set(area.value));
         return row(area, true);
       }
+      case "image":
+        return row(imageField(option, String(value ?? ""), (next) => set(next)), true);
       case "action": {
         const button = h("button", { type: "button", class: "btn", text: t(option.button) });
         button.addEventListener("click", async () => {
@@ -2696,7 +3028,7 @@ select.input { padding-right: 6px; }
     developer: { zh: "开发者", en: "Developer" }
   };
   var CATEGORY_ORDER = Object.keys(CATEGORY_LABELS);
-  var L3 = {
+  var L4 = {
     search: { zh: "搜索 {n} 个插件…", en: "Search {n} plugins…" },
     all: { zh: "全部", en: "All" },
     enabled: { zh: "已启用", en: "Enabled" },
@@ -2758,7 +3090,7 @@ select.input { padding-right: 6px; }
     setEnabled(plugin, on);
     if (!plugin.restartNeeded)
       return;
-    const reload = await confirmDialog({ title: t(L3.reloadTitle), body: fill2(L3.reloadBody, t(plugin.title)), ok: L3.reload, cancel: L3.later });
+    const reload = await confirmDialog({ title: t(L4.reloadTitle), body: fill2(L4.reloadBody, t(plugin.title)), ok: L4.reload, cancel: L4.later });
     if (reload)
       location.reload();
   }
@@ -2772,7 +3104,7 @@ select.input { padding-right: 6px; }
       "aria-checked": String(isActive(plugin)),
       "aria-label": t(plugin.title),
       disabled: !!plugin.required || keptBy.length > 0,
-      ...keptBy.length ? tipAttrs(t(L3.keptBy) + keptBy.map((p) => t(p.title)).join(", ")) : {}
+      ...keptBy.length ? tipAttrs(t(L4.keptBy) + keptBy.map((p) => t(p.title)).join(", ")) : {}
     });
     sw.addEventListener("click", () => togglePlugin(plugin, !enabled));
     return sw;
@@ -2780,13 +3112,13 @@ select.input { padding-right: 6px; }
   function badges(plugin) {
     const out = [];
     if (isNew(plugin.name))
-      out.push(h("span", { class: "badge accent", text: t(L3.newBadge) }));
+      out.push(h("span", { class: "badge accent", text: t(L4.newBadge) }));
     else if (isRecent(plugin))
-      out.push(h("span", { class: "badge", text: t(L3.updated) }));
+      out.push(h("span", { class: "badge", text: t(L4.updated) }));
     if (pendingRestart().includes(plugin))
-      out.push(h("span", { class: "badge accent", text: t(L3.needsReload) }));
+      out.push(h("span", { class: "badge accent", text: t(L4.needsReload) }));
     if (pluginError(plugin.name))
-      out.push(h("span", { class: "badge bad", text: t(L3.crashed) }));
+      out.push(h("span", { class: "badge bad", text: t(L4.crashed) }));
     return out;
   }
   function pluginCard(plugin) {
@@ -2798,7 +3130,7 @@ select.input { padding-right: 6px; }
     };
     const title = h("span", { class: "card-title", text: t(plugin.title), ...tipAttrs(plugin.name) });
     title.addEventListener("click", () => openPluginDialog(plugin));
-    return h("div", { class: `card${isActive(plugin) ? " on" : " off"}${error ? " crashed" : ""}`, "data-plugin": plugin.name, ...error ? tipAttrs(t(L3.crashed), `${error.stage}: ${error.message}`) : {} }, h("div", { class: "card-body" }, h("div", { class: "card-top" }, h("span", { class: "chip-icon" }, icon(plugin.icon ?? "puzzle", 14)), title, h("div", { class: "card-actions" }, iconBtn("star", L3.favorite, "star", isFavorite(plugin.name), () => toggleIn("favorites", plugin.name)), iconBtn("pin", L3.pin, "pin", isPinned(plugin.name), () => toggleIn("pinned", plugin.name)), hasOptions(plugin) ? iconBtn("cfg", L3.configure, "sliders", false, () => openPluginDialog(plugin)) : null, pluginSwitch(plugin))), h("div", { class: "card-desc", text: t(plugin.description) }), h("div", { class: "card-gap" }), h("div", { class: "card-foot" }, ...badges(plugin), h("span", { class: "author", text: authorOf(plugin) }))));
+    return h("div", { class: `card${isActive(plugin) ? " on" : " off"}${error ? " crashed" : ""}`, "data-plugin": plugin.name, ...error ? tipAttrs(t(L4.crashed), `${error.stage}: ${error.message}`) : {} }, h("div", { class: "card-body" }, h("div", { class: "card-top" }, h("span", { class: "chip-icon" }, icon(plugin.icon ?? "puzzle", 14)), title, h("div", { class: "card-actions" }, iconBtn("star", L4.favorite, "star", isFavorite(plugin.name), () => toggleIn("favorites", plugin.name)), iconBtn("pin", L4.pin, "pin", isPinned(plugin.name), () => toggleIn("pinned", plugin.name)), hasOptions(plugin) ? iconBtn("cfg", L4.configure, "sliders", false, () => openPluginDialog(plugin)) : null, pluginSwitch(plugin))), h("div", { class: "card-desc", text: t(plugin.description) }), h("div", { class: "card-gap" }), h("div", { class: "card-foot" }, ...badges(plugin), h("span", { class: "author", text: authorOf(plugin) }))));
   }
   var sortPlugins = (list) => list.sort((a, b) => Number(isPinned(b.name)) - Number(isPinned(a.name)) || Number(isFavorite(b.name)) - Number(isFavorite(a.name)) || t(a.title).localeCompare(t(b.title)));
   function defaultCategory() {
@@ -2810,7 +3142,7 @@ select.input { padding-right: 6px; }
     const plugins = listedPlugins();
     const categories = CATEGORY_ORDER.filter((cat) => ["favorites", "recent", "all"].includes(cat) || plugins.some((p) => inCategory(p, cat)));
     const tabBar = h("div", { class: "tabs", role: "tablist" });
-    const searchLabel = () => t(L3.search).replace("{n}", String(plugins.filter((p) => inCategory(p, view.category)).length));
+    const searchLabel = () => t(L4.search).replace("{n}", String(plugins.filter((p) => inCategory(p, view.category)).length));
     const search = h("input", { class: "input", type: "search", placeholder: searchLabel(), value: view.query, "aria-label": searchLabel() });
     for (const cat of categories) {
       const button = h("button", { type: "button", role: "tab", class: view.category === cat ? "active" : "", "aria-selected": String(view.category === cat) }, t(CATEGORY_LABELS[cat]));
@@ -2828,7 +3160,7 @@ select.input { padding-right: 6px; }
       view.query = search.value;
       renderList();
     });
-    const filter = h("select", { class: "input", "aria-label": t(L3.all) }, ...["all", "enabled", "disabled"].map((value) => h("option", { value, text: t(L3[value]), selected: view.filter === value })));
+    const filter = h("select", { class: "input", "aria-label": t(L4.all) }, ...["all", "enabled", "disabled"].map((value) => h("option", { value, text: t(L4[value]), selected: view.filter === value })));
     filter.addEventListener("change", () => {
       view.filter = filter.value;
       renderList();
@@ -2836,9 +3168,9 @@ select.input { padding-right: 6px; }
     container.appendChild(h("div", { class: "sticky-top" }, tabBar, h("div", { class: "bar" }, h("label", { class: "search" }, icon("search", 14), search), filter)));
     const pending = pendingRestart();
     if (pending.length) {
-      const reload = h("button", { type: "button", class: "btn primary", text: t(L3.reload) });
+      const reload = h("button", { type: "button", class: "btn primary", text: t(L4.reload) });
       reload.addEventListener("click", () => location.reload());
-      container.appendChild(h("div", { class: "banner" }, icon("alert", 16), h("span", { text: t(L3.reloadBanner) + pending.map((p) => t(p.title)).join(t({ zh: "、", en: ", " })) }), reload));
+      container.appendChild(h("div", { class: "banner" }, icon("alert", 16), h("span", { text: t(L4.reloadBanner) + pending.map((p) => t(p.title)).join(t({ zh: "、", en: ", " })) }), reload));
     }
     const list = h("div");
     container.appendChild(list);
@@ -2846,7 +3178,7 @@ select.input { padding-right: 6px; }
       clear(list);
       const shown = plugins.filter((p) => (view.query ? true : inCategory(p, view.category)) && matchesQuery(p, view.query) && passesFilter(p));
       if (!shown.length) {
-        const [title, hint] = view.category === "favorites" && !view.query ? [L3.noFavorites, L3.noFavoritesHint] : view.category === "recent" && !view.query ? [L3.noRecent, null] : [L3.empty, null];
+        const [title, hint] = view.category === "favorites" && !view.query ? [L4.noFavorites, L4.noFavoritesHint] : view.category === "recent" && !view.query ? [L4.noRecent, null] : [L4.empty, null];
         list.appendChild(h("div", { class: "empty" }, h("b", { text: t(title) }), hint ? t(hint) : null));
         return;
       }
@@ -2856,7 +3188,7 @@ select.input { padding-right: 6px; }
       if (main.length)
         list.appendChild(h("div", { class: "grid" }, ...main.map(pluginCard)));
       if (required.length)
-        list.append(h("div", { class: "sep", text: t(L3.required) }), h("div", { class: "grid" }, ...required.map(pluginCard)));
+        list.append(h("div", { class: "sep", text: t(L4.required) }), h("div", { class: "grid" }, ...required.map(pluginCard)));
     }
     renderList();
   }
@@ -2864,27 +3196,27 @@ select.input { padding-right: 6px; }
     const body = h("div");
     const draw = () => {
       clear(body);
-      const meta = h("div", { class: "d-meta" }, ...badges(plugin), h("span", { text: `${t(L3.author)} ${authorOf(plugin)}` }));
+      const meta = h("div", { class: "d-meta" }, ...badges(plugin), h("span", { text: `${t(L4.author)} ${authorOf(plugin)}` }));
       if (plugin.dependencies?.length && view.showApi)
-        meta.appendChild(h("span", { text: `· ${t(L3.dependsOn)} ${plugin.dependencies.join(", ")}` }));
+        meta.appendChild(h("span", { text: `· ${t(L4.dependsOn)} ${plugin.dependencies.join(", ")}` }));
       const top = h("div", { class: "row" }, h("div", { class: "row-text" }, h("p", { class: "d-desc", text: t(plugin.description) }), meta), h("div", { class: "row-control" }, pluginSwitch(plugin)));
       const error = pluginError(plugin.name);
       body.append(top);
       if (error)
         body.appendChild(h("div", { class: "banner" }, icon("alert", 16), h("span", { text: `${error.stage}: ${error.message}` })));
       body.appendChild(h("div", { class: "d-sep" }));
-      body.appendChild(h("div", { class: "d-title", text: t(L3.settings) }));
+      body.appendChild(h("div", { class: "d-title", text: t(L4.settings) }));
       if (!hasOptions(plugin)) {
-        body.appendChild(h("p", { class: "muted", text: t(L3.noOptions) }));
+        body.appendChild(h("p", { class: "muted", text: t(L4.noOptions) }));
         return;
       }
       const rows = Object.entries(plugin.settings.def).map(([key, option]) => renderOption(plugin.settings, key, option, draw)).filter(Boolean);
       body.appendChild(h("div", { class: "rows" }, ...rows));
     };
     draw();
-    const reset = h("button", { type: "button", class: "btn danger", text: t(L3.reset), disabled: !hasOptions(plugin) });
+    const reset = h("button", { type: "button", class: "btn danger", text: t(L4.reset), disabled: !hasOptions(plugin) });
     reset.addEventListener("click", async () => {
-      if (!await confirmDialog({ title: t(L3.resetTitle), body: fill2(L3.resetBody, t(plugin.title)), ok: L3.resetOk, danger: true }))
+      if (!await confirmDialog({ title: t(L4.resetTitle), body: fill2(L4.resetBody, t(plugin.title)), ok: L4.resetOk, danger: true }))
         return;
       plugin.settings.reset();
       draw();
@@ -2923,7 +3255,7 @@ select.input { padding-right: 6px; }
     { hash: "customize/connectors/yours", icon: "link", label: { zh: "连接器", en: "Connectors" } },
     { hash: "customize/plugins/yours", icon: "puzzle", label: { zh: "插件（claude.ai）", en: "Plugins (claude.ai)" } }
   ];
-  var L4 = {
+  var L5 = {
     plugins: { zh: "插件", en: "Plugins" },
     openSettings: { zh: "打开 CC++ 设置", en: "Open CC++ settings" },
     openNative: { zh: "打开设置", en: "Open settings" },
@@ -3098,7 +3430,7 @@ select.input { padding-right: 6px; }
     const fillCcpp = (scroll, child) => {
       for (const tab of options.tabs()) {
         if (tab.id === "plugins") {
-          const plugins = row(icon(tab.icon, 16), t(L4.plugins), { sub: true });
+          const plugins = row(icon(tab.icon, 16), t(L5.plugins), { sub: true });
           child.attach(plugins, "16rem", fillPlugins);
           scroll.appendChild(plugins);
         } else
@@ -3111,12 +3443,12 @@ select.input { padding-right: 6px; }
       settingsItem.appendChild(mark);
       added.push(mark);
       top.attach(settingsItem, "15rem", (scroll, child) => {
-        scroll.appendChild(row(icon("settings", 16), t(L4.openNative), { run: () => location.hash = "settings/general" }));
+        scroll.appendChild(row(icon("settings", 16), t(L5.openNative), { run: () => location.hash = "settings/general" }));
         scroll.appendChild(separator());
         scroll.appendChild(caption("CC++"));
         fillCcpp(scroll, child);
         scroll.appendChild(separator());
-        scroll.appendChild(caption(t(L4.claude)));
+        scroll.appendChild(caption(t(L5.claude)));
         for (const section of NATIVE_SECTIONS)
           scroll.appendChild(row(icon(section.icon, 16), t(section.label), { run: () => location.hash = section.hash }));
       });
@@ -3127,7 +3459,7 @@ select.input { padding-right: 6px; }
       top.attach(entry, "14rem", (scroll, child) => {
         fillCcpp(scroll, child);
         scroll.appendChild(separator());
-        scroll.appendChild(row(icon("settings", 16), t(L4.openSettings), { run: () => options.openTab("plugins") }));
+        scroll.appendChild(row(icon("settings", 16), t(L5.openSettings), { run: () => options.openTab("plugins") }));
       });
       settingsItem.after(entry);
       added.push(entry);
@@ -3146,7 +3478,7 @@ select.input { padding-right: 6px; }
     };
   }
   // src/plugins/_core/settings/index.ts
-  var L5 = {
+  var L6 = {
     plugins: { zh: "插件", en: "Plugins" },
     openSettings: { zh: "CC++ 设置", en: "CC++ settings" }
   };
@@ -3232,9 +3564,9 @@ select.input { padding-right: 6px; }
     const toggle = () => isSettingsOpen() ? closeSettings() : openSettings();
     if (settings.store.hotkey.trim())
       bindKey(scope, settings.store.hotkey, toggle, { inInputs: true });
-    addMenuCommand(scope, `⚙️ ${t(L5.openSettings)}${settings.store.hotkey ? ` (${comboLabel(settings.store.hotkey)})` : ""}`, () => openSettings());
+    addMenuCommand(scope, `⚙️ ${t(L6.openSettings)}${settings.store.hotkey ? ` (${comboLabel(settings.store.hotkey)})` : ""}`, () => openSettings());
     if (settings.store.composerEntry)
-      addSlotItem(scope, "composer", "settings", () => slotButton(t(L5.openSettings), () => openSettings(), icon("plug", 16)), 100);
+      addSlotItem(scope, "composer", "settings", () => slotButton(t(L6.openSettings), () => openSettings(), icon("plug", 16)), 100);
   }
   var settings_default = definePlugin({
     name: "Settings",
@@ -3251,7 +3583,7 @@ select.input { padding-right: 6px; }
     start(scope) {
       setLang(settings.store.language);
       view.showApi = settings.store.showApiPlugins;
-      registerTab(scope, { id: "plugins", title: L5.plugins, icon: "puzzle", order: 0, render: renderPluginsTab });
+      registerTab(scope, { id: "plugins", title: L6.plugins, icon: "puzzle", order: 0, render: renderPluginsTab });
       initLayer(scope);
       installNative(scope, () => settings.store.navPosition === "above" ? "above" : "below");
       scope.defer(onPluginStateChange(redraw));
@@ -3271,7 +3603,7 @@ select.input { padding-right: 6px; }
   });
 
   // src/plugins/_core/backup/index.ts
-  var L6 = {
+  var L7 = {
     title: { zh: "备份", en: "Backup" },
     backupHint: { zh: "导出全部 CC++ 数据（插件开关、选项、收藏的消息、输入历史、自定义 CSS），可在另一台电脑导入。", en: "Export all CC++ data (switches, options, starred messages, prompt history, Quick CSS) to restore elsewhere." },
     export: { zh: "导出 JSON", en: "Export JSON" },
@@ -3316,9 +3648,9 @@ select.input { padding-right: 6px; }
       try {
         if (!restoreBackup(JSON.parse(await chosen.text())))
           throw new Error("format");
-        toast(t(L6.imported), { kind: "ok" });
+        toast(t(L7.imported), { kind: "ok" });
       } catch {
-        toast(t(L6.bad), { kind: "error" });
+        toast(t(L7.bad), { kind: "error" });
       }
     });
     document.body.appendChild(file);
@@ -3328,17 +3660,17 @@ select.input { padding-right: 6px; }
     exportData: {
       type: "action",
       label: { zh: "导出备份", en: "Export backup" },
-      description: L6.backupHint,
-      button: L6.export,
+      description: L7.backupHint,
+      button: L7.export,
       run: () => download(`ccpp-backup-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify(buildBackup(), null, 2), "application/json")
     },
-    importData: { type: "action", label: { zh: "导入备份", en: "Import backup" }, description: { zh: "从导出的 JSON 恢复。", en: "Restore from an exported JSON file." }, button: L6.import, run: importBackup },
+    importData: { type: "action", label: { zh: "导入备份", en: "Import backup" }, description: { zh: "从导出的 JSON 恢复。", en: "Restore from an exported JSON file." }, button: L7.import, run: importBackup },
     eraseData: {
       type: "action",
-      label: L6.reset,
+      label: L7.reset,
       description: { zh: "清空后页面会刷新。", en: "The page reloads afterwards." },
       button: { zh: "清空", en: "Erase" },
-      confirm: L6.resetConfirm,
+      confirm: L7.resetConfirm,
       run: () => {
         for (const key of Object.keys(dumpAll()))
           removeKey(key);
@@ -3348,7 +3680,7 @@ select.input { padding-right: 6px; }
   });
   var backup_default = definePlugin({
     name: "Backup",
-    title: L6.title,
+    title: L7.title,
     description: {
       zh: "导出 / 导入 / 清空 CC++ 的全部设置与数据。CC++ 只调用 claude.ai 同源接口，不读取或外传 Cookie / token；只有在线主题会去下载你填写的 CSS 地址。",
       en: "Export, import or erase all CC++ settings and data. CC++ only calls claude.ai's own API and never reads or sends cookies or tokens; only online themes download the CSS URLs you add."
@@ -3367,7 +3699,7 @@ select.input { padding-right: 6px; }
     apply: { type: "boolean", label: { zh: "启用自定义 CSS", en: "Enable Quick CSS" }, description: { zh: "关掉后保留内容，但不再作用于页面。", en: "Off keeps your CSS but stops applying it." }, default: true }
   });
   var refresh = () => {};
-  var L7 = {
+  var L8 = {
     title: { zh: "自定义 CSS", en: "Quick CSS" },
     editor: { zh: "编辑器", en: "Editor" },
     hint: { zh: "实时应用到 claude.ai（停止输入 0.4 秒后生效）。Tab 键缩进。", en: "Applies to claude.ai live, 0.4 s after you stop typing. Tab indents." },
@@ -3377,7 +3709,7 @@ select.input { padding-right: 6px; }
   };
   var quickCss_default = definePlugin({
     name: "QuickCss",
-    title: L7.title,
+    title: L8.title,
     description: { zh: "在设置里写自己的 CSS，实时作用于页面。", en: "Write your own CSS in settings and see it applied live." },
     category: "appearance",
     icon: "brush",
@@ -3391,7 +3723,7 @@ select.input { padding-right: 6px; }
       scope.defer(css.subscribe((value) => setCss(settings3.store.apply ? value : "")));
       registerTab(scope, {
         id: "quick-css",
-        title: L7.title,
+        title: L8.title,
         icon: "brush",
         order: 20,
         render(container) {
@@ -3401,7 +3733,7 @@ select.input { padding-right: 6px; }
             sw.setAttribute("aria-checked", String(settings3.store.apply));
             setCss(settings3.store.apply ? css.get() : "");
           });
-          const area = h("textarea", { class: "input editor", rows: 22, spellcheck: false, placeholder: t(L7.placeholder), "aria-label": t(L7.editor) });
+          const area = h("textarea", { class: "input editor", rows: 22, spellcheck: false, placeholder: t(L8.placeholder), "aria-label": t(L8.editor) });
           area.value = css.get();
           let timer;
           area.addEventListener("input", () => {
@@ -3414,7 +3746,7 @@ select.input { padding-right: 6px; }
             event.preventDefault();
             area.setRangeText("  ", area.selectionStart, area.selectionEnd, "end");
           });
-          container.append(h("div", { class: "rows" }, h("div", { class: "row" }, h("div", { class: "row-text" }, h("div", { class: "row-title", text: t(settings3.def.apply.label) }), h("div", { class: "row-desc", text: t(settings3.def.apply.description) })), h("div", { class: "row-control" }, sw))), h("div", { class: "section-head", style: { marginTop: "12px" } }, h("h3", { text: t(L7.editor) })), h("p", { class: "hint", text: t(L7.hint) }), area);
+          container.append(h("div", { class: "rows" }, h("div", { class: "row" }, h("div", { class: "row-text" }, h("div", { class: "row-title", text: t(settings3.def.apply.label) }), h("div", { class: "row-desc", text: t(settings3.def.apply.description) })), h("div", { class: "row-control" }, sw))), h("div", { class: "section-head", style: { marginTop: "12px" } }, h("h3", { text: t(L8.editor) })), h("p", { class: "hint", text: t(L8.hint) }), area);
         }
       });
     },
@@ -3477,7 +3809,7 @@ ${x.css}`)].join(`
     const current = store.get();
     store.set({ ...current, online: current.online.map((x) => x.url === url ? { ...x, ...patch } : x) });
   }
-  var L8 = {
+  var L9 = {
     title: { zh: "主题", en: "Themes" },
     search: { zh: "搜索主题…", en: "Search themes…" },
     all: { zh: "全部", en: "All" },
@@ -3528,7 +3860,7 @@ ${x.css}`)].join(`
   function themeCard(o) {
     const sw = h("button", { type: "button", class: "switch", role: "switch", "aria-checked": String(o.enabled), "aria-label": o.name });
     sw.addEventListener("click", () => o.toggle(!o.enabled));
-    return h("div", { class: `card${o.enabled ? " on" : " off"}${o.error ? " crashed" : ""}` }, h("div", { class: "card-body" }, h("div", { class: "card-top" }, h("span", { class: "chip-icon" }, icon("palette", 14)), h("span", { class: "card-title", text: o.name, ...tipAttrs(o.name), style: { cursor: "default" } }), h("div", { class: "card-actions" }, ...o.actions, sw)), h("div", { class: "card-desc", text: o.desc }), h("div", { class: "card-gap" }), h("div", { class: "card-foot" }, icon(o.online ? "globe" : "folder", 12), h("span", { text: t(o.online ? L8.onlineShort : L8.localShort) }), o.error ? h("span", { class: "badge bad", text: t(L8.failed), ...tipAttrs(t(L8.failed), o.error) }) : null, h("span", { class: "author", text: o.author }))));
+    return h("div", { class: `card${o.enabled ? " on" : " off"}${o.error ? " crashed" : ""}` }, h("div", { class: "card-body" }, h("div", { class: "card-top" }, h("span", { class: "chip-icon" }, icon("palette", 14)), h("span", { class: "card-title", text: o.name, ...tipAttrs(o.name), style: { cursor: "default" } }), h("div", { class: "card-actions" }, ...o.actions, sw)), h("div", { class: "card-desc", text: o.desc }), h("div", { class: "card-gap" }), h("div", { class: "card-foot" }, icon(o.online ? "globe" : "folder", 12), h("span", { text: t(o.online ? L9.onlineShort : L9.localShort) }), o.error ? h("span", { class: "badge bad", text: t(L9.failed), ...tipAttrs(t(L9.failed), o.error) }) : null, h("span", { class: "author", text: o.author }))));
   }
   var iconAction = (name, label, run) => {
     const button = h("button", { type: "button", class: "icon-btn", ...tipAttrs(t(label)), "aria-label": t(label) }, icon(name, 14));
@@ -3536,19 +3868,19 @@ ${x.css}`)].join(`
     return button;
   };
   async function askRemove(name) {
-    return confirmDialog({ title: t(L8.removeTitle), body: t(L8.removeBody).replace("{name}", name), ok: L8.remove, danger: true });
+    return confirmDialog({ title: t(L9.removeTitle), body: t(L9.removeBody).replace("{name}", name), ok: L9.remove, danger: true });
   }
   function openAddOnline() {
-    const input = h("input", { class: "input", type: "url", placeholder: "https://…/theme.css", autofocus: true, "aria-label": t(L8.urlLabel) });
+    const input = h("input", { class: "input", type: "url", placeholder: "https://…/theme.css", autofocus: true, "aria-label": t(L9.urlLabel) });
     const error = h("div", { class: "row-desc", style: { color: "var(--bad)" } });
-    const add = h("button", { type: "button", class: "btn primary", text: t(L8.add) });
-    const cancel = h("button", { type: "button", class: "btn", text: t(L8.cancel) });
+    const add = h("button", { type: "button", class: "btn primary", text: t(L9.add) });
+    const cancel = h("button", { type: "button", class: "btn", text: t(L9.cancel) });
     const submit = () => {
       const url = validThemeUrl(input.value);
       if (!url)
-        return void (error.textContent = t(L8.badUrl));
+        return void (error.textContent = t(L9.badUrl));
       if (store.get().online.some((x) => x.url === url))
-        return void (error.textContent = t(L8.dupUrl));
+        return void (error.textContent = t(L9.dupUrl));
       const current = store.get();
       store.set({ ...current, online: [...current.online, { url, enabled: true }] });
       refreshOnline(url, true);
@@ -3558,10 +3890,10 @@ ${x.css}`)].join(`
     input.addEventListener("keydown", (event) => event.key === "Enter" && submit());
     let close = () => {};
     cancel.addEventListener("click", () => close());
-    close = openModal(dialogFrame({ title: t(L8.addOnline), icon: "globe", size: "small", body: [h("div", { class: "field" }, h("label", { text: t(L8.urlLabel) }), input, error), h("p", { class: "hint", text: t(L8.urlHint) })], foot: [cancel, add], onClose: () => close() }));
+    close = openModal(dialogFrame({ title: t(L9.addOnline), icon: "globe", size: "small", body: [h("div", { class: "field" }, h("label", { text: t(L9.urlLabel) }), input, error), h("p", { class: "hint", text: t(L9.urlHint) })], foot: [cancel, add], onClose: () => close() }));
   }
   function openLocalEditor(theme) {
-    const name = h("input", { class: "input", value: theme?.name ?? "", placeholder: t(L8.untitled), autofocus: true });
+    const name = h("input", { class: "input", value: theme?.name ?? "", placeholder: t(L9.untitled), autofocus: true });
     const author = h("input", { class: "input", value: theme?.author ?? "" });
     const css = h("textarea", { class: "input editor", rows: 16, spellcheck: false, placeholder: `/* @name My theme */
 :root { }` });
@@ -3572,11 +3904,11 @@ ${x.css}`)].join(`
       event.preventDefault();
       css.setRangeText("  ", css.selectionStart, css.selectionEnd, "end");
     });
-    const save = h("button", { type: "button", class: "btn primary", text: t(L8.save) });
-    const cancel = h("button", { type: "button", class: "btn", text: t(L8.cancel) });
+    const save = h("button", { type: "button", class: "btn primary", text: t(L9.save) });
+    const cancel = h("button", { type: "button", class: "btn", text: t(L9.cancel) });
     save.addEventListener("click", () => {
       const meta = parseMeta(css.value);
-      const next = { name: name.value.trim() || meta.name || t(L8.untitled), author: author.value.trim() || meta.author || "", css: css.value };
+      const next = { name: name.value.trim() || meta.name || t(L9.untitled), author: author.value.trim() || meta.author || "", css: css.value };
       if (theme)
         setLocal(theme.id, next);
       else {
@@ -3588,17 +3920,17 @@ ${x.css}`)].join(`
     let close = () => {};
     cancel.addEventListener("click", () => close());
     close = openModal(dialogFrame({
-      title: t(theme ? L8.editLocal : L8.newLocal),
+      title: t(theme ? L9.editLocal : L9.newLocal),
       icon: "palette",
       size: "wide",
-      body: [h("div", { class: "field" }, h("label", { text: t(L8.name) }), name), h("div", { class: "field" }, h("label", { text: t(L8.author) }), author), h("div", { class: "field" }, h("label", { text: t(L8.css) }), css)],
+      body: [h("div", { class: "field" }, h("label", { text: t(L9.name) }), name), h("div", { class: "field" }, h("label", { text: t(L9.author) }), author), h("div", { class: "field" }, h("label", { text: t(L9.css) }), css)],
       foot: [cancel, save],
       onClose: () => close()
     }));
   }
   function renderThemes(container) {
-    const search = h("input", { class: "input", type: "search", placeholder: t(L8.search), value: ui.query, "aria-label": t(L8.search) });
-    const filter = h("select", { class: "input", "aria-label": t(L8.all) }, ...["all", "enabled", "disabled", "online", "local"].map((value) => h("option", { value, text: t(value === "online" ? L8.onlineShort : value === "local" ? L8.localShort : L8[value]), selected: ui.filter === value })));
+    const search = h("input", { class: "input", type: "search", placeholder: t(L9.search), value: ui.query, "aria-label": t(L9.search) });
+    const filter = h("select", { class: "input", "aria-label": t(L9.all) }, ...["all", "enabled", "disabled", "online", "local"].map((value) => h("option", { value, text: t(value === "online" ? L9.onlineShort : value === "local" ? L9.localShort : L9[value]), selected: ui.filter === value })));
     container.appendChild(h("div", { class: "sticky-top" }, h("div", { class: "bar" }, h("label", { class: "search" }, icon("search", 14), search), filter)));
     const body = h("div");
     container.appendChild(body);
@@ -3610,7 +3942,7 @@ ${x.css}`)].join(`
         const add = h("button", { type: "button", class: "btn" }, icon(buttonIcon, 14), t(buttonText));
         add.addEventListener("click", onAdd);
         const filtered = ui.query || ui.filter !== "all";
-        body.appendChild(h("div", { class: "section" }, h("div", { class: "section-head" }, h("h3", { text: t(title) }), add), cards.length ? h("div", { class: "grid" }, ...cards) : h("div", { class: "empty", text: t(filtered ? L8.noMatch : empty) })));
+        body.appendChild(h("div", { class: "section" }, h("div", { class: "section-head" }, h("h3", { text: t(title) }), add), cards.length ? h("div", { class: "grid" }, ...cards) : h("div", { class: "empty", text: t(filtered ? L9.noMatch : empty) })));
       };
       if (ui.filter !== "local") {
         const cards = themes.online.filter((x) => matches(nameOfOnline(x), x.url, x.enabled)).map((theme) => {
@@ -3628,9 +3960,9 @@ ${x.css}`)].join(`
                 refreshOnline(theme.url);
             },
             actions: [
-              iconAction("copy", L8.copyUrl, () => navigator.clipboard?.writeText(theme.url).then(() => toast(t(L8.copied), { kind: "ok" }))),
-              iconAction("refresh", L8.refresh, () => void refreshOnline(theme.url, true)),
-              iconAction("trash", L8.remove, async () => {
+              iconAction("copy", L9.copyUrl, () => navigator.clipboard?.writeText(theme.url).then(() => toast(t(L9.copied), { kind: "ok" }))),
+              iconAction("refresh", L9.refresh, () => void refreshOnline(theme.url, true)),
+              iconAction("trash", L9.remove, async () => {
                 if (!await askRemove(nameOfOnline(theme)))
                   return;
                 const current = store.get();
@@ -3639,23 +3971,23 @@ ${x.css}`)].join(`
             ]
           });
         });
-        section(L8.online, L8.add, "plus", openAddOnline, cards, L8.emptyOnline);
+        section(L9.online, L9.add, "plus", openAddOnline, cards, L9.emptyOnline);
       }
       if (ui.filter !== "online") {
         const cards = themes.local.filter((x) => matches(x.name, x.author, x.enabled)).map((theme) => themeCard({
           name: theme.name,
-          desc: parseMeta(theme.css).description || t(L8.lines).replace("{n}", String(theme.css.split(`
+          desc: parseMeta(theme.css).description || t(L9.lines).replace("{n}", String(theme.css.split(`
 `).length)),
           author: theme.author || "—",
           online: false,
           enabled: theme.enabled,
           toggle: (on) => setLocal(theme.id, { enabled: on }),
           actions: [
-            iconAction("pencil", L8.edit, () => openLocalEditor(theme)),
-            iconAction("trash", L8.remove, async () => await askRemove(theme.name) && setLocal(theme.id, null))
+            iconAction("pencil", L9.edit, () => openLocalEditor(theme)),
+            iconAction("trash", L9.remove, async () => await askRemove(theme.name) && setLocal(theme.id, null))
           ]
         }));
-        section(L8.local, L8.create, "plus", () => openLocalEditor(), cards, L8.emptyLocal);
+        section(L9.local, L9.create, "plus", () => openLocalEditor(), cards, L9.emptyLocal);
       }
     };
     search.addEventListener("input", () => {
@@ -3670,7 +4002,7 @@ ${x.css}`)].join(`
   }
   var themes_default = definePlugin({
     name: "Themes",
-    title: L8.title,
+    title: L9.title,
     description: { zh: "在线主题（填 CSS 地址）和本地主题（自己写 CSS），可分别启用、编辑、删除。", en: "Online themes (from a CSS URL) and local themes (your own CSS), each switchable, editable and removable." },
     category: "appearance",
     icon: "palette",
@@ -3688,7 +4020,7 @@ ${x.css}`)].join(`
           refreshOnline(theme.url);
       registerTab(scope, {
         id: "themes",
-        title: L8.title,
+        title: L9.title,
         icon: "palette",
         order: 10,
         render(container) {
@@ -3854,7 +4186,7 @@ ${x.css}`)].join(`
     warnAt: { type: "number", label: { zh: "黄色提醒阈值", en: "Amber from" }, default: 75, min: 10, max: 99, unit: "%" },
     dangerAt: { type: "number", label: { zh: "红色提醒阈值", en: "Red from" }, default: 90, min: 10, max: 100, unit: "%" }
   });
-  var L9 = {
+  var L10 = {
     title: { zh: "用量", en: "Usage" },
     session: { zh: "5 小时会话", en: "5-hour session" },
     weekly: { zh: "每周", en: "Weekly" },
@@ -3896,13 +4228,13 @@ ${x.css}`)].join(`
     } catch (err) {
       if (timedOut) {
         if (!usage)
-          error = t(L9.timeout);
+          error = t(L10.timeout);
         retryTimer = setTimeout(() => refresh2(true), 8000);
         return;
       }
       if (err.name === "AbortError")
         return;
-      error = err instanceof ApiError && (err.status === 401 || err.status === 403) ? t(L9.signedOut) : err.message || String(err);
+      error = err instanceof ApiError && (err.status === 401 || err.status === 403) ? t(L10.signedOut) : err.message || String(err);
       logger8.warn("Usage refresh failed:", err);
     } finally {
       clearTimeout(timeout);
@@ -3918,7 +4250,7 @@ ${x.css}`)].join(`
       return "warn";
     return "ok";
   }
-  var resetText = (window2) => !window2.resetsAt ? "" : window2.resetsAt - Date.now() < 24 * 3600 * 1000 ? t(L9.resetsIn).replace("{t}", untilText(window2.resetsAt)) : t(L9.resetsAt).replace("{t}", dateTimeText(window2.resetsAt));
+  var resetText = (window2) => !window2.resetsAt ? "" : window2.resetsAt - Date.now() < 24 * 3600 * 1000 ? t(L10.resetsIn).replace("{t}", untilText(window2.resetsAt)) : t(L10.resetsAt).replace("{t}", dateTimeText(window2.resetsAt));
   var COLORS = { ok: "var(--cds-fill-accent, #2a78d6)", warn: "var(--cds-fill-warning, #fab219)", bad: "var(--cds-fill-danger, #d03b3b)" };
   var SVG_NS = "http://www.w3.org/2000/svg";
   var nativeTrack = () => document.querySelector("svg [data-ring-track]")?.getAttribute("stroke") || "var(--cds-alpha-2, rgba(127,127,127,.12))";
@@ -3958,7 +4290,7 @@ ${x.css}`)].join(`
   }
   function ring(open, window2, label) {
     const percent = window2 ? Math.round(window2.utilization) : null;
-    return usageButton(open, percent === null ? label : `${label} ${percent}%`, window2 ? tipAttrs(`${label}: ${percent}%`, resetText(window2)) : tipAttrs(label, error ?? t(L9.loading)), ringSvg(window2 ? window2.utilization : null));
+    return usageButton(open, percent === null ? label : `${label} ${percent}%`, window2 ? tipAttrs(`${label}: ${percent}%`, resetText(window2)) : tipAttrs(label, error ?? t(L10.loading)), ringSvg(window2 ? window2.utilization : null));
   }
   function chip(open) {
     const style = settings4.store.style;
@@ -3966,8 +4298,8 @@ ${x.css}`)].join(`
     const week = usage?.sevenDay ?? null;
     const pct = (w) => w ? `${Math.round(w.utilization)}%` : "–";
     const text = !usage ? error ? "!" : "…" : `${pct(five)} · ${pct(week)}`;
-    const tip = usage ? `${t(L9.session)} ${pct(five)} · ${t(L9.weekly)} ${pct(week)}` : error ?? t(L9.loading);
-    return h("span", { class: `ccpp-usage${error && !usage ? " err" : ""}` }, ...style !== "text" ? [ring(open, five, t(L9.session)), ring(open, week, t(L9.weekly))] : [], ...style !== "rings" ? [usageButton(open, tip, tipAttrs(tip, five ? resetText(five) : ""), h("span", { text }))] : []);
+    const tip = usage ? `${t(L10.session)} ${pct(five)} · ${t(L10.weekly)} ${pct(week)}` : error ?? t(L10.loading);
+    return h("span", { class: `ccpp-usage${error && !usage ? " err" : ""}` }, ...style !== "text" ? [ring(open, five, t(L10.session)), ring(open, week, t(L10.weekly))] : [], ...style !== "rings" ? [usageButton(open, tip, tipAttrs(tip, five ? resetText(five) : ""), h("span", { text }))] : []);
   }
   var SLOT_CSS = `
 .ccpp-usage { display: inline-flex; align-items: center; gap: 4px; font-variant-numeric: tabular-nums; }
@@ -3986,30 +4318,30 @@ ${x.css}`)].join(`
 `;
   function metric(label, window2) {
     const lv = level(window2.utilization, settings4.store.warnAt, settings4.store.dangerAt);
-    const reset = window2.resetsAt ? window2.resetsAt - Date.now() < 24 * 3600 * 1000 ? t(L9.resetsIn).replace("{t}", untilText(window2.resetsAt)) : t(L9.resetsAt).replace("{t}", dateTimeText(window2.resetsAt)) : "";
+    const reset = window2.resetsAt ? window2.resetsAt - Date.now() < 24 * 3600 * 1000 ? t(L10.resetsIn).replace("{t}", untilText(window2.resetsAt)) : t(L10.resetsAt).replace("{t}", dateTimeText(window2.resetsAt)) : "";
     return h("div", { class: "metric" }, h("div", { class: "line" }, h("span", { text: label }), h("span", { class: "pct", text: `${Math.round(window2.utilization)}%`, style: { color: COLORS[lv] } })), h("div", { class: "bar" }, h("i", { style: { width: `${window2.utilization}%`, background: COLORS[lv] } })), reset ? h("div", { class: "muted", text: reset, style: { fontSize: "12px" } }) : null);
   }
   function renderPanel(panel) {
-    const refreshBtn = h("button", { type: "button", class: "icon-btn", ...tipAttrs(t(L9.refresh)), "aria-label": t(L9.refresh) }, icon("refresh", 15));
+    const refreshBtn = h("button", { type: "button", class: "icon-btn", ...tipAttrs(t(L10.refresh)), "aria-label": t(L10.refresh) }, icon("refresh", 15));
     if (loading)
       refreshBtn.firstElementChild?.classList.add("spin");
     refreshBtn.addEventListener("click", () => refresh2(true));
-    panel.appendChild(h("div", { class: "top" }, icon("gauge", 16), h("b", { text: t(L9.title) }), refreshBtn));
+    panel.appendChild(h("div", { class: "top" }, icon("gauge", 16), h("b", { text: t(L10.title) }), refreshBtn));
     if (error)
-      panel.appendChild(h("div", { class: "msg bad", text: t(L9.error).replace("{e}", error) }));
+      panel.appendChild(h("div", { class: "msg bad", text: t(L10.error).replace("{e}", error) }));
     if (!usage && !error)
-      panel.appendChild(h("div", { class: "msg", text: t(L9.loading) }));
+      panel.appendChild(h("div", { class: "msg", text: t(L10.loading) }));
     if (usage) {
       const rows = [
-        usage.fiveHour && metric(t(L9.session), usage.fiveHour),
-        usage.sevenDay && metric(t(L9.weekly), usage.sevenDay),
-        ...usage.extra.map((e) => metric(`${t(L9.weekly)} · ${e.key}`, e.window))
+        usage.fiveHour && metric(t(L10.session), usage.fiveHour),
+        usage.sevenDay && metric(t(L10.weekly), usage.sevenDay),
+        ...usage.extra.map((e) => metric(`${t(L10.weekly)} · ${e.key}`, e.window))
       ].filter(Boolean);
       if (!rows.length)
-        panel.appendChild(h("div", { class: "msg", text: t(L9.none) }));
+        panel.appendChild(h("div", { class: "msg", text: t(L10.none) }));
       panel.append(...rows);
     }
-    panel.appendChild(h("div", { class: "foot" }, h("span", { text: usage ? t(L9.updated).replace("{t}", agoText(usage.fetchedAt)) : "" }), h("a", { href: "/settings/usage", text: t(L9.open) })));
+    panel.appendChild(h("div", { class: "foot" }, h("span", { text: usage ? t(L10.updated).replace("{t}", agoText(usage.fetchedAt)) : "" }), h("a", { href: "/settings/usage", text: t(L10.open) })));
   }
   var usageDisplay_default = definePlugin({
     name: "UsageDisplay",
@@ -4063,7 +4395,7 @@ ${x.css}`)].join(`
     },
     keys: { type: "boolean", label: { zh: "键盘跳转", en: "Keyboard" }, description: { zh: "不在输入框里时：↑ / ↓ 逐条跳转，Home / End 到首尾，Esc 收起目录。", en: "Outside the input: ↑ / ↓ step through messages, Home / End go to the ends, Esc closes the outline." }, default: true }
   });
-  var L10 = {
+  var L11 = {
     title: { zh: "对话目录", en: "Outline" },
     streaming: { zh: "正在回复…", en: "Replying…" },
     empty: { zh: "（空消息）", en: "(empty)" },
@@ -4223,9 +4555,9 @@ ${x.css}`)].join(`
       const { box } = createHost(scope, "navigator", CSS5, { layer: "page" });
       const navs = new Map;
       const createNav = (scroller) => {
-        const ticks = h("div", { class: "ticks", role: "navigation", "aria-label": t(L10.title) });
+        const ticks = h("div", { class: "ticks", role: "navigation", "aria-label": t(L11.title) });
         const meta = h("div", { class: "meta" });
-        const list = h("ul", { class: "list", role: "menu", "aria-label": t(L10.title) });
+        const list = h("ul", { class: "list", role: "menu", "aria-label": t(L11.title) });
         const menu = h("div", { class: "menu" }, meta, list);
         const rail = h("div", { class: "rail" }, menu, ticks);
         box.append(rail);
@@ -4324,8 +4656,8 @@ ${x.css}`)].join(`
           if (item.text.trim())
             return { text: snippet(item.text, 120), dim: false };
           if (isLive(item))
-            return { text: t(L10.streaming), dim: true };
-          return { text: t(L10.empty), dim: true };
+            return { text: t(L11.streaming), dim: true };
+          return { text: t(L11.empty), dim: true };
         };
         let currentEntry = null;
         let pinned = null;
@@ -4367,7 +4699,7 @@ ${x.css}`)].join(`
             const tick = h("button", {
               type: "button",
               class: `tick ${item.role}${i === active ? " current" : ""}${stars.has(item.index) ? " marked" : ""}${isLive(item) ? " live" : ""}`,
-              "aria-label": t(L10.goTo).replace("{n}", String(i + 1)).replace("{total}", String(entries.length))
+              "aria-label": t(L11.goTo).replace("{n}", String(i + 1)).replace("{total}", String(entries.length))
             });
             tick.addEventListener("click", () => go(i));
             ticks.appendChild(tick);
@@ -4626,7 +4958,7 @@ ${x.css}`)].join(`
   var settings6 = definePluginSettings({
     headerButton: { type: "boolean", label: { zh: "在对话标题栏显示收藏列表按钮", en: "Starred list button in the chat header" }, default: true }
   });
-  var L11 = {
+  var L12 = {
     star: { zh: "收藏这条消息", en: "Star this message" },
     unstar: { zh: "取消收藏", en: "Unstar" },
     list: { zh: "收藏的消息", en: "Starred messages" },
@@ -4729,9 +5061,9 @@ ${x.css}`)].join(`
           }
           for (const btn of row.querySelectorAll(".ccpp-star-btn")) {
             btn.classList.toggle("on", on);
-            btn.setAttribute("data-ccpp-tip", t(on ? L11.unstar : L11.star));
+            btn.setAttribute("data-ccpp-tip", t(on ? L12.unstar : L12.star));
             btn.setAttribute("aria-pressed", String(on));
-            btn.setAttribute("aria-label", t(on ? L11.unstar : L11.star));
+            btn.setAttribute("aria-label", t(on ? L12.unstar : L12.star));
           }
         }
         setMarks("stars", starsFor(keyOf(null)?.key ?? null).map((s) => s.index));
@@ -4751,7 +5083,7 @@ ${x.css}`)].join(`
         const svg = icon("star", size);
         if (native)
           svg.setAttribute("stroke-width", "1.5");
-        const btn = h("button", { type: "button", class: `ccpp-star-btn${extra}${on ? " on" : ""}`, ...tipAttrs(t(on ? L11.unstar : L11.star)), "aria-label": t(on ? L11.unstar : L11.star), "aria-pressed": String(on) }, svg);
+        const btn = h("button", { type: "button", class: `ccpp-star-btn${extra}${on ? " on" : ""}`, ...tipAttrs(t(on ? L12.unstar : L12.star)), "aria-label": t(on ? L12.unstar : L12.star), "aria-pressed": String(on) }, svg);
         if (native) {
           btn.className = `${native.className} ccpp-star-btn ccpp-native${extra}${on ? " on" : ""}`;
           for (const attr of [...native.attributes])
@@ -4865,20 +5197,20 @@ ${x.css}`)].join(`
       scope.defer(() => void pending++);
       const renderList = (panel, close) => {
         const stars = keysFor(listFrom).flatMap((k) => starsFor(k.key).map((star) => ({ star, side: k.key.includes(":") })));
-        panel.appendChild(h("div", { class: "top" }, icon("star", 16), h("b", { text: t(L11.list) })));
+        panel.appendChild(h("div", { class: "top" }, icon("star", 16), h("b", { text: t(L12.list) })));
         for (const { star, side } of stars) {
-          const row = h("button", { type: "button", class: "item" }, h("span", { class: "star", text: "★" }), h("span", { class: "grow" }, h("div", { class: "clip2", text: star.text || "…" }), h("div", { class: "sub", text: `${star.role === "user" ? t(L11.you) : "Claude"} · #${star.index + 1} · ${agoText(star.at)}` })));
+          const row = h("button", { type: "button", class: "item" }, h("span", { class: "star", text: "★" }), h("span", { class: "grow" }, h("div", { class: "clip2", text: star.text || "…" }), h("div", { class: "sub", text: `${star.role === "user" ? t(L12.you) : "Claude"} · #${star.index + 1} · ${agoText(star.at)}` })));
           row.addEventListener("click", () => (close(), void jumpWhenLoaded(side, star)));
           panel.appendChild(row);
         }
         if (!stars.length)
-          panel.appendChild(h("div", { class: "msg", text: t(L11.none) }));
+          panel.appendChild(h("div", { class: "msg", text: t(L12.none) }));
       };
       const headerItems = [];
       if (settings6.store.headerButton) {
         const render = () => {
           const label = h("span");
-          const btn = slotButton(t(L11.list), (event) => {
+          const btn = slotButton(t(L12.list), (event) => {
             listFrom = event.currentTarget;
             paint(true);
             list.open(listFrom, renderList);
@@ -4926,7 +5258,7 @@ ${x.css}`)].join(`
     showWaiting: { type: "boolean", label: { zh: "也标出「等你回复」的项目", en: "Also mark projects waiting on you" }, description: { zh: "有线程在等你时显示黄色圆点。", en: "A yellow dot when a thread is waiting for you." }, default: true },
     refreshSec: { type: "number", label: { zh: "刷新间隔", en: "Refresh every" }, default: 30, min: 10, max: 300, step: 5, unit: "s" }
   });
-  var L12 = {
+  var L13 = {
     running: { zh: "运行中", en: "Running" },
     waiting: { zh: "等你回复", en: "Waiting for you" }
   };
@@ -5012,7 +5344,7 @@ ${x.css}`)].join(`
         const target = parent();
         if (!target)
           return;
-        const label = t(kind === "clay" ? L12.running : L12.waiting);
+        const label = t(kind === "clay" ? L13.running : L13.waiting);
         target.appendChild(h("span", { [attr]: kind, ...tipAttrs(label) }, h("span", { role: "status", "aria-label": label }, h("span", { class: "status-dot", "data-kind": kind }))));
       };
       let pausedUntil = 0;
@@ -5074,7 +5406,7 @@ ${x.css}`)].join(`
   var MAX_DEFAULT = 100;
   var CAPTURE_DEDUPE_MS = 2000;
   var APPLY_QUIET_MS = 300;
-  var L13 = {
+  var L14 = {
     title: { zh: "输入历史", en: "Input history" },
     sub: { zh: "保存在这台设备上。", en: "Stored on this device." },
     open: { zh: "浏览输入历史", en: "Browse input history" },
@@ -5096,7 +5428,7 @@ ${x.css}`)].join(`
   var history2 = persisted("input-history", [], (v) => Array.isArray(v) && v.every((x) => typeof x === "string"));
   var settings8 = definePluginSettings({
     max: { type: "number", label: { zh: "最多保存几条", en: "Maximum stored prompts" }, default: MAX_DEFAULT, min: 10, max: 500, step: 10 },
-    browse: { type: "action", label: L13.open, button: L13.openBtn, run: () => openHistory(false) },
+    browse: { type: "action", label: L14.open, button: L14.openBtn, run: () => openHistory(false) },
     button: { type: "boolean", label: { zh: "在输入框旁显示历史按钮", en: "History button next to the model picker" }, default: false }
   });
   function remember(list, text, max) {
@@ -5188,13 +5520,13 @@ ${x.css}`)].join(`
       event.stopPropagation();
       openHistory(true);
     });
-    const close = h("button", { type: "button", class: "x", "aria-label": t(L13.exit), text: "×" });
+    const close = h("button", { type: "button", class: "x", "aria-label": t(L14.exit), text: "×" });
     close.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
       cancelBrowse(hudEditor?.isConnected ? hudEditor : getEditor());
     });
-    hudEl = h("div", { class: "ccpp-ih-hud", role: "group", "aria-live": "polite", "aria-label": t(L13.title) }, count, close);
+    hudEl = h("div", { class: "ccpp-ih-hud", role: "group", "aria-live": "polite", "aria-label": t(L14.title) }, count, close);
     document.body.appendChild(hudEl);
     return hudEl;
   }
@@ -5210,7 +5542,7 @@ ${x.css}`)].join(`
     const label = `${list.length - cursor} / ${list.length}`;
     const count = el.querySelector(".count");
     count.textContent = label;
-    count.setAttribute("aria-label", t(L13.showAll).replace("{n}", label));
+    count.setAttribute("aria-label", t(L14.showAll).replace("{n}", label));
     const bar = composerBox(editor);
     const place = () => {
       if (historyOpen || !bar.isConnected || cursor < 0)
@@ -5265,13 +5597,13 @@ ${x.css}`)].join(`
     let query = "";
     let open = null;
     const body = h("div");
-    const search = h("input", { class: "input", type: "search", placeholder: t(L13.search), "aria-label": t(L13.search) });
+    const search = h("input", { class: "input", type: "search", placeholder: t(L14.search), "aria-label": t(L14.search) });
     search.addEventListener("input", () => {
       query = search.value;
       draw();
     });
     const meta = h("div");
-    const top = h("div", {}, h("style", { text: LIST_CSS2 }), h("p", { class: "d-desc", text: t(L13.sub) }), search, meta);
+    const top = h("div", {}, h("style", { text: LIST_CSS2 }), h("p", { class: "d-desc", text: t(L14.sub) }), search, meta);
     const draw = () => {
       clear(meta);
       clear(body);
@@ -5280,9 +5612,9 @@ ${x.css}`)].join(`
       const needle = query.trim().toLowerCase();
       const rows = list.map((text, i) => ({ text, i, n: total - i })).filter((row) => !needle || row.text.toLowerCase().includes(needle));
       search.hidden = !total;
-      const wipe = h("button", { type: "button", class: "btn", text: t(L13.clear), disabled: !total });
+      const wipe = h("button", { type: "button", class: "btn", text: t(L14.clear), disabled: !total });
       wipe.addEventListener("click", async () => {
-        if (!await confirmDialog({ title: t(L13.clear), body: t(L13.clearBody), ok: L13.clearOk, danger: true }))
+        if (!await confirmDialog({ title: t(L14.clear), body: t(L14.clearBody), ok: L14.clearOk, danger: true }))
           return;
         history2.set([]);
         resetBrowse();
@@ -5291,11 +5623,11 @@ ${x.css}`)].join(`
         open = null;
         draw();
       });
-      meta.appendChild(h("div", { class: "ih-meta" }, h("span", { class: "ih-count", text: (needle ? t(L13.matches) : t(L13.stored)).replace("{n}", String(needle ? rows.length : total)) }), wipe));
+      meta.appendChild(h("div", { class: "ih-meta" }, h("span", { class: "ih-count", text: (needle ? t(L14.matches) : t(L14.stored)).replace("{n}", String(needle ? rows.length : total)) }), wipe));
       if (!total)
-        return void body.appendChild(h("p", { class: "ih-empty", text: t(L13.empty) }));
+        return void body.appendChild(h("p", { class: "ih-empty", text: t(L14.empty) }));
       if (!rows.length)
-        return void body.appendChild(h("p", { class: "ih-empty", text: t(L13.noMatch) }));
+        return void body.appendChild(h("p", { class: "ih-empty", text: t(L14.noMatch) }));
       const listEl = h("div", { class: "ih-list" });
       for (const row of rows) {
         const expanded = open === row.i;
@@ -5318,12 +5650,12 @@ ${x.css}`)].join(`
         };
         const actions = h("div", { class: "ih-actions" });
         if (picker)
-          actions.appendChild(action("pencil", L13.use, () => {
+          actions.appendChild(action("pencil", L14.use, () => {
             close();
             adopt(row.text, row.i);
           }));
-        actions.appendChild(action("copy", L13.copy, () => void navigator.clipboard?.writeText(row.text).catch(() => {})));
-        actions.appendChild(action("trash", L13.remove, () => {
+        actions.appendChild(action("copy", L14.copy, () => void navigator.clipboard?.writeText(row.text).catch(() => {})));
+        actions.appendChild(action("trash", L14.remove, () => {
           if (open === row.i)
             open = null;
           const next = history2.get().filter((_, i) => i !== row.i);
@@ -5345,7 +5677,7 @@ ${x.css}`)].join(`
       if (cursor >= 0 && hudEditor?.isConnected)
         showHud(hudEditor);
     };
-    const close = openModal(dialogFrame({ title: t(L13.title), icon: "history", top: [top], body: [body], onClose: () => close() }), { onClose: done });
+    const close = openModal(dialogFrame({ title: t(L14.title), icon: "history", top: [top], body: [body], onClose: () => close() }), { onClose: done });
     draw();
   }
   function adopt(text, index) {
@@ -5429,11 +5761,11 @@ ${x.css}`)].join(`
       });
       if (settings8.store.button) {
         const popover = createPopover(scope, "input-history", "", 360);
-        addSlotItem(scope, "composer", "input-history", () => slotButton(t(L13.title), (event) => popover.open(event.currentTarget, (panel, close) => {
-          panel.appendChild(h("div", { class: "top" }, icon("history", 16), h("b", { text: t(L13.title) })));
+        addSlotItem(scope, "composer", "input-history", () => slotButton(t(L14.title), (event) => popover.open(event.currentTarget, (panel, close) => {
+          panel.appendChild(h("div", { class: "top" }, icon("history", 16), h("b", { text: t(L14.title) })));
           const list = history2.get();
           if (!list.length)
-            panel.appendChild(h("div", { class: "msg", text: t(L13.empty) }));
+            panel.appendChild(h("div", { class: "msg", text: t(L14.empty) }));
           list.slice(0, 50).forEach((text, i) => {
             const item = h("button", { type: "button", class: "item" }, h("span", { class: "grow clip2", text: snippet(text, 200) }));
             item.addEventListener("click", () => {
@@ -5483,7 +5815,7 @@ Summarize in at most 5 bullet points:`
       ]
     }
   });
-  var L14 = {
+  var L15 = {
     title: { zh: "提示词预设", en: "Prompt presets" },
     empty: { zh: "还没有预设，在 CC++ 设置里添加。", en: "No presets yet; add some in CC++ settings." }
   };
@@ -5495,7 +5827,7 @@ Summarize in at most 5 bullet points:`
   }
   var promptPresets_default = definePlugin({
     name: "PromptPresets",
-    title: L14.title,
+    title: L15.title,
     description: { zh: "输入框旁的预设按钮，一键插入常用提示词。", en: "A button next to the model picker that inserts saved prompts." },
     category: "composer",
     icon: "fileText",
@@ -5504,11 +5836,11 @@ Summarize in at most 5 bullet points:`
     settings: settings9,
     start(scope) {
       const popover = createPopover(scope, "presets", "", 320);
-      addSlotItem(scope, "composer", "presets", () => slotButton(t(L14.title), (event) => popover.open(event.currentTarget, (panel, close) => {
-        panel.appendChild(h("div", { class: "top" }, icon("fileText", 16), h("b", { text: t(L14.title) })));
+      addSlotItem(scope, "composer", "presets", () => slotButton(t(L15.title), (event) => popover.open(event.currentTarget, (panel, close) => {
+        panel.appendChild(h("div", { class: "top" }, icon("fileText", 16), h("b", { text: t(L15.title) })));
         const presets = parsePresets(settings9.store.presets);
         if (!presets.length)
-          panel.appendChild(h("div", { class: "msg", text: t(L14.empty) }));
+          panel.appendChild(h("div", { class: "msg", text: t(L15.empty) }));
         for (const preset of presets) {
           const item = h("button", { type: "button", class: "item" }, h("span", { class: "grow" }, h("div", { class: "clip", text: preset.title, style: { fontWeight: "600" } }), h("div", { class: "sub clip", text: snippet(preset.body, 80) })));
           item.addEventListener("click", () => {
@@ -5545,7 +5877,7 @@ Summarize in at most 5 bullet points:`
     toast: { type: "boolean", label: { zh: "页面内提示条", en: "In-page toast" }, default: true },
     test: { type: "action", label: { zh: "试一下", en: "Try it" }, button: { zh: "发送测试提醒", en: "Send a test" }, run: () => notify2({ chatId: currentRoute().chatId, title: "CC++", durationMs: 0, at: Date.now() }, true) }
   });
-  var L15 = {
+  var L16 = {
     done: { zh: "Claude 回复完成", en: "Claude finished replying" },
     took: { zh: "用时 {s} 秒", en: "Took {s}s" },
     open: { zh: "点击回到对话", en: "Click to return to the chat" }
@@ -5574,7 +5906,7 @@ Summarize in at most 5 bullet points:`
     setTimeout(() => void ctx.close(), 1200);
   }
   function notify2(event, test = false) {
-    const body = [event.title, event.durationMs ? t(L15.took).replace("{s}", String(Math.round(event.durationMs / 1000))) : ""].filter(Boolean).join(" · ");
+    const body = [event.title, event.durationMs ? t(L16.took).replace("{s}", String(Math.round(event.durationMs / 1000))) : ""].filter(Boolean).join(" · ");
     const back = () => {
       window.focus();
       if (event.chatId && currentRoute().chatId !== event.chatId)
@@ -5583,12 +5915,12 @@ Summarize in at most 5 bullet points:`
     if (settings10.store.sound)
       chime(settings10.store.volume);
     if (settings10.store.toast)
-      toast(body, { title: t(L15.done), kind: "ok", onClick: back, key: "reply-done" });
+      toast(body, { title: t(L16.done), kind: "ok", onClick: back, key: "reply-done" });
     if (settings10.store.desktop && "Notification" in window) {
       const show = () => {
         try {
-          const n = new Notification(t(L15.done), { body: `${body}
-${t(L15.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
+          const n = new Notification(t(L16.done), { body: `${body}
+${t(L16.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
           n.onclick = () => {
             back();
             n.close();
@@ -6273,7 +6605,7 @@ ${targets.map((t) => `${t}:hover`).join(`,
     hotkey: { type: "string", label: { zh: "快捷键", en: "Shortcut" }, default: "ctrl+`" },
     count: { type: "number", label: { zh: "显示几个最近对话", en: "Chats to show" }, default: 9, min: 3, max: 24 }
   });
-  var L16 = {
+  var L17 = {
     title: { zh: "最近打开的对话", en: "Recently opened chats" },
     empty: { zh: "还没有记录。打开过的对话会出现在这里。", en: "Nothing yet. Chats you open show up here." },
     hint: { zh: "↑↓←→ 选择 · Enter 打开 · 1–9 直达 · Esc 关闭", en: "Arrows to pick · Enter to open · 1–9 to jump · Esc to close" }
@@ -6363,7 +6695,7 @@ ${targets.map((t) => `${t}:hover`).join(`,
           card.addEventListener("click", () => go(visit));
           cards.appendChild(card);
         });
-        const overlay = h("div", { class: "overlay", role: "dialog", "aria-label": t(L16.title) }, h("div", { class: "box" }, h("h3", {}, t(L16.title), h("span", { text: t(L16.hint) })), list.length ? cards : h("div", { class: "empty", text: t(L16.empty) })));
+        const overlay = h("div", { class: "overlay", role: "dialog", "aria-label": t(L17.title) }, h("div", { class: "box" }, h("h3", {}, t(L17.title), h("span", { text: t(L17.hint) })), list.length ? cards : h("div", { class: "empty", text: t(L17.empty) })));
         overlay.addEventListener("mousedown", (event) => event.target === overlay && close());
         box.appendChild(overlay);
       };
@@ -6404,7 +6736,7 @@ ${targets.map((t) => `${t}:hover`).join(`,
   var settings20 = definePluginSettings({
     timestamps: { type: "boolean", label: { zh: "Markdown 里包含时间", en: "Include times in Markdown" }, default: true }
   });
-  var L17 = {
+  var L18 = {
     title: { zh: "导出对话", en: "Export chat" },
     md: { zh: "Markdown (.md)", en: "Markdown (.md)" },
     txt: { zh: "纯文本 (.txt)", en: "Plain text (.txt)" },
@@ -6444,7 +6776,7 @@ ${m.text.trim()}`).join(`
   }
   var exportChat_default = definePlugin({
     name: "ExportChat",
-    title: L17.title,
+    title: L18.title,
     description: { zh: "对话标题栏加一个导出按钮：下载 Markdown / 纯文本 / JSON，或复制为 Markdown。", en: "An export button in the chat header: download Markdown, text or JSON, or copy as Markdown." },
     category: "chats",
     icon: "download",
@@ -6470,22 +6802,22 @@ ${m.text.trim()}`).join(`
               download(`${name}.md`, md, "text/markdown");
             else {
               await navigator.clipboard.writeText(md);
-              toast(t(L17.copied), { kind: "ok", timeoutMs: 2500 });
+              toast(t(L18.copied), { kind: "ok", timeoutMs: 2500 });
             }
           }
         } catch (error) {
-          toast(t(L17.failed).replace("{e}", error.message || String(error)), { kind: "error" });
+          toast(t(L18.failed).replace("{e}", error.message || String(error)), { kind: "error" });
         }
       };
       addSlotItem(scope, "header", "export", () => {
-        const btn = slotButton(t(L17.title), (event) => popover.open(event.currentTarget, (panel) => {
-          panel.appendChild(h("div", { class: "top" }, icon("download", 16), h("b", { text: t(L17.title) })));
-          for (const [format, label] of [["md", L17.md], ["txt", L17.txt], ["json", L17.json], ["copy", L17.copy]]) {
+        const btn = slotButton(t(L18.title), (event) => popover.open(event.currentTarget, (panel) => {
+          panel.appendChild(h("div", { class: "top" }, icon("download", 16), h("b", { text: t(L18.title) })));
+          for (const [format, label] of [["md", L18.md], ["txt", L18.txt], ["json", L18.json], ["copy", L18.copy]]) {
             const item = h("button", { type: "button", class: "item", text: t(label) });
             item.addEventListener("click", () => void run(format));
             panel.appendChild(item);
           }
-          panel.appendChild(h("div", { class: "msg", text: t(L17.note), style: { fontSize: "12px" } }));
+          panel.appendChild(h("div", { class: "msg", text: t(L18.note), style: { fontSize: "12px" } }));
         }), icon("download", 16));
         btn.hidden = !currentRoute().chatId;
         return btn;
@@ -6534,7 +6866,7 @@ ${m.text.trim()}`).join(`
   var settings22 = definePluginSettings({
     lines: { type: "number", label: { zh: "超过多少行折叠（行）", en: "Collapse code longer than (lines)" }, default: 30, min: 8, max: 200, step: 2 }
   });
-  var L18 = { expand: { zh: "展开全部代码（{n} 行）", en: "Show all {n} lines" }, collapse: { zh: "收起代码", en: "Collapse code" } };
+  var L19 = { expand: { zh: "展开全部代码（{n} 行）", en: "Show all {n} lines" }, collapse: { zh: "收起代码", en: "Collapse code" } };
   var CSS9 = `
 .ccpp-code-collapsed { max-height: var(--ccpp-code-max, 30lh) !important; overflow: hidden !important; -webkit-mask-image: linear-gradient(#000 70%, transparent); mask-image: linear-gradient(#000 70%, transparent); }
 .ccpp-code-toggle { display: block; margin: 4px auto 8px; padding: 2px 12px; border-radius: 999px; border: 1px solid rgba(127,127,127,.3); background: transparent; color: inherit; font: 12px/20px ui-sans-serif, system-ui, sans-serif; opacity: .8; cursor: pointer; }
@@ -6559,10 +6891,10 @@ ${m.text.trim()}`).join(`
           return;
         pre.style.setProperty("--ccpp-code-max", `${max}lh`);
         pre.classList.add("ccpp-code-collapsed");
-        const button = h("button", { type: "button", class: "ccpp-code-toggle", text: t(L18.expand).replace("{n}", String(lines)) });
+        const button = h("button", { type: "button", class: "ccpp-code-toggle", text: t(L19.expand).replace("{n}", String(lines)) });
         button.addEventListener("click", () => {
           const collapsed = pre.classList.toggle("ccpp-code-collapsed");
-          button.textContent = collapsed ? t(L18.expand).replace("{n}", String(lines)) : t(L18.collapse);
+          button.textContent = collapsed ? t(L19.expand).replace("{n}", String(lines)) : t(L19.collapse);
         });
         pre.after(button);
         return () => {
@@ -6828,6 +7160,310 @@ ${RUNNING_PILL} {
     }
   });
 
+  // src/lib/identity.ts
+  var ORIG_LABEL = "data-ccpp-orig-label";
+  var known = "";
+  function realName() {
+    const avatar = document.querySelector(`${SEL.userMenuButton} ${SEL.avatar}`);
+    const label = (avatar?.getAttribute(ORIG_LABEL) ?? avatar?.getAttribute("aria-label") ?? "").trim();
+    if (label)
+      known = label;
+    return known;
+  }
+  var identityRoots = () => [...document.querySelectorAll(SEL.userMenuButton), ...document.querySelectorAll(SEL.accountMenu)];
+  function textNodes(root) {
+    const out = [];
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode();node; node = walker.nextNode())
+      out.push(node);
+    return out;
+  }
+
+  class TextSwaps {
+    swaps = new Map;
+    set(node, ours) {
+      if (node.data === ours)
+        return;
+      const prev = this.swaps.get(node);
+      const original = prev && node.data === prev.ours ? prev.original : node.data;
+      this.swaps.set(node, { original, ours });
+      node.data = ours;
+    }
+    original(node) {
+      const swap = this.swaps.get(node);
+      return swap && node.data === swap.ours ? swap.original : node.data;
+    }
+    restore(node) {
+      for (const [n, swap] of node ? [[node, this.swaps.get(node)]] : [...this.swaps]) {
+        if (!swap)
+          continue;
+        if (n.isConnected && n.data === swap.ours)
+          n.data = swap.original;
+        this.swaps.delete(n);
+      }
+    }
+    prune() {
+      for (const n of this.swaps.keys())
+        if (!n.isConnected)
+          this.swaps.delete(n);
+    }
+  }
+  function repaintOnChange(scope, paint) {
+    let timer = null;
+    const run = () => {
+      timer = null;
+      if (scope.alive)
+        paint();
+    };
+    const observer = new MutationObserver(() => timer ??= setTimeout(run, 60));
+    observer.observe(document.documentElement, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["aria-label"] });
+    scope.defer(() => {
+      observer.disconnect();
+      if (timer)
+        clearTimeout(timer);
+    });
+    paint();
+  }
+
+  // src/plugins/customIdentity/index.ts
+  var settings26 = definePluginSettings({
+    displayName: {
+      type: "string",
+      label: { zh: "显示名", en: "Display name" },
+      description: { zh: "替换侧栏头像旁和账号菜单里的名字。留空保持官方名字。", en: "Replaces the name next to the sidebar avatar and in the account menu. Empty keeps your real name." },
+      placeholder: { zh: "留空保持官方名字", en: "Empty keeps your real name" },
+      default: "",
+      maxLength: 80
+    },
+    avatar: {
+      type: "image",
+      label: { zh: "头像", en: "Avatar" },
+      description: { zh: "图片链接、data:image，或直接粘贴 / 拖入 / 选择图片，再拖动圆圈裁切。留空保持官方头像。", en: "Image URL, data:image, or paste / drop / choose a picture, then drag the circle to crop. Empty keeps the official avatar." },
+      default: "",
+      size: 256
+    },
+    greeting: {
+      type: "boolean",
+      label: { zh: "首页问候语也用这个名字", en: "Use the name in the home greeting too" },
+      default: true,
+      visible: (v) => !!String(v.displayName ?? "").trim()
+    },
+    applyToMenu: {
+      type: "boolean",
+      label: { zh: "账号菜单里也替换", en: "Also replace in the account menu" },
+      description: { zh: "点开头像弹出的菜单里，顶部的头像和名字也一起换掉。", en: "Also replaces the avatar and name at the top of the menu the avatar opens." },
+      default: true
+    }
+  });
+  var ME = "data-ccpp-me";
+  function initials(name) {
+    const words = name.trim().split(/\s+/).filter(Boolean);
+    if (!words.length)
+      return "";
+    const first = (w) => Array.from(w)[0] ?? "";
+    return (words.length > 1 ? first(words[0]) + first(words[words.length - 1]) : first(words[0])).toUpperCase();
+  }
+  var cssUrl = (url) => `url("${url.replace(/["\\\n\r]/g, (c) => `\\${c.charCodeAt(0).toString(16)} `)}")`;
+  function avatarCss(url, menu) {
+    if (!url)
+      return "";
+    const targets = [`${SEL.userMenuButton} ${SEL.avatar}`, `${SEL.avatar}[${ME}]`, ...menu ? [`${SEL.accountMenu} ${SEL.avatar}`] : []];
+    const list = targets.join(`,
+`);
+    return `${list} { background: center / cover no-repeat ${cssUrl(url)} !important; border-radius: 9999px !important; color: transparent !important; }
+${targets.map((t) => `${t} > *`).join(`,
+`)} { opacity: 0 !important; }`;
+  }
+  function swapName(text, real, name, whole) {
+    if (!real || !name || real === name)
+      return text;
+    if (whole)
+      return text.trim() === real ? text.replace(real, name) : text;
+    return text.includes(real) ? text.replaceAll(real, name) : text;
+  }
+  var customIdentity_default = definePlugin({
+    name: "CustomIdentity",
+    title: { zh: "自定义头像与用户名", en: "Custom avatar & name" },
+    description: { zh: "替换侧栏和账号菜单里的头像与显示名，只改你看到的样子，不改账号资料。留空的项保持官方值。", en: "Replaces the avatar and display name in the sidebar and account menu, only on your screen; your account is unchanged. Empty fields keep the official values." },
+    category: "appearance",
+    tags: ["privacy"],
+    icon: "user",
+    enabledByDefault: false,
+    updatedAt: "2026-10-22",
+    dependencies: ["StylesApi", "DomApi"],
+    settings: settings26,
+    start(scope) {
+      const swaps = new TextSwaps;
+      const setCss = addStyle(scope, "", "custom-identity");
+      let lastUrl = null;
+      const paint = () => {
+        const { displayName, avatar, applyToMenu, greeting } = settings26.store;
+        const name = displayName.trim();
+        const url = avatar.trim();
+        if (url !== lastUrl) {
+          lastUrl = url;
+          setCss(avatarCss(url, applyToMenu));
+        }
+        const real = realName();
+        swaps.prune();
+        const roots = identityRoots().filter((root) => applyToMenu || !root.matches(SEL.menu));
+        for (const avatarEl of document.querySelectorAll(SEL.avatar)) {
+          const inRoot = roots.some((root) => root.contains(avatarEl));
+          const label = avatarEl.getAttribute(ORIG_LABEL) ?? avatarEl.getAttribute("aria-label") ?? "";
+          const mine = !!real && label.trim() === real;
+          if (mine && !inRoot)
+            avatarEl.setAttribute(ME, "");
+          else
+            avatarEl.removeAttribute(ME);
+          if ((inRoot || mine) && name) {
+            if (!avatarEl.hasAttribute(ORIG_LABEL))
+              avatarEl.setAttribute(ORIG_LABEL, label);
+            if (avatarEl.getAttribute("aria-label") !== name)
+              avatarEl.setAttribute("aria-label", name);
+            for (const node of textNodes(avatarEl)) {
+              const text = swaps.original(node).trim();
+              if (text && text.length <= 3)
+                swaps.set(node, initials(name));
+            }
+          } else if (avatarEl.hasAttribute(ORIG_LABEL)) {
+            avatarEl.setAttribute("aria-label", avatarEl.getAttribute(ORIG_LABEL));
+            avatarEl.removeAttribute(ORIG_LABEL);
+            for (const node of textNodes(avatarEl))
+              swaps.restore(node);
+          }
+        }
+        const rename = (root, whole) => {
+          for (const node of textNodes(root)) {
+            if (node.parentElement?.closest(SEL.avatar))
+              continue;
+            const original = swaps.original(node);
+            const next = swapName(original, real, name, whole);
+            if (next !== original)
+              swaps.set(node, next);
+            else
+              swaps.restore(node);
+          }
+        };
+        for (const root of roots)
+          rename(root, true);
+        if (greeting)
+          for (const el of document.querySelectorAll(SEL.greeting))
+            rename(el, false);
+      };
+      repaintOnChange(scope, paint);
+      this.onSettingsChange = () => {
+        lastUrl = null;
+        swaps.restore();
+        for (const el of document.querySelectorAll(`[${ME}]`))
+          el.removeAttribute(ME);
+        paint();
+      };
+      scope.defer(() => {
+        swaps.restore();
+        for (const el of document.querySelectorAll(`[${ORIG_LABEL}]`)) {
+          el.setAttribute("aria-label", el.getAttribute(ORIG_LABEL));
+          el.removeAttribute(ORIG_LABEL);
+        }
+        for (const el of document.querySelectorAll(`[${ME}]`))
+          el.removeAttribute(ME);
+      });
+    }
+  });
+
+  // src/plugins/hideIdentity/index.ts
+  var settings27 = definePluginSettings({
+    hideEmail: {
+      type: "boolean",
+      label: { zh: "隐藏邮箱", en: "Hide email" },
+      description: { zh: "点开头像弹出的账号菜单顶部的邮箱，以及头像按钮旁的邮箱。", en: "The email at the top of the account menu the avatar opens, and next to the avatar button." },
+      default: true
+    },
+    hideName: {
+      type: "boolean",
+      label: { zh: "隐藏用户名", en: "Hide username" },
+      description: { zh: "头像按钮旁和账号菜单里的名字；头像仍可点击。", en: "The name next to the avatar button and in the account menu; the avatar stays clickable." },
+      default: false
+    }
+  });
+  var HIDE = "data-ccpp-hide-identity";
+  var EMAIL = /[^\s@<>()"',;:]+@[^\s@<>()"',;:]+\.[a-z]{2,}/i;
+  var MENU_ROW = '[role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"]';
+  var isEmail = (text) => {
+    const match = EMAIL.exec(text.trim());
+    return !!match && match[0] === text.trim();
+  };
+  var stripEmail = (text) => text.replace(new RegExp(`\\s*[·•|–—-]?\\s*[(<]?${EMAIL.source}[)>]?`, "gi"), "").replace(/^\s*[·•|–—-]\s*/, "").trimEnd();
+  function soleHolder(node, root, text) {
+    let el = node.parentElement;
+    if (!el || !root.contains(el))
+      return null;
+    while (el.parentElement && el.parentElement !== root && !el.parentElement.matches(MENU_ROW) && el.parentElement.textContent?.trim() === text)
+      el = el.parentElement;
+    return el.matches(MENU_ROW) ? null : el;
+  }
+  var hideIdentity_default = definePlugin({
+    name: "HideIdentity",
+    title: { zh: "隐藏邮箱 / 用户名", en: "Hide email / username" },
+    description: { zh: "隐藏头像弹出的账号菜单里的邮箱（也可隐藏用户名），截图、录屏时不露出账号。", en: "Hides the email (and optionally your name) in the account menu the avatar opens, so screenshots don't show your account." },
+    category: "privacy",
+    icon: "eyeOff",
+    enabledByDefault: true,
+    updatedAt: "2026-10-22",
+    dependencies: ["StylesApi", "DomApi"],
+    settings: settings27,
+    start(scope) {
+      const { hideEmail, hideName } = settings27.store;
+      addStyle(scope, `[${HIDE}] { display: none !important; }`, "hide-identity");
+      const swaps = new TextSwaps;
+      const hidden = new Set;
+      const hide = (el) => {
+        el.setAttribute(HIDE, "");
+        hidden.add(el);
+        const next = el.nextElementSibling;
+        const first = ![...el.parentElement?.children ?? []].some((c) => c !== el && c.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING && !c.hasAttribute(HIDE));
+        if (first && next?.matches('[role="separator"]')) {
+          next.setAttribute(HIDE, "");
+          hidden.add(next);
+        }
+      };
+      const paint = () => {
+        swaps.prune();
+        const shown = document.querySelector(`${SEL.userMenuButton} ${SEL.avatar}`)?.getAttribute("aria-label")?.trim();
+        const names = new Set([realName(), shown].filter((n) => !!n));
+        for (const root of identityRoots()) {
+          for (const node of textNodes(root)) {
+            const text = swaps.original(node).trim();
+            if (!text)
+              continue;
+            if (hideEmail && EMAIL.test(text)) {
+              const holder = isEmail(text) ? soleHolder(node, root, node.data.trim()) : null;
+              if (holder) {
+                if (!holder.hasAttribute(HIDE))
+                  hide(holder);
+              } else {
+                swaps.set(node, stripEmail(swaps.original(node)));
+              }
+              continue;
+            }
+            if (hideName && names.has(node.data.trim()) && !node.parentElement?.closest(SEL.avatar)) {
+              const holder = soleHolder(node, root, node.data.trim());
+              if (holder && !holder.hasAttribute(HIDE))
+                hide(holder);
+            }
+          }
+        }
+      };
+      repaintOnChange(scope, paint);
+      scope.defer(() => {
+        swaps.restore();
+        for (const el of hidden)
+          el.removeAttribute(HIDE);
+        for (const el of document.querySelectorAll(`[${HIDE}]`))
+          el.removeAttribute(HIDE);
+      });
+    }
+  });
+
   // src/plugins/index.ts
   var PLUGINS = [
     dom_default,
@@ -6871,7 +7507,9 @@ ${RUNNING_PILL} {
     consoleJanitor_default,
     sidebarDefaultCode_default,
     chatNoticeHider_default,
-    runningPill_default
+    runningPill_default,
+    customIdentity_default,
+    hideIdentity_default
   ];
 
   // src/index.ts
@@ -6880,7 +7518,7 @@ ${RUNNING_PILL} {
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.79",
+      version: "0.3.80",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -6897,7 +7535,7 @@ ${RUNNING_PILL} {
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.79";
+    win[FLAG] = "0.3.80";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -6914,7 +7552,7 @@ ${RUNNING_PILL} {
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.79"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.80"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();

@@ -8,6 +8,7 @@ import { t } from "@kernel/i18n";
 import { coerce, getRaw, type Option, type PluginSettings, setRaw, type Value } from "@kernel/settings";
 import { h } from "@lib/dom";
 
+import { imageField } from "./imageField";
 import { confirmDialog } from "./layer";
 
 /** One form row for a plugin option, wired to the settings store. */
@@ -62,6 +63,8 @@ export function renderOption(settings: PluginSettings, key: string, option: Opti
             area.addEventListener("change", () => set(area.value));
             return row(area, true);
         }
+        case "image":
+            return row(imageField(option, String(value ?? ""), next => set(next)), true);
         case "action": {
             const button = h("button", { type: "button", class: "btn", text: t(option.button) });
             button.addEventListener("click", async () => {
