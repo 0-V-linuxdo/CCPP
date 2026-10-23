@@ -9,7 +9,6 @@ import { level } from "../src/plugins/usageDisplay";
 import { cornerKind, dotKind, projectKind } from "../src/plugins/projectStatus";
 import { remember } from "../src/plugins/inputHistory";
 import { parsePresets } from "../src/plugins/promptPresets";
-import { withPrefix } from "../src/plugins/tabStatus";
 import { pickPhrase, fillPhrase } from "../src/plugins/customGreeting";
 import { toMarkdown } from "../src/plugins/exportChat";
 import { splitLinks } from "../src/plugins/betterLinks";
@@ -90,11 +89,6 @@ describe("feature helpers", () => {
 
     test("presets", () => {
         expect(parsePresets("T1\nbody one\n\nT2")).toEqual([{ title: "T1", body: "body one" }, { title: "T2", body: "T2" }]);
-    });
-
-    test("tab prefix replaces earlier prefixes", () => {
-        expect(withPrefix("⏳ Chat - Claude", "✅", ["⏳", "✅"])).toBe("✅ Chat - Claude");
-        expect(withPrefix("✅ Chat", "", ["⏳", "✅"])).toBe("Chat");
     });
 
     test("greetings", () => {

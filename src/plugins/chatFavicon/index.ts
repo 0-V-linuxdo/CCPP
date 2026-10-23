@@ -38,7 +38,7 @@ const COLOR: Record<Exclude<FaviconState, "idle">, string> = {
     error: "#EF4444",
 };
 const CLAY = "#D97757";
-const EMOJI: Record<Exclude<FaviconState, "idle">, string> = { streaming: "🔄", done: "✅", ready: "✍️", error: "❌" };
+const EMOJI: Record<Exclude<FaviconState, "idle">, string> = { streaming: "🔄", done: "✔️", ready: "👍", error: "🚫" };
 
 /** claude.ai's own mark (from its SVG favicon): viewBox and inner markup. */
 export interface Mark {
@@ -142,7 +142,7 @@ export default definePlugin({
     category: "notifications",
     icon: "tab",
     enabledByDefault: true,
-    updatedAt: "2026-10-13",
+    updatedAt: "2026-10-23",
     dependencies: ["ChatStateApi", "ComposerApi", "NetworkApi", "RouterApi"],
     settings,
     start(scope) {
