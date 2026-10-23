@@ -14,7 +14,7 @@ export default definePlugin({
     category: "declutter",
     tags: ["privacy"],
     icon: "linkOff",
-    enabledByDefault: false,
+    enabledByDefault: true,
     dependencies: ["StylesApi"],
     start(scope) {
         addStyle(scope, `[data-testid="wiggle-controls-actions-share"] { display: none !important; }`, "no-share");

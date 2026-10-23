@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: MIT
  */
 
-import { t } from "@kernel/i18n";
+import { getLang, t } from "@kernel/i18n";
 import { Logger } from "@kernel/logger";
 import { definePlugin } from "@kernel/plugins";
 import { definePluginSettings } from "@kernel/settings";
@@ -13,9 +13,10 @@ import { agoText, dateTimeText, untilText } from "@lib/format";
 import { icon } from "@lib/icons";
 import { hideTip, tipAttrs } from "@lib/tooltip";
 import { createPopover } from "@lib/popover";
-import { ApiError, getUsage, type Usage, type UsageWindow } from "@api/claude";
+import { ApiError, getOrgId, getUsage, type Usage, type UsageWindow } from "@api/claude";
 import { addStyle } from "@api/styles";
 import { addSlotItem, refreshSlotItem } from "@api/slots";
+import { chartDays, chartScale, clearDays, type DayRecord, loadDays, localDateKey, RETAIN_MAX, RETAIN_MIN, recordSnapshot, recorded, trackDelta } from "./stats";
 
 const logger = new Logger("UsageDisplay");
 
@@ -33,6 +34,30 @@ const settings = definePluginSettings({
     refreshSec: { type: "number", label: { zh: "自动刷新间隔", en: "Refresh every" }, default: 60, min: 30, max: 600, step: 10, unit: "s" },
     warnAt: { type: "number", label: { zh: "黄色提醒阈值", en: "Amber from" }, default: 75, min: 10, max: 99, unit: "%" },
     dangerAt: { type: "number", label: { zh: "红色提醒阈值", en: "Red from" }, default: 90, min: 10, max: 100, unit: "%" },
+    stats: {
+        type: "boolean",
+        label: { zh: "按日记录用量", en: "Record daily usage" },
+        description: {
+            zh: "在本机记下每天用掉的每周额度和 5 小时额度。悬停圆环看今天，点开看按日柱状图。只在打开 claude.ai 时记录。",
+            en: "Keeps a per-day log of weekly and 5-hour usage on this device. Hover a ring for today; click for a daily chart. Recorded only while claude.ai is open.",
+        },
+        default: true,
+    },
+    retainDays: { type: "number", label: { zh: "保留多少天", en: "Days to keep" }, default: 90, min: RETAIN_MIN, max: RETAIN_MAX, visible: v => !!v.stats },
+    clearStats: {
+        type: "action",
+        label: { zh: "清空用量记录", en: "Clear usage history" },
+        button: { zh: "清空", en: "Clear" },
+        confirm: { zh: "删除本机记录的当前账号全部按日用量？此操作无法撤销。", en: "Delete every day of usage recorded on this device for this account? This can't be undone." },
+        visible: v => !!v.stats,
+        run() {
+            void getOrgId().then(org => {
+                clearDays(org);
+                days = {};
+                changed();
+            });
+        },
+    },
 });
 
 const L = {
@@ -49,6 +74,15 @@ const L = {
     error: { zh: "读取用量失败：{e}", en: "Could not read usage: {e}" },
     signedOut: { zh: "未登录或无权读取用量", en: "Not signed in or no access to usage" },
     none: { zh: "当前套餐没有用量窗口", en: "No usage windows on this plan" },
+    today: { zh: "今天 {p}", en: "Today {p}" },
+    daily: { zh: "按日用量", en: "Usage by day" },
+    dailyNote: { zh: "本机打开 claude.ai 时记录；没打开时的用量算在下次看到的那天。", en: "Recorded while claude.ai is open here; usage while it's closed counts on the day it's next seen." },
+    noDays: { zh: "还没有记录，从现在开始统计。", en: "Nothing recorded yet; counting starts now." },
+    noRecord: { zh: "没有记录", en: "Not recorded" },
+    todayShort: { zh: "今", en: "Today" },
+    todayLong: { zh: "今天", en: "Today" },
+    dayWeekly: { zh: "每周额度 {p}", en: "Weekly {p}" },
+    daySession: { zh: "5 小时额度 {p}", en: "5-hour {p}" },
 };
 
 /* ---------- state ---------- */
@@ -61,6 +95,32 @@ let inflight: AbortController | null = null;
 let retryTimer: ReturnType<typeof setTimeout> | undefined;
 const listeners = new Set<() => void>();
 const changed = () => listeners.forEach(fn => fn());
+
+/** Daily usage of the signed-in organization, newest snapshot included. */
+let org: string | null = null;
+let days: Record<string, DayRecord> = {};
+/** The day picked in the chart; null follows today. */
+let picked: string | null = null;
+
+async function snapshot(current: Usage) {
+    if (!settings.store.stats) return;
+    try {
+        org = await getOrgId();
+    } catch {
+        return;
+    }
+    const win = (w: UsageWindow | null) => (w ? { percent: w.utilization, resetAt: w.resetsAt } : null);
+    days = recordSnapshot(org, { week: win(current.sevenDay), session: win(current.fiveHour) }, settings.store.retainDays, current.fetchedAt);
+}
+
+/** "+6%", one decimal at most. */
+export const deltaText = (value: number) => `+${Math.round(value * 10) / 10}%`;
+
+function todayDetail(kind: "week" | "session") {
+    if (!settings.store.stats || !org) return "";
+    const day = days[localDateKey(Date.now())];
+    return recorded(day) ? t(L.today).replace("{p}", deltaText(trackDelta(day![kind]))) : "";
+}
 
 /** Successive manual refreshes are spaced at least this far apart. */
 export const MIN_GAP_MS = 5000;
@@ -78,6 +138,7 @@ async function refresh(force = false) {
     try {
         usage = await getUsage(controller.signal);
         error = null;
+        await snapshot(usage);
     } catch (err) {
         if (timedOut) {
             // With numbers already on screen a slow request is not worth an error; just retry.
@@ -157,13 +218,13 @@ function usageButton(open: (anchor: HTMLElement) => void, label: string, tip: Re
     return button;
 }
 
-function ring(open: (anchor: HTMLElement) => void, window: UsageWindow | null, label: string) {
+function ring(open: (anchor: HTMLElement) => void, window: UsageWindow | null, label: string, kind: "week" | "session") {
     const percent = window ? Math.round(window.utilization) : null;
     // Each ring explains itself, like claude.ai's single usage ring.
     return usageButton(
         open,
         percent === null ? label : `${label} ${percent}%`,
-        window ? tipAttrs(`${label}: ${percent}%`, resetText(window)) : tipAttrs(label, error ?? t(L.loading)),
+        window ? tipAttrs(`${label}: ${percent}%`, [resetText(window), todayDetail(kind)].filter(Boolean).join(" · ")) : tipAttrs(label, error ?? t(L.loading)),
         ringSvg(window ? window.utilization : null),
     );
 }
@@ -178,7 +239,7 @@ function chip(open: (anchor: HTMLElement) => void) {
     return h(
         "span",
         { class: `ccpp-usage${error && !usage ? " err" : ""}` },
-        ...(style !== "text" ? [ring(open, five, t(L.session)), ring(open, week, t(L.weekly))] : []),
+        ...(style !== "text" ? [ring(open, five, t(L.session), "session"), ring(open, week, t(L.weekly), "week")] : []),
         ...(style !== "rings" ? [usageButton(open, tip, tipAttrs(tip, five ? resetText(five) : ""), h("span", { text }))] : []),
     );
 }
@@ -199,6 +260,17 @@ const PANEL_CSS = `
 .bar { height: 6px; border-radius: 3px; background: var(--bg3); overflow: hidden; } .bar > i { display: block; height: 100%; border-radius: 3px; }
 .foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 12px; color: var(--fg3); }
 .foot a { color: var(--accent); text-decoration: none; }
+.daily { display: flex; flex-direction: column; gap: 6px; padding-top: 8px; border-top: 1px solid var(--line-soft); }
+.daily .line { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.chart { display: flex; gap: 2px; overflow-x: auto; scrollbar-width: thin; }
+.day { flex: 0 0 34px; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 3px 0; border: 0; border-radius: 6px; background: transparent; color: var(--fg3); font: inherit; font-size: 11px; font-variant-numeric: tabular-nums; cursor: pointer; }
+.day:hover { background: var(--bg2); } .day.on { background: var(--bg3); color: var(--fg); }
+.day:focus-visible { outline: none; box-shadow: var(--focus); }
+.day .v { height: 14px; font-size: 10px; white-space: nowrap; }
+.day .track { display: flex; align-items: flex-end; width: 10px; height: 64px; border-radius: 3px; background: var(--bg2); overflow: hidden; }
+.day .track > i { display: block; width: 100%; border-radius: 3px; background: var(--accent); }
+.day.empty .track { opacity: .5; }
+.daily .detail { font-size: 12px; color: var(--fg2); } .daily .note { font-size: 11px; color: var(--fg3); }
 `;
 
 function metric(label: string, window: UsageWindow) {
@@ -217,7 +289,70 @@ function metric(label: string, window: UsageWindow) {
     );
 }
 
-function renderPanel(panel: HTMLElement) {
+function dayLabel(date: string) {
+    if (date === localDateKey(Date.now())) return t(L.todayLong);
+    const [y, m, d] = date.split("-").map(Number);
+    const at = new Date(y, m - 1, d);
+    return getLang() === "zh"
+        ? `${m}月${d}日 ${at.toLocaleDateString("zh-CN", { weekday: "short" })}`
+        : at.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+}
+
+function dailySection(redraw: () => void) {
+    const now = Date.now();
+    const today = localDateKey(now);
+    const bars = chartDays(days, now);
+    const scale = chartScale(bars);
+    const active = bars.find(day => day.date === picked) ?? bars[bars.length - 1];
+    const chart = h("div", { class: "chart", role: "listbox", "aria-label": t(L.daily) });
+    let activeBar: HTMLElement | null = null;
+    for (const day of bars) {
+        const has = recorded(day);
+        const delta = trackDelta(day.week);
+        const bar = h(
+            "button",
+            { type: "button", class: `day${has ? "" : " empty"}${day === active ? " on" : ""}`, role: "option", "aria-selected": String(day === active), "aria-label": `${dayLabel(day.date)} ${has ? deltaText(delta) : t(L.noRecord)}` },
+            h("span", { class: "v", text: has ? deltaText(delta) : "" }),
+            h("span", { class: "track" }, h("i", { style: { height: `${has ? Math.min(100, (delta / scale) * 100) : 0}%` } })),
+            h("span", { text: day.date === today ? t(L.todayShort) : String(Number(day.date.slice(8))) }),
+        );
+        bar.addEventListener("click", () => {
+            picked = day.date === today ? null : day.date;
+            redraw();
+        });
+        if (day === active) activeBar = bar;
+        chart.appendChild(bar);
+    }
+    chart.addEventListener("keydown", event => {
+        if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+        event.preventDefault();
+        const i = bars.indexOf(active) + (event.key === "ArrowRight" ? 1 : -1);
+        const next = bars[Math.max(0, Math.min(bars.length - 1, i))];
+        picked = next.date === today ? null : next.date;
+        redraw();
+        (chart.getRootNode() as ShadowRoot | Document).querySelector<HTMLElement>(".day.on")?.focus();
+    });
+    // Keep the picked day (today by default, at the right end) in view.
+    requestAnimationFrame(() => {
+        if (!activeBar) return;
+        const right = activeBar.offsetLeft + activeBar.offsetWidth - chart.clientWidth;
+        if (chart.scrollLeft < right) chart.scrollLeft = right;
+        else if (chart.scrollLeft > activeBar.offsetLeft) chart.scrollLeft = activeBar.offsetLeft;
+    });
+    const detail = recorded(active)
+        ? `${t(L.dayWeekly).replace("{p}", deltaText(trackDelta(active.week)))} · ${t(L.daySession).replace("{p}", deltaText(trackDelta(active.session)))}`
+        : t(L.noRecord);
+    return h(
+        "div",
+        { class: "daily" },
+        h("div", { class: "line" }, h("b", { text: t(L.daily) }), h("span", { class: "detail", text: dayLabel(active.date) })),
+        Object.keys(days).length ? chart : h("div", { class: "msg", text: t(L.noDays) }),
+        Object.keys(days).length ? h("div", { class: "detail", text: detail }) : null,
+        h("div", { class: "note", text: t(L.dailyNote) }),
+    );
+}
+
+function renderPanel(panel: HTMLElement, redraw: () => void) {
     const refreshBtn = h("button", { type: "button", class: "icon-btn", ...tipAttrs(t(L.refresh)), "aria-label": t(L.refresh) }, icon("refresh", 15));
     if (loading) refreshBtn.firstElementChild?.classList.add("spin");
     refreshBtn.addEventListener("click", () => refresh(true));
@@ -232,6 +367,7 @@ function renderPanel(panel: HTMLElement) {
         ].filter(Boolean) as HTMLElement[];
         if (!rows.length) panel.appendChild(h("div", { class: "msg", text: t(L.none) }));
         panel.append(...rows);
+        if (settings.store.stats && org) panel.appendChild(dailySection(redraw));
     }
     panel.appendChild(
         h(
@@ -259,7 +395,10 @@ export default definePlugin({
         addStyle(scope, SLOT_CSS, "usage");
         const panel = createPopover(scope, "usage-panel", PANEL_CSS);
         const open = (anchor: HTMLElement) => {
-            panel.open(anchor, renderPanel);
+            // Other tabs record too; start from the stored file.
+            if (org) days = loadDays(org);
+            picked = null;
+            panel.open(anchor, p => renderPanel(p, () => panel.update()));
             refresh();
         };
         const item = addSlotItem(scope, "composer", "usage", () => chip(open), -10);

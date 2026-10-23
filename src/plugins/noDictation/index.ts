@@ -11,7 +11,7 @@ import { addStyle } from "@api/styles";
 const settings = definePluginSettings({
     dictation: { type: "boolean", label: { zh: "隐藏听写按钮", en: "Hide dictation" }, default: true },
     voice: { type: "boolean", label: { zh: "隐藏语音模式按钮", en: "Hide voice mode" }, default: true },
-    readAloud: { type: "boolean", label: { zh: "隐藏回复下方的「朗读」按钮", en: "Hide Read aloud under replies" }, default: true },
+    readAloud: { type: "boolean", label: { zh: "隐藏回复下方的「朗读」按钮", en: "Hide Read aloud under replies" }, default: false },
 });
 
 export function noDictationCss(dictation: boolean, voice: boolean, readAloud = false) {
@@ -31,7 +31,7 @@ export default definePlugin({
     description: { zh: "隐藏输入框里的听写 / 语音模式按钮、听写设置（按住录音）入口，以及回复下方的「朗读」按钮，普通对话和 Claude Code 都适用。", en: "Hides the dictation and voice-mode buttons, the dictation settings (hold to record) menu and Read aloud under replies, in chats and Claude Code." },
     category: "declutter",
     icon: "micOff",
-    enabledByDefault: false,
+    enabledByDefault: true,
     dependencies: ["StylesApi"],
     settings,
     start(scope) {

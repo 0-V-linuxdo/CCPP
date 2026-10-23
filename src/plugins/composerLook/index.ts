@@ -9,8 +9,8 @@ import { definePluginSettings } from "@kernel/settings";
 import { addStyle } from "@api/styles";
 
 const settings = definePluginSettings({
-    opacity: { type: "number", label: { zh: "输入框背景不透明度", en: "Input background opacity" }, description: { zh: "100 为完全不透明。", en: "100 is fully opaque." }, default: 85, min: 20, max: 100, step: 5, unit: "%" },
-    blur: { type: "number", label: { zh: "背景模糊", en: "Background blur" }, default: 12, min: 0, max: 40, unit: "px" },
+    opacity: { type: "number", label: { zh: "输入框背景不透明度", en: "Input background opacity" }, description: { zh: "100 为完全不透明。", en: "100 is fully opaque." }, default: 100, min: 20, max: 100, step: 5, unit: "%" },
+    blur: { type: "number", label: { zh: "背景模糊", en: "Background blur" }, default: 16, min: 0, max: 40, unit: "px" },
     radius: { type: "number", label: { zh: "圆角", en: "Corner radius" }, description: { zh: "0 表示保持官方样式。", en: "0 keeps claude.ai's own radius." }, default: 0, min: 0, max: 40, unit: "px" },
 });
 
@@ -34,7 +34,7 @@ export default definePlugin({
     category: "composer",
     tags: ["appearance"],
     icon: "blend",
-    enabledByDefault: false,
+    enabledByDefault: true,
     dependencies: ["StylesApi"],
     settings,
     start(scope) {

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.82
+// @version      20261013.0.3.83
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -2679,7 +2679,7 @@ ${IMAGE_FIELD_CSS}`;
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.82";
+  var version = "0.3.83";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -4301,6 +4301,115 @@ ${x.css}`)].join(`
     return { open, close, update: draw, isOpen: () => !!panel };
   }
 
+  // src/plugins/usageDisplay/stats.ts
+  var RETAIN_MIN = 7;
+  var RETAIN_MAX = 180;
+  var CHART_DAYS = 7;
+  var RESET_TOLERANCE_MS = 60000;
+  var DROP = 1;
+  var DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+  var pad2 = (n) => String(n).padStart(2, "0");
+  function localDateKey(at) {
+    const d = new Date(at);
+    return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+  }
+  function shiftDateKey(date, days) {
+    const [y, m, d] = date.split("-").map(Number);
+    return localDateKey(new Date(y, m - 1, d + days).getTime());
+  }
+  var emptyTrack = () => ({ start: null, last: null, resetAt: null, accrued: 0 });
+  var emptyDay = (date, now) => ({ date, week: emptyTrack(), session: emptyTrack(), updatedAt: now });
+  function applySnapshot(track, percent, resetAt, now) {
+    const next = { ...track };
+    if (percent == null) {
+      if (resetAt != null)
+        next.resetAt = resetAt;
+      return next;
+    }
+    const moved = resetAt != null && next.resetAt != null && Math.abs(resetAt - next.resetAt) >= RESET_TOLERANCE_MS;
+    const expired = next.resetAt != null && now >= next.resetAt;
+    const dropped = next.last != null && percent < next.last - DROP;
+    if (moved || expired || dropped) {
+      next.accrued = trackDelta(next);
+      next.start = percent;
+      next.last = percent;
+      next.resetAt = resetAt;
+      return next;
+    }
+    next.start ??= percent;
+    next.last = percent;
+    if (resetAt != null)
+      next.resetAt = resetAt;
+    return next;
+  }
+  function trackDelta(track) {
+    return track.accrued + (track.start != null && track.last != null ? Math.max(0, track.last - track.start) : 0);
+  }
+  var recorded = (day) => !!day && (day.week.last != null || day.week.accrued > 0 || day.session.last != null || day.session.accrued > 0);
+  function carryOver(prev, percent, resetAt, now) {
+    if (!prev || prev.last == null || percent == null || percent < prev.last)
+      return emptyTrack();
+    if (prev.resetAt != null && (now >= prev.resetAt || resetAt != null && Math.abs(resetAt - prev.resetAt) >= RESET_TOLERANCE_MS))
+      return emptyTrack();
+    return { start: prev.last, last: prev.last, resetAt: prev.resetAt, accrued: 0 };
+  }
+  function pruneDays(days, retainDays, now) {
+    const cutoff = shiftDateKey(localDateKey(now), 1 - Math.min(RETAIN_MAX, Math.max(RETAIN_MIN, Math.floor(retainDays))));
+    return Object.fromEntries(Object.entries(days).filter(([date]) => date >= cutoff));
+  }
+  function addSnapshot(days, snap, retainDays, now) {
+    const date = localDateKey(now);
+    let day = days[date];
+    if (!day) {
+      const prev = days[shiftDateKey(date, -1)];
+      day = {
+        ...emptyDay(date, now),
+        week: carryOver(prev?.week, snap.week?.percent ?? null, snap.week?.resetAt ?? null, now),
+        session: carryOver(prev?.session, snap.session?.percent ?? null, snap.session?.resetAt ?? null, now)
+      };
+    }
+    const next = {
+      date,
+      week: applySnapshot(day.week, snap.week?.percent ?? null, snap.week?.resetAt ?? null, now),
+      session: applySnapshot(day.session, snap.session?.percent ?? null, snap.session?.resetAt ?? null, now),
+      updatedAt: now
+    };
+    return pruneDays({ ...days, [date]: next }, retainDays, now);
+  }
+  function chartDays(days, now) {
+    const today = localDateKey(now);
+    let start = shiftDateKey(today, 1 - CHART_DAYS);
+    for (const date of Object.keys(days))
+      if (date < start)
+        start = date;
+    const out = [];
+    for (let date = start;date <= today; date = shiftDateKey(date, 1))
+      out.push(days[date] ?? emptyDay(date, now));
+    return out;
+  }
+  function chartScale(days) {
+    const max = Math.max(0, ...days.map((day) => trackDelta(day.week)));
+    return Math.max(20, Math.ceil(max / 10) * 10);
+  }
+  var keyFor = (org) => `usageStats:${org}`;
+  function isDay(value) {
+    const day = value;
+    const track = (t) => !!t && typeof t === "object" && typeof t.accrued === "number";
+    return !!day && typeof day === "object" && DATE_RE.test(day.date) && track(day.week) && track(day.session);
+  }
+  function loadDays(org) {
+    const file = readJson(keyFor(org), null);
+    if (!file || file.version !== 1 || !file.days || typeof file.days !== "object")
+      return {};
+    return Object.fromEntries(Object.entries(file.days).filter(([date, day]) => isDay(day) && day.date === date));
+  }
+  function recordSnapshot(org, snap, retainDays, now = Date.now()) {
+    const days = addSnapshot(loadDays(org), snap, retainDays, now);
+    writeJson(keyFor(org), { version: 1, days });
+    return days;
+  }
+  var clearDays = (org) => removeKey(keyFor(org));
+
   // src/plugins/usageDisplay/index.ts
   var logger8 = new Logger("UsageDisplay");
   var settings4 = definePluginSettings({
@@ -4316,7 +4425,31 @@ ${x.css}`)].join(`
     },
     refreshSec: { type: "number", label: { zh: "自动刷新间隔", en: "Refresh every" }, default: 60, min: 30, max: 600, step: 10, unit: "s" },
     warnAt: { type: "number", label: { zh: "黄色提醒阈值", en: "Amber from" }, default: 75, min: 10, max: 99, unit: "%" },
-    dangerAt: { type: "number", label: { zh: "红色提醒阈值", en: "Red from" }, default: 90, min: 10, max: 100, unit: "%" }
+    dangerAt: { type: "number", label: { zh: "红色提醒阈值", en: "Red from" }, default: 90, min: 10, max: 100, unit: "%" },
+    stats: {
+      type: "boolean",
+      label: { zh: "按日记录用量", en: "Record daily usage" },
+      description: {
+        zh: "在本机记下每天用掉的每周额度和 5 小时额度。悬停圆环看今天，点开看按日柱状图。只在打开 claude.ai 时记录。",
+        en: "Keeps a per-day log of weekly and 5-hour usage on this device. Hover a ring for today; click for a daily chart. Recorded only while claude.ai is open."
+      },
+      default: true
+    },
+    retainDays: { type: "number", label: { zh: "保留多少天", en: "Days to keep" }, default: 90, min: RETAIN_MIN, max: RETAIN_MAX, visible: (v) => !!v.stats },
+    clearStats: {
+      type: "action",
+      label: { zh: "清空用量记录", en: "Clear usage history" },
+      button: { zh: "清空", en: "Clear" },
+      confirm: { zh: "删除本机记录的当前账号全部按日用量？此操作无法撤销。", en: "Delete every day of usage recorded on this device for this account? This can't be undone." },
+      visible: (v) => !!v.stats,
+      run() {
+        getOrgId().then((org) => {
+          clearDays(org);
+          days = {};
+          changed();
+        });
+      }
+    }
   });
   var L10 = {
     title: { zh: "用量", en: "Usage" },
@@ -4331,7 +4464,16 @@ ${x.css}`)].join(`
     timeout: { zh: "读取用量超时，稍后自动重试", en: "Usage request timed out; retrying shortly" },
     error: { zh: "读取用量失败：{e}", en: "Could not read usage: {e}" },
     signedOut: { zh: "未登录或无权读取用量", en: "Not signed in or no access to usage" },
-    none: { zh: "当前套餐没有用量窗口", en: "No usage windows on this plan" }
+    none: { zh: "当前套餐没有用量窗口", en: "No usage windows on this plan" },
+    today: { zh: "今天 {p}", en: "Today {p}" },
+    daily: { zh: "按日用量", en: "Usage by day" },
+    dailyNote: { zh: "本机打开 claude.ai 时记录；没打开时的用量算在下次看到的那天。", en: "Recorded while claude.ai is open here; usage while it's closed counts on the day it's next seen." },
+    noDays: { zh: "还没有记录，从现在开始统计。", en: "Nothing recorded yet; counting starts now." },
+    noRecord: { zh: "没有记录", en: "Not recorded" },
+    todayShort: { zh: "今", en: "Today" },
+    todayLong: { zh: "今天", en: "Today" },
+    dayWeekly: { zh: "每周额度 {p}", en: "Weekly {p}" },
+    daySession: { zh: "5 小时额度 {p}", en: "5-hour {p}" }
   };
   var usage = null;
   var error = null;
@@ -4341,6 +4483,27 @@ ${x.css}`)].join(`
   var retryTimer;
   var listeners2 = new Set;
   var changed = () => listeners2.forEach((fn) => fn());
+  var org = null;
+  var days = {};
+  var picked = null;
+  async function snapshot(current) {
+    if (!settings4.store.stats)
+      return;
+    try {
+      org = await getOrgId();
+    } catch {
+      return;
+    }
+    const win = (w) => w ? { percent: w.utilization, resetAt: w.resetsAt } : null;
+    days = recordSnapshot(org, { week: win(current.sevenDay), session: win(current.fiveHour) }, settings4.store.retainDays, current.fetchedAt);
+  }
+  var deltaText = (value) => `+${Math.round(value * 10) / 10}%`;
+  function todayDetail(kind) {
+    if (!settings4.store.stats || !org)
+      return "";
+    const day = days[localDateKey(Date.now())];
+    return recorded(day) ? t(L10.today).replace("{p}", deltaText(trackDelta(day[kind]))) : "";
+  }
   var MIN_GAP_MS = 5000;
   async function refresh2(force = false) {
     if (loading || !force && Date.now() - lastAttempt < MIN_GAP_MS)
@@ -4357,6 +4520,7 @@ ${x.css}`)].join(`
     try {
       usage = await getUsage(controller.signal);
       error = null;
+      await snapshot(usage);
     } catch (err) {
       if (timedOut) {
         if (!usage)
@@ -4420,9 +4584,9 @@ ${x.css}`)].join(`
     });
     return button;
   }
-  function ring(open, window2, label) {
+  function ring(open, window2, label, kind) {
     const percent = window2 ? Math.round(window2.utilization) : null;
-    return usageButton(open, percent === null ? label : `${label} ${percent}%`, window2 ? tipAttrs(`${label}: ${percent}%`, resetText(window2)) : tipAttrs(label, error ?? t(L10.loading)), ringSvg(window2 ? window2.utilization : null));
+    return usageButton(open, percent === null ? label : `${label} ${percent}%`, window2 ? tipAttrs(`${label}: ${percent}%`, [resetText(window2), todayDetail(kind)].filter(Boolean).join(" · ")) : tipAttrs(label, error ?? t(L10.loading)), ringSvg(window2 ? window2.utilization : null));
   }
   function chip(open) {
     const style = settings4.store.style;
@@ -4431,7 +4595,7 @@ ${x.css}`)].join(`
     const pct = (w) => w ? `${Math.round(w.utilization)}%` : "–";
     const text = !usage ? error ? "!" : "…" : `${pct(five)} · ${pct(week)}`;
     const tip = usage ? `${t(L10.session)} ${pct(five)} · ${t(L10.weekly)} ${pct(week)}` : error ?? t(L10.loading);
-    return h("span", { class: `ccpp-usage${error && !usage ? " err" : ""}` }, ...style !== "text" ? [ring(open, five, t(L10.session)), ring(open, week, t(L10.weekly))] : [], ...style !== "rings" ? [usageButton(open, tip, tipAttrs(tip, five ? resetText(five) : ""), h("span", { text }))] : []);
+    return h("span", { class: `ccpp-usage${error && !usage ? " err" : ""}` }, ...style !== "text" ? [ring(open, five, t(L10.session), "session"), ring(open, week, t(L10.weekly), "week")] : [], ...style !== "rings" ? [usageButton(open, tip, tipAttrs(tip, five ? resetText(five) : ""), h("span", { text }))] : []);
   }
   var SLOT_CSS = `
 .ccpp-usage { display: inline-flex; align-items: center; gap: 4px; font-variant-numeric: tabular-nums; }
@@ -4447,13 +4611,73 @@ ${x.css}`)].join(`
 .bar { height: 6px; border-radius: 3px; background: var(--bg3); overflow: hidden; } .bar > i { display: block; height: 100%; border-radius: 3px; }
 .foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 12px; color: var(--fg3); }
 .foot a { color: var(--accent); text-decoration: none; }
+.daily { display: flex; flex-direction: column; gap: 6px; padding-top: 8px; border-top: 1px solid var(--line-soft); }
+.daily .line { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.chart { display: flex; gap: 2px; overflow-x: auto; scrollbar-width: thin; }
+.day { flex: 0 0 34px; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 3px 0; border: 0; border-radius: 6px; background: transparent; color: var(--fg3); font: inherit; font-size: 11px; font-variant-numeric: tabular-nums; cursor: pointer; }
+.day:hover { background: var(--bg2); } .day.on { background: var(--bg3); color: var(--fg); }
+.day:focus-visible { outline: none; box-shadow: var(--focus); }
+.day .v { height: 14px; font-size: 10px; white-space: nowrap; }
+.day .track { display: flex; align-items: flex-end; width: 10px; height: 64px; border-radius: 3px; background: var(--bg2); overflow: hidden; }
+.day .track > i { display: block; width: 100%; border-radius: 3px; background: var(--accent); }
+.day.empty .track { opacity: .5; }
+.daily .detail { font-size: 12px; color: var(--fg2); } .daily .note { font-size: 11px; color: var(--fg3); }
 `;
   function metric(label, window2) {
     const lv = level(window2.utilization, settings4.store.warnAt, settings4.store.dangerAt);
     const reset = window2.resetsAt ? window2.resetsAt - Date.now() < 24 * 3600 * 1000 ? t(L10.resetsIn).replace("{t}", untilText(window2.resetsAt)) : t(L10.resetsAt).replace("{t}", dateTimeText(window2.resetsAt)) : "";
     return h("div", { class: "metric" }, h("div", { class: "line" }, h("span", { text: label }), h("span", { class: "pct", text: `${Math.round(window2.utilization)}%`, style: { color: COLORS[lv] } })), h("div", { class: "bar" }, h("i", { style: { width: `${window2.utilization}%`, background: COLORS[lv] } })), reset ? h("div", { class: "muted", text: reset, style: { fontSize: "12px" } }) : null);
   }
-  function renderPanel(panel) {
+  function dayLabel(date) {
+    if (date === localDateKey(Date.now()))
+      return t(L10.todayLong);
+    const [y, m, d] = date.split("-").map(Number);
+    const at = new Date(y, m - 1, d);
+    return getLang() === "zh" ? `${m}月${d}日 ${at.toLocaleDateString("zh-CN", { weekday: "short" })}` : at.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+  }
+  function dailySection(redraw) {
+    const now = Date.now();
+    const today = localDateKey(now);
+    const bars = chartDays(days, now);
+    const scale = chartScale(bars);
+    const active = bars.find((day) => day.date === picked) ?? bars[bars.length - 1];
+    const chart = h("div", { class: "chart", role: "listbox", "aria-label": t(L10.daily) });
+    let activeBar = null;
+    for (const day of bars) {
+      const has = recorded(day);
+      const delta = trackDelta(day.week);
+      const bar = h("button", { type: "button", class: `day${has ? "" : " empty"}${day === active ? " on" : ""}`, role: "option", "aria-selected": String(day === active), "aria-label": `${dayLabel(day.date)} ${has ? deltaText(delta) : t(L10.noRecord)}` }, h("span", { class: "v", text: has ? deltaText(delta) : "" }), h("span", { class: "track" }, h("i", { style: { height: `${has ? Math.min(100, delta / scale * 100) : 0}%` } })), h("span", { text: day.date === today ? t(L10.todayShort) : String(Number(day.date.slice(8))) }));
+      bar.addEventListener("click", () => {
+        picked = day.date === today ? null : day.date;
+        redraw();
+      });
+      if (day === active)
+        activeBar = bar;
+      chart.appendChild(bar);
+    }
+    chart.addEventListener("keydown", (event) => {
+      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight")
+        return;
+      event.preventDefault();
+      const i = bars.indexOf(active) + (event.key === "ArrowRight" ? 1 : -1);
+      const next = bars[Math.max(0, Math.min(bars.length - 1, i))];
+      picked = next.date === today ? null : next.date;
+      redraw();
+      chart.getRootNode().querySelector(".day.on")?.focus();
+    });
+    requestAnimationFrame(() => {
+      if (!activeBar)
+        return;
+      const right = activeBar.offsetLeft + activeBar.offsetWidth - chart.clientWidth;
+      if (chart.scrollLeft < right)
+        chart.scrollLeft = right;
+      else if (chart.scrollLeft > activeBar.offsetLeft)
+        chart.scrollLeft = activeBar.offsetLeft;
+    });
+    const detail = recorded(active) ? `${t(L10.dayWeekly).replace("{p}", deltaText(trackDelta(active.week)))} · ${t(L10.daySession).replace("{p}", deltaText(trackDelta(active.session)))}` : t(L10.noRecord);
+    return h("div", { class: "daily" }, h("div", { class: "line" }, h("b", { text: t(L10.daily) }), h("span", { class: "detail", text: dayLabel(active.date) })), Object.keys(days).length ? chart : h("div", { class: "msg", text: t(L10.noDays) }), Object.keys(days).length ? h("div", { class: "detail", text: detail }) : null, h("div", { class: "note", text: t(L10.dailyNote) }));
+  }
+  function renderPanel(panel, redraw) {
     const refreshBtn = h("button", { type: "button", class: "icon-btn", ...tipAttrs(t(L10.refresh)), "aria-label": t(L10.refresh) }, icon("refresh", 15));
     if (loading)
       refreshBtn.firstElementChild?.classList.add("spin");
@@ -4472,6 +4696,8 @@ ${x.css}`)].join(`
       if (!rows.length)
         panel.appendChild(h("div", { class: "msg", text: t(L10.none) }));
       panel.append(...rows);
+      if (settings4.store.stats && org)
+        panel.appendChild(dailySection(redraw));
     }
     panel.appendChild(h("div", { class: "foot" }, h("span", { text: usage ? t(L10.updated).replace("{t}", agoText(usage.fetchedAt)) : "" }), h("a", { href: "/settings/usage", text: t(L10.open) })));
   }
@@ -4491,7 +4717,10 @@ ${x.css}`)].join(`
       addStyle(scope, SLOT_CSS, "usage");
       const panel = createPopover(scope, "usage-panel", PANEL_CSS2);
       const open = (anchor) => {
-        panel.open(anchor, renderPanel);
+        if (org)
+          days = loadDays(org);
+        picked = null;
+        panel.open(anchor, (p) => renderPanel(p, () => panel.update()));
         refresh2();
       };
       const item = addSlotItem(scope, "composer", "usage", () => chip(open), -10);
@@ -4660,7 +4889,7 @@ ${x.css}`)].join(`
   }
   var outlineKey = (items) => items.map((i) => `${i.index}:${i.role}:${i.text.length}`).join("|");
   var paneOf = (scroller) => scroller.closest('[data-perf-region="side_pane"]') ? "side" : "main";
-  function keyFor(scroller) {
+  function keyFor2(scroller) {
     if (paneOf(scroller) === "main")
       return currentRoute().chatId ?? `${location.pathname}|main`;
     return `${location.pathname}?thread=${new URLSearchParams(location.search).get("thread") ?? ""}|side`;
@@ -4718,7 +4947,7 @@ ${x.css}`)].join(`
         let hideTimer;
         const known = (i) => !!chatId || !!i.text.trim() || isLive(i);
         const shown = () => items.filter((i) => known(i) && (settings5.store.showAssistant || i.role === "user"));
-        const key = keyFor(scroller);
+        const key = keyFor2(scroller);
         const feedKey = () => key;
         const harvest = () => {
           const key = feedKey();
@@ -4971,7 +5200,7 @@ ${x.css}`)].join(`
       const sync = () => {
         const live = transcripts();
         for (const [el, nav] of navs) {
-          if (live.includes(el) && keyFor(el) === nav.key)
+          if (live.includes(el) && keyFor2(el) === nav.key)
             continue;
           nav.dispose();
           navs.delete(el);
@@ -6455,8 +6684,8 @@ ${composer ? `[data-composer-card-holder], [data-cds="ChatComposer"] { max-width
 
   // src/plugins/composerLook/index.ts
   var settings14 = definePluginSettings({
-    opacity: { type: "number", label: { zh: "输入框背景不透明度", en: "Input background opacity" }, description: { zh: "100 为完全不透明。", en: "100 is fully opaque." }, default: 85, min: 20, max: 100, step: 5, unit: "%" },
-    blur: { type: "number", label: { zh: "背景模糊", en: "Background blur" }, default: 12, min: 0, max: 40, unit: "px" },
+    opacity: { type: "number", label: { zh: "输入框背景不透明度", en: "Input background opacity" }, description: { zh: "100 为完全不透明。", en: "100 is fully opaque." }, default: 100, min: 20, max: 100, step: 5, unit: "%" },
+    blur: { type: "number", label: { zh: "背景模糊", en: "Background blur" }, default: 16, min: 0, max: 40, unit: "px" },
     radius: { type: "number", label: { zh: "圆角", en: "Corner radius" }, description: { zh: "0 表示保持官方样式。", en: "0 keeps claude.ai's own radius." }, default: 0, min: 0, max: 40, unit: "px" }
   });
   var composerCss = (opacity, blur, radius) => `
@@ -6474,7 +6703,7 @@ ${composer ? `[data-composer-card-holder], [data-cds="ChatComposer"] { max-width
     category: "composer",
     tags: ["appearance"],
     icon: "blend",
-    enabledByDefault: false,
+    enabledByDefault: true,
     dependencies: ["StylesApi"],
     settings: settings14,
     start(scope) {
@@ -6658,7 +6887,7 @@ Write it down while the idea is fresh` })
     category: "declutter",
     tags: ["privacy"],
     icon: "linkOff",
-    enabledByDefault: false,
+    enabledByDefault: true,
     dependencies: ["StylesApi"],
     start(scope) {
       addStyle(scope, `[data-testid="wiggle-controls-actions-share"] { display: none !important; }`, "no-share");
@@ -6669,7 +6898,7 @@ Write it down while the idea is fresh` })
   var settings17 = definePluginSettings({
     dictation: { type: "boolean", label: { zh: "隐藏听写按钮", en: "Hide dictation" }, default: true },
     voice: { type: "boolean", label: { zh: "隐藏语音模式按钮", en: "Hide voice mode" }, default: true },
-    readAloud: { type: "boolean", label: { zh: "隐藏回复下方的「朗读」按钮", en: "Hide Read aloud under replies" }, default: true }
+    readAloud: { type: "boolean", label: { zh: "隐藏回复下方的「朗读」按钮", en: "Hide Read aloud under replies" }, default: false }
   });
   function noDictationCss(dictation, voice, readAloud = false) {
     const selectors = [
@@ -6686,7 +6915,7 @@ Write it down while the idea is fresh` })
     description: { zh: "隐藏输入框里的听写 / 语音模式按钮、听写设置（按住录音）入口，以及回复下方的「朗读」按钮，普通对话和 Claude Code 都适用。", en: "Hides the dictation and voice-mode buttons, the dictation settings (hold to record) menu and Read aloud under replies, in chats and Claude Code." },
     category: "declutter",
     icon: "micOff",
-    enabledByDefault: false,
+    enabledByDefault: true,
     dependencies: ["StylesApi"],
     settings: settings17,
     start(scope) {
@@ -7650,7 +7879,7 @@ ${targets.map((t) => `${t} > *`).join(`,
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.82",
+      version: "0.3.83",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -7667,7 +7896,7 @@ ${targets.map((t) => `${t} > *`).join(`,
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.82";
+    win[FLAG] = "0.3.83";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -7684,7 +7913,7 @@ ${targets.map((t) => `${t} > *`).join(`,
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.82"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.83"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();
