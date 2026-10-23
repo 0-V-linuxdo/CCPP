@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.80
+// @version      20261013.0.3.81
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -1500,7 +1500,7 @@
     info: [c(12, 12, 10), p("M12 16v-4"), p("M12 8h.01")]
   };
   var iconNames = Object.keys(ICONS);
-  function icon(name, size = 16) {
+  function icon(name, size = 16, strokeWidth = 2) {
     const ns = "http://www.w3.org/2000/svg";
     const svg = document.createElementNS(ns, "svg");
     const attrs = {
@@ -1509,7 +1509,7 @@
       viewBox: "0 0 24 24",
       fill: "none",
       stroke: "currentColor",
-      "stroke-width": "2",
+      "stroke-width": String(strokeWidth),
       "stroke-linecap": "round",
       "stroke-linejoin": "round",
       "aria-hidden": "true"
@@ -2625,7 +2625,7 @@ ${IMAGE_FIELD_CSS}`;
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.80";
+  var version = "0.3.81";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -2662,13 +2662,334 @@ ${IMAGE_FIELD_CSS}`;
     showApi: false
   };
 
+  // src/plugins/_core/settings/nativeIcons.ts
+  var KEY = "native-icons";
+  var cache2 = readJson(KEY, {});
+  var SHAPES = new Set(["svg", "g", "path", "circle", "ellipse", "rect", "line", "polyline", "polygon", "defs", "clippath", "mask", "lineargradient", "radialgradient", "stop", "title"]);
+  function sectionOf(sections, row) {
+    const id = row.dataset.testid?.replace(/-settings$/, "");
+    const label = row.textContent?.trim().toLowerCase() ?? "";
+    const byId = id && sections.find((s) => s.hash.split("/")[1] === id);
+    if (byId)
+      return byId.hash;
+    return sections.find((s) => label === s.label.en.toLowerCase() || label === s.label.zh)?.hash ?? null;
+  }
+  function learnNativeIcons(nav, sections) {
+    let changed = false;
+    for (const row of nav.querySelectorAll("li:not([data-ccpp-nav])")) {
+      const svg = row.querySelector('[data-cds="Icon"] svg') ?? row.querySelector("button svg");
+      const hash = svg && sectionOf(sections, row);
+      if (!svg || !hash)
+        continue;
+      const markup = svg.outerHTML;
+      if (cache2[hash] === markup)
+        continue;
+      cache2 = { ...cache2, [hash]: markup };
+      changed = true;
+    }
+    if (changed)
+      writeJson(KEY, cache2);
+  }
+  function nativeIcon(hash) {
+    const markup = cache2[hash];
+    if (!markup)
+      return null;
+    try {
+      const doc = new DOMParser().parseFromString(markup, "image/svg+xml");
+      const svg = doc.documentElement;
+      if (svg.localName !== "svg" || doc.querySelector("parsererror"))
+        return null;
+      for (const el of [svg, ...svg.querySelectorAll("*")]) {
+        if (!SHAPES.has(el.localName.toLowerCase()))
+          return null;
+        for (const attr of [...el.attributes])
+          if (/^on|href$/i.test(attr.name))
+            el.removeAttribute(attr.name);
+      }
+      return document.importNode(svg, true);
+    } catch {
+      return null;
+    }
+  }
+
+  // src/plugins/_core/settings/userMenu.ts
+  var SETTINGS_ITEM = '[data-testid="user-menu-settings"]';
+  var NATIVE_SECTIONS = [
+    { hash: "settings/general", icon: "sliders", label: { zh: "通用", en: "General" } },
+    { hash: "settings/account", icon: "user", label: { zh: "账户", en: "Account" } },
+    { hash: "settings/data-privacy-controls", icon: "shield", label: { zh: "隐私", en: "Privacy" } },
+    { hash: "settings/billing", icon: "creditCard", label: { zh: "账单", en: "Billing" } },
+    { hash: "settings/usage", icon: "gauge", label: { zh: "用量", en: "Usage" } },
+    { hash: "settings/capabilities", icon: "grid", label: { zh: "功能", en: "Capabilities" } },
+    { hash: "settings/memory", icon: "brain", label: { zh: "记忆", en: "Memory" } },
+    { hash: "settings/design-systems", icon: "palette", label: { zh: "设计系统", en: "Design systems" } },
+    { hash: "settings/claude-code", icon: "terminal", label: { zh: "Claude Code", en: "Claude Code" } },
+    { hash: "settings/browser-extension", icon: "globe", label: { zh: "Claude in Chrome", en: "Claude in Chrome" } },
+    { hash: "customize/skills/yours", icon: "sparkles", label: { zh: "技能", en: "Skills" } },
+    { hash: "customize/connectors/yours", icon: "link", label: { zh: "连接器", en: "Connectors" } },
+    { hash: "customize/plugins/yours", icon: "puzzle", label: { zh: "插件（claude.ai）", en: "Plugins (claude.ai)" } }
+  ];
+  var L3 = {
+    plugins: { zh: "插件", en: "Plugins" },
+    openSettings: { zh: "打开 CC++ 设置", en: "Open CC++ settings" },
+    openNative: { zh: "打开设置", en: "Open settings" },
+    claude: { zh: "claude.ai", en: "claude.ai" }
+  };
+  function installUserMenu(scope, options) {
+    watch(scope, SEL.menu, (menu) => {
+      if (menu.hasAttribute("data-ccpp-panel-level"))
+        return;
+      let cleanup = null;
+      const tryInsert = () => {
+        if (cleanup)
+          return true;
+        const settingsItem = menu.querySelector(SETTINGS_ITEM);
+        if (!settingsItem)
+          return false;
+        cleanup = enhance(menu, settingsItem, options);
+        return true;
+      };
+      const observer = new MutationObserver(() => tryInsert() && observer.disconnect());
+      if (!tryInsert())
+        observer.observe(menu, { childList: true, subtree: true });
+      return () => {
+        observer.disconnect();
+        cleanup?.();
+      };
+    });
+  }
+  function shortcutHint(settingsItem, keys) {
+    if (!keys.length)
+      return null;
+    const native = settingsItem.querySelector('[data-cds="Shortcut"]');
+    const sample = native?.querySelector("kbd");
+    if (native && sample) {
+      const hint = native.cloneNode(false);
+      for (const key of keys) {
+        const part = sample.cloneNode(true);
+        const glyph = [...part.querySelectorAll("span")].find((el) => !el.matches(".sr-only")) ?? null;
+        const name = part.querySelector(".sr-only");
+        if (glyph)
+          glyph.textContent = key;
+        else
+          part.textContent = key;
+        if (name)
+          name.textContent = KEY_NAMES[key] ?? key;
+        hint.appendChild(part);
+      }
+      hint.setAttribute("data-ccpp-shortcut", "");
+      return hint;
+    }
+    return h("span", { class: "shrink-0 text-muted text-footnote", "data-ccpp-shortcut": "", "aria-hidden": "true", text: keys.join(" "), style: { letterSpacing: ".08em" } });
+  }
+  var KEY_NAMES = { "⇧": "Shift", "⌘": "Command", "⌥": "Option", "⌃": "Control", ".": "Period", ",": "Comma" };
+  function closeMenu(menu) {
+    menu.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  }
+  function enhance(menu, settingsItem, options) {
+    const sampleSub = menu.querySelector('[role="menuitem"][aria-haspopup="menu"]');
+    const itemClass = settingsItem.className;
+    const subItemClass = sampleSub?.className ?? `${itemClass} justify-between data-[popup-open]:bg-fill-ghost-hover`;
+    const iconSlot = settingsItem.firstElementChild;
+    const sampleIcon = iconSlot?.querySelector("svg") ?? null;
+    const iconSize = Math.round(sampleIcon?.getBoundingClientRect().width || Number(sampleIcon?.getAttribute("width")) || 16);
+    const separatorClass = menu.querySelector('[role="separator"]')?.className ?? "my-1 h-px bg-border";
+    const panelClass = menu.className.replace(/\bw-\[[^\]]+\]/g, "");
+    const scrollClass = menu.firstElementChild?.className ?? "";
+    const added = [];
+    const nativeChevron = sampleSub && sampleSub.lastElementChild !== sampleSub.firstElementChild && sampleSub.lastElementChild?.querySelector("svg") ? sampleSub.lastElementChild : null;
+    const chevron = () => {
+      const mark = nativeChevron?.cloneNode(true) ?? h("span", { class: "-mr-1 shrink-0 text-muted", style: { display: "inline-flex" } }, icon("chevronRight", 16));
+      mark.setAttribute("data-ccpp-chevron", "");
+      return mark;
+    };
+    const iconBox = (svg) => {
+      const box = iconSlot?.cloneNode(true) ?? h("span", { class: "flex size-icon shrink-0 items-center justify-center" });
+      if (!svg)
+        return sampleIcon ? box : ownIcon("settings");
+      const old = box.querySelector("svg");
+      const sampleClass = sampleIcon?.getAttribute("class");
+      if (sampleClass != null)
+        svg.setAttribute("class", sampleClass);
+      for (const name of ["width", "height"])
+        svg.setAttribute(name, sampleIcon?.getAttribute(name) ?? String(iconSize));
+      svg.setAttribute("aria-hidden", "true");
+      if (old)
+        old.replaceWith(svg);
+      else {
+        box.textContent = "";
+        box.appendChild(svg);
+      }
+      return box;
+    };
+    const ownIcon = (name) => iconBox(icon(name, iconSize, 1.75));
+    const sectionIcon = (section) => {
+      const svg = nativeIcon(section.hash);
+      return svg ? iconBox(svg) : ownIcon(section.icon);
+    };
+    const row = (iconNode, label, opts = {}) => {
+      const el = h("div", { role: "menuitem", tabindex: "-1", "data-cds-icon-row": "", "data-ccpp-item": "", class: opts.sub ? subItemClass : itemClass, style: { cursor: "pointer" } }, iconNode, typeof label === "string" ? h("span", { class: "min-w-0 flex-1 truncate", text: label }) : label, opts.trailing ?? null, opts.sub ? chevron() : null);
+      if (opts.sub)
+        el.setAttribute("aria-haspopup", "menu");
+      el.addEventListener("pointerenter", () => highlight(el));
+      el.addEventListener("pointerleave", () => el.removeAttribute("data-highlighted"));
+      if (opts.run) {
+        const run = opts.run;
+        const activate = (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          closeMenu(menu);
+          setTimeout(run, 0);
+        };
+        el.addEventListener("click", activate);
+        el.addEventListener("keydown", (event) => (event.key === "Enter" || event.key === " ") && activate(event));
+      }
+      return el;
+    };
+    const caption = (text) => h("div", { class: "px-2.5 pt-2 pb-1 text-caption text-muted", style: { fontSize: "var(--cds-font-size-caption, 12px)", opacity: ".8" }, text });
+    const separator = () => h("div", { role: "separator", class: separatorClass });
+    const highlight = (el) => {
+      for (const other of el.parentElement?.querySelectorAll("[data-highlighted]") ?? [])
+        other.removeAttribute("data-highlighted");
+      el.setAttribute("data-highlighted", "");
+    };
+    const panel = (anchor, container, width) => {
+      const scroll = h("div", { class: scrollClass, style: { maxHeight: "min(calc(100vh - 16px), 32rem)", overflowY: "auto", scrollbarWidth: "thin", scrollbarColor: "var(--cds-alpha-2, rgba(127,127,127,.35)) transparent" } });
+      const el = h("div", { role: "menu", "data-ccpp-panel-level": "", class: panelClass, style: { position: "absolute", width, zIndex: "1" } }, scroll);
+      container.appendChild(el);
+      const place = () => {
+        const a = anchor.getBoundingClientRect();
+        const c = container.getBoundingClientRect();
+        const gap = 4;
+        if (window.innerWidth - c.right > el.offsetWidth + gap + 8)
+          el.style.left = `calc(100% + ${gap}px)`;
+        else
+          el.style.right = `calc(100% + ${gap}px)`;
+        const top = a.top - c.top - 4;
+        const maxTop = window.innerHeight - c.top - el.offsetHeight - 8;
+        el.style.top = `${Math.max(-c.top + 8, Math.min(top, maxTop))}px`;
+      };
+      el.addEventListener("pointerover", (event) => event.stopPropagation());
+      return { el, scroll, place };
+    };
+    const level = (container) => {
+      let open = null;
+      const close = () => {
+        if (!open)
+          return;
+        open.close();
+        open.el.remove();
+        open.trigger.removeAttribute("data-popup-open");
+        open.trigger.setAttribute("aria-expanded", "false");
+        open = null;
+      };
+      const attach = (trigger, width, fill) => {
+        trigger.setAttribute("aria-haspopup", "menu");
+        trigger.setAttribute("aria-expanded", "false");
+        const show = () => {
+          if (open?.trigger === trigger)
+            return;
+          close();
+          const { el, scroll, place } = panel(trigger, container, width);
+          const child = level(el);
+          fill(scroll, child);
+          place();
+          scroll.addEventListener("pointerover", (event) => {
+            const target = event.target.closest('[role="menuitem"]');
+            if (target && !target.hasAttribute("aria-haspopup"))
+              child.close();
+          });
+          trigger.setAttribute("data-popup-open", "");
+          trigger.setAttribute("aria-expanded", "true");
+          open = { trigger, el, close: child.close };
+        };
+        trigger.addEventListener("pointerenter", show);
+        if (trigger.hasAttribute("data-ccpp-item")) {
+          trigger.addEventListener("click", (event) => {
+            event.stopPropagation();
+            show();
+          });
+        }
+        trigger.addEventListener("keydown", (event) => {
+          if (event.key !== "ArrowRight")
+            return;
+          event.preventDefault();
+          event.stopPropagation();
+          show();
+          open?.el.querySelector('[role="menuitem"]')?.focus();
+        });
+      };
+      return { attach, close, isOpen: (trigger) => open?.trigger === trigger };
+    };
+    const top = level(menu);
+    const fillPlugins = (scroll) => {
+      for (const plugin of options.plugins()) {
+        const dot = h("span", {
+          class: "shrink-0",
+          ...tipAttrs(isActive(plugin) ? "ON" : "OFF"),
+          style: { width: "6px", height: "6px", borderRadius: "50%", marginInlineStart: "8px", background: isActive(plugin) ? "var(--cds-fill-accent, #2a78d6)" : "var(--cds-alpha-2, rgba(127,127,127,.4))" }
+        });
+        scroll.appendChild(row(ownIcon(plugin.icon ?? "puzzle"), t(plugin.title), { trailing: dot, run: () => options.openPlugin(plugin) }));
+      }
+    };
+    const fillCcpp = (scroll, child) => {
+      for (const tab of options.tabs()) {
+        if (tab.id === "plugins") {
+          const plugins = row(ownIcon(tab.icon), t(L3.plugins), { sub: true });
+          child.attach(plugins, "16rem", fillPlugins);
+          scroll.appendChild(plugins);
+        } else
+          scroll.appendChild(row(ownIcon(tab.icon), t(tab.title), { run: () => options.openTab(tab.id) }));
+      }
+    };
+    if (options.settingsFlyout) {
+      settingsItem.classList.add("justify-between");
+      const mark = chevron();
+      settingsItem.appendChild(mark);
+      added.push(mark);
+      top.attach(settingsItem, "15rem", (scroll, child) => {
+        scroll.appendChild(row(iconBox(), t(L3.openNative), { run: () => location.hash = "settings/general" }));
+        scroll.appendChild(separator());
+        scroll.appendChild(caption("CC++"));
+        fillCcpp(scroll, child);
+        scroll.appendChild(separator());
+        scroll.appendChild(caption(t(L3.claude)));
+        for (const section of NATIVE_SECTIONS)
+          scroll.appendChild(row(sectionIcon(section), t(section.label), { run: () => location.hash = section.hash }));
+      });
+    }
+    if (options.entry) {
+      const name = h("span", { class: "min-w-0 flex-1 truncate" }, "CC++", h("span", { class: "text-muted", "data-ccpp-version": "", text: ` v${version}`, style: { fontSize: "var(--cds-font-size-caption, 12px)", lineHeight: "1", verticalAlign: "middle", marginInlineStart: "4px" } }));
+      const entry = row(ownIcon("plug"), name, { sub: true, trailing: shortcutHint(settingsItem, options.shortcut) });
+      top.attach(entry, "14rem", (scroll, child) => {
+        fillCcpp(scroll, child);
+        scroll.appendChild(separator());
+        scroll.appendChild(row(iconBox(), t(L3.openSettings), { run: () => options.openTab("plugins") }));
+      });
+      settingsItem.after(entry);
+      added.push(entry);
+    }
+    const onOver = (event) => {
+      const target = event.target.closest('[role="menuitem"]');
+      if (target && target !== settingsItem && !target.hasAttribute("data-ccpp-item"))
+        top.close();
+    };
+    menu.addEventListener("pointerover", onOver);
+    return () => {
+      top.close();
+      menu.removeEventListener("pointerover", onOver);
+      for (const el of added)
+        el.remove();
+    };
+  }
+
   // src/plugins/_core/settings/native.ts
   var NAV = '[data-perf-region="settings_nav"]';
   var HASH = "#settings/ccpp-";
   var bootHash = typeof location === "object" ? location.hash : "";
   var hashTab = (hash) => hash.startsWith(HASH) ? hash.slice(HASH.length) : null;
   var PANEL = '[data-perf-region="settings_panel"]';
-  var L3 = {
+  var L4 = {
     group: "CC++",
     close: { zh: "关闭", en: "Close" }
   };
@@ -2736,6 +3057,7 @@ ${IMAGE_FIELD_CSS}`;
         const root = nav();
         if (!root)
           return;
+        learnNativeIcons(root, NATIVE_SECTIONS);
         const c = learnClasses(root);
         if (!c)
           return;
@@ -2746,7 +3068,7 @@ ${IMAGE_FIELD_CSS}`;
         const list = sortedTabs();
         if (!group || group.dataset.tabs !== list.map((tab) => tab.id).join(",") || group.dataset.lang !== t({ zh: "zh", en: "en" })) {
           group?.remove();
-          const ul = h("ul", { class: c.list, "aria-label": L3.group });
+          const ul = h("ul", { class: c.list, "aria-label": L4.group });
           for (const tab of list) {
             const button = h("button", { type: "button", class: c.off, "data-tab": tab.id }, h("span", { class: c.icon, "aria-hidden": "true", style: { display: "inline-flex", width: "1.25rem", justifyContent: "center" } }, icon(tab.icon, 18)), h("span", { class: c.label, text: t(tab.title) }));
             button.addEventListener("click", (event) => {
@@ -2755,7 +3077,7 @@ ${IMAGE_FIELD_CSS}`;
             });
             ul.appendChild(h("li", { "data-ccpp-nav": tab.id }, button));
           }
-          group = h("div", { "data-ccpp-nav-group": "", "data-tabs": list.map((tab) => tab.id).join(","), "data-lang": t({ zh: "zh", en: "en" }), style: { display: "contents" } }, h("div", { class: c.header, "data-ccpp-nav-head": "" }, h("span", { text: L3.group }), h("span", { "data-ccpp-nav-version": "", text: `v${version}` })), ul);
+          group = h("div", { "data-ccpp-nav-group": "", "data-tabs": list.map((tab) => tab.id).join(","), "data-lang": t({ zh: "zh", en: "en" }), style: { display: "contents" } }, h("div", { class: c.header, "data-ccpp-nav-head": "" }, h("span", { text: L4.group }), h("span", { "data-ccpp-nav-version": "", text: `v${version}` })), ul);
           scroller.appendChild(group);
         }
         const wantFirst = navPosition() === "above";
@@ -2908,10 +3230,10 @@ ${IMAGE_FIELD_CSS}`;
   function openStandalone(tabId) {
     standaloneClose?.();
     let current = tabs.has(tabId) ? tabId : sortedTabs()[0]?.id;
-    const nav = h("nav", { class: "shell-nav" }, h("div", { class: "group" }, L3.group, h("span", { class: "ver", text: ` v${version}` })));
+    const nav = h("nav", { class: "shell-nav" }, h("div", { class: "group" }, L4.group, h("span", { class: "ver", text: ` v${version}` })));
     const main = h("div", { class: "shell-main" });
     const pageBox = h("div", { style: { flex: "1", minHeight: "0", display: "flex", flexDirection: "column" } });
-    const closeBtn = h("button", { type: "button", class: "icon-btn", "aria-label": t(L3.close), ...tipAttrs(t(L3.close)) }, icon("x", 16));
+    const closeBtn = h("button", { type: "button", class: "icon-btn", "aria-label": t(L4.close), ...tipAttrs(t(L4.close)) }, icon("x", 16));
     main.append(h("div", { class: "shell-top" }, closeBtn), pageBox);
     const draw = () => {
       for (const old of nav.querySelectorAll("button"))
@@ -3028,7 +3350,7 @@ ${IMAGE_FIELD_CSS}`;
     developer: { zh: "开发者", en: "Developer" }
   };
   var CATEGORY_ORDER = Object.keys(CATEGORY_LABELS);
-  var L4 = {
+  var L5 = {
     search: { zh: "搜索 {n} 个插件…", en: "Search {n} plugins…" },
     all: { zh: "全部", en: "All" },
     enabled: { zh: "已启用", en: "Enabled" },
@@ -3090,7 +3412,7 @@ ${IMAGE_FIELD_CSS}`;
     setEnabled(plugin, on);
     if (!plugin.restartNeeded)
       return;
-    const reload = await confirmDialog({ title: t(L4.reloadTitle), body: fill2(L4.reloadBody, t(plugin.title)), ok: L4.reload, cancel: L4.later });
+    const reload = await confirmDialog({ title: t(L5.reloadTitle), body: fill2(L5.reloadBody, t(plugin.title)), ok: L5.reload, cancel: L5.later });
     if (reload)
       location.reload();
   }
@@ -3104,7 +3426,7 @@ ${IMAGE_FIELD_CSS}`;
       "aria-checked": String(isActive(plugin)),
       "aria-label": t(plugin.title),
       disabled: !!plugin.required || keptBy.length > 0,
-      ...keptBy.length ? tipAttrs(t(L4.keptBy) + keptBy.map((p) => t(p.title)).join(", ")) : {}
+      ...keptBy.length ? tipAttrs(t(L5.keptBy) + keptBy.map((p) => t(p.title)).join(", ")) : {}
     });
     sw.addEventListener("click", () => togglePlugin(plugin, !enabled));
     return sw;
@@ -3112,13 +3434,13 @@ ${IMAGE_FIELD_CSS}`;
   function badges(plugin) {
     const out = [];
     if (isNew(plugin.name))
-      out.push(h("span", { class: "badge accent", text: t(L4.newBadge) }));
+      out.push(h("span", { class: "badge accent", text: t(L5.newBadge) }));
     else if (isRecent(plugin))
-      out.push(h("span", { class: "badge", text: t(L4.updated) }));
+      out.push(h("span", { class: "badge", text: t(L5.updated) }));
     if (pendingRestart().includes(plugin))
-      out.push(h("span", { class: "badge accent", text: t(L4.needsReload) }));
+      out.push(h("span", { class: "badge accent", text: t(L5.needsReload) }));
     if (pluginError(plugin.name))
-      out.push(h("span", { class: "badge bad", text: t(L4.crashed) }));
+      out.push(h("span", { class: "badge bad", text: t(L5.crashed) }));
     return out;
   }
   function pluginCard(plugin) {
@@ -3130,7 +3452,7 @@ ${IMAGE_FIELD_CSS}`;
     };
     const title = h("span", { class: "card-title", text: t(plugin.title), ...tipAttrs(plugin.name) });
     title.addEventListener("click", () => openPluginDialog(plugin));
-    return h("div", { class: `card${isActive(plugin) ? " on" : " off"}${error ? " crashed" : ""}`, "data-plugin": plugin.name, ...error ? tipAttrs(t(L4.crashed), `${error.stage}: ${error.message}`) : {} }, h("div", { class: "card-body" }, h("div", { class: "card-top" }, h("span", { class: "chip-icon" }, icon(plugin.icon ?? "puzzle", 14)), title, h("div", { class: "card-actions" }, iconBtn("star", L4.favorite, "star", isFavorite(plugin.name), () => toggleIn("favorites", plugin.name)), iconBtn("pin", L4.pin, "pin", isPinned(plugin.name), () => toggleIn("pinned", plugin.name)), hasOptions(plugin) ? iconBtn("cfg", L4.configure, "sliders", false, () => openPluginDialog(plugin)) : null, pluginSwitch(plugin))), h("div", { class: "card-desc", text: t(plugin.description) }), h("div", { class: "card-gap" }), h("div", { class: "card-foot" }, ...badges(plugin), h("span", { class: "author", text: authorOf(plugin) }))));
+    return h("div", { class: `card${isActive(plugin) ? " on" : " off"}${error ? " crashed" : ""}`, "data-plugin": plugin.name, ...error ? tipAttrs(t(L5.crashed), `${error.stage}: ${error.message}`) : {} }, h("div", { class: "card-body" }, h("div", { class: "card-top" }, h("span", { class: "chip-icon" }, icon(plugin.icon ?? "puzzle", 14)), title, h("div", { class: "card-actions" }, iconBtn("star", L5.favorite, "star", isFavorite(plugin.name), () => toggleIn("favorites", plugin.name)), iconBtn("pin", L5.pin, "pin", isPinned(plugin.name), () => toggleIn("pinned", plugin.name)), hasOptions(plugin) ? iconBtn("cfg", L5.configure, "sliders", false, () => openPluginDialog(plugin)) : null, pluginSwitch(plugin))), h("div", { class: "card-desc", text: t(plugin.description) }), h("div", { class: "card-gap" }), h("div", { class: "card-foot" }, ...badges(plugin), h("span", { class: "author", text: authorOf(plugin) }))));
   }
   var sortPlugins = (list) => list.sort((a, b) => Number(isPinned(b.name)) - Number(isPinned(a.name)) || Number(isFavorite(b.name)) - Number(isFavorite(a.name)) || t(a.title).localeCompare(t(b.title)));
   function defaultCategory() {
@@ -3142,7 +3464,7 @@ ${IMAGE_FIELD_CSS}`;
     const plugins = listedPlugins();
     const categories = CATEGORY_ORDER.filter((cat) => ["favorites", "recent", "all"].includes(cat) || plugins.some((p) => inCategory(p, cat)));
     const tabBar = h("div", { class: "tabs", role: "tablist" });
-    const searchLabel = () => t(L4.search).replace("{n}", String(plugins.filter((p) => inCategory(p, view.category)).length));
+    const searchLabel = () => t(L5.search).replace("{n}", String(plugins.filter((p) => inCategory(p, view.category)).length));
     const search = h("input", { class: "input", type: "search", placeholder: searchLabel(), value: view.query, "aria-label": searchLabel() });
     for (const cat of categories) {
       const button = h("button", { type: "button", role: "tab", class: view.category === cat ? "active" : "", "aria-selected": String(view.category === cat) }, t(CATEGORY_LABELS[cat]));
@@ -3160,7 +3482,7 @@ ${IMAGE_FIELD_CSS}`;
       view.query = search.value;
       renderList();
     });
-    const filter = h("select", { class: "input", "aria-label": t(L4.all) }, ...["all", "enabled", "disabled"].map((value) => h("option", { value, text: t(L4[value]), selected: view.filter === value })));
+    const filter = h("select", { class: "input", "aria-label": t(L5.all) }, ...["all", "enabled", "disabled"].map((value) => h("option", { value, text: t(L5[value]), selected: view.filter === value })));
     filter.addEventListener("change", () => {
       view.filter = filter.value;
       renderList();
@@ -3168,9 +3490,9 @@ ${IMAGE_FIELD_CSS}`;
     container.appendChild(h("div", { class: "sticky-top" }, tabBar, h("div", { class: "bar" }, h("label", { class: "search" }, icon("search", 14), search), filter)));
     const pending = pendingRestart();
     if (pending.length) {
-      const reload = h("button", { type: "button", class: "btn primary", text: t(L4.reload) });
+      const reload = h("button", { type: "button", class: "btn primary", text: t(L5.reload) });
       reload.addEventListener("click", () => location.reload());
-      container.appendChild(h("div", { class: "banner" }, icon("alert", 16), h("span", { text: t(L4.reloadBanner) + pending.map((p) => t(p.title)).join(t({ zh: "、", en: ", " })) }), reload));
+      container.appendChild(h("div", { class: "banner" }, icon("alert", 16), h("span", { text: t(L5.reloadBanner) + pending.map((p) => t(p.title)).join(t({ zh: "、", en: ", " })) }), reload));
     }
     const list = h("div");
     container.appendChild(list);
@@ -3178,7 +3500,7 @@ ${IMAGE_FIELD_CSS}`;
       clear(list);
       const shown = plugins.filter((p) => (view.query ? true : inCategory(p, view.category)) && matchesQuery(p, view.query) && passesFilter(p));
       if (!shown.length) {
-        const [title, hint] = view.category === "favorites" && !view.query ? [L4.noFavorites, L4.noFavoritesHint] : view.category === "recent" && !view.query ? [L4.noRecent, null] : [L4.empty, null];
+        const [title, hint] = view.category === "favorites" && !view.query ? [L5.noFavorites, L5.noFavoritesHint] : view.category === "recent" && !view.query ? [L5.noRecent, null] : [L5.empty, null];
         list.appendChild(h("div", { class: "empty" }, h("b", { text: t(title) }), hint ? t(hint) : null));
         return;
       }
@@ -3188,7 +3510,7 @@ ${IMAGE_FIELD_CSS}`;
       if (main.length)
         list.appendChild(h("div", { class: "grid" }, ...main.map(pluginCard)));
       if (required.length)
-        list.append(h("div", { class: "sep", text: t(L4.required) }), h("div", { class: "grid" }, ...required.map(pluginCard)));
+        list.append(h("div", { class: "sep", text: t(L5.required) }), h("div", { class: "grid" }, ...required.map(pluginCard)));
     }
     renderList();
   }
@@ -3196,27 +3518,27 @@ ${IMAGE_FIELD_CSS}`;
     const body = h("div");
     const draw = () => {
       clear(body);
-      const meta = h("div", { class: "d-meta" }, ...badges(plugin), h("span", { text: `${t(L4.author)} ${authorOf(plugin)}` }));
+      const meta = h("div", { class: "d-meta" }, ...badges(plugin), h("span", { text: `${t(L5.author)} ${authorOf(plugin)}` }));
       if (plugin.dependencies?.length && view.showApi)
-        meta.appendChild(h("span", { text: `· ${t(L4.dependsOn)} ${plugin.dependencies.join(", ")}` }));
+        meta.appendChild(h("span", { text: `· ${t(L5.dependsOn)} ${plugin.dependencies.join(", ")}` }));
       const top = h("div", { class: "row" }, h("div", { class: "row-text" }, h("p", { class: "d-desc", text: t(plugin.description) }), meta), h("div", { class: "row-control" }, pluginSwitch(plugin)));
       const error = pluginError(plugin.name);
       body.append(top);
       if (error)
         body.appendChild(h("div", { class: "banner" }, icon("alert", 16), h("span", { text: `${error.stage}: ${error.message}` })));
       body.appendChild(h("div", { class: "d-sep" }));
-      body.appendChild(h("div", { class: "d-title", text: t(L4.settings) }));
+      body.appendChild(h("div", { class: "d-title", text: t(L5.settings) }));
       if (!hasOptions(plugin)) {
-        body.appendChild(h("p", { class: "muted", text: t(L4.noOptions) }));
+        body.appendChild(h("p", { class: "muted", text: t(L5.noOptions) }));
         return;
       }
       const rows = Object.entries(plugin.settings.def).map(([key, option]) => renderOption(plugin.settings, key, option, draw)).filter(Boolean);
       body.appendChild(h("div", { class: "rows" }, ...rows));
     };
     draw();
-    const reset = h("button", { type: "button", class: "btn danger", text: t(L4.reset), disabled: !hasOptions(plugin) });
+    const reset = h("button", { type: "button", class: "btn danger", text: t(L5.reset), disabled: !hasOptions(plugin) });
     reset.addEventListener("click", async () => {
-      if (!await confirmDialog({ title: t(L4.resetTitle), body: fill2(L4.resetBody, t(plugin.title)), ok: L4.resetOk, danger: true }))
+      if (!await confirmDialog({ title: t(L5.resetTitle), body: fill2(L5.resetBody, t(plugin.title)), ok: L5.resetOk, danger: true }))
         return;
       plugin.settings.reset();
       draw();
@@ -3236,246 +3558,6 @@ ${IMAGE_FIELD_CSS}`;
         offRedraw();
       }
     });
-  }
-
-  // src/plugins/_core/settings/userMenu.ts
-  var SETTINGS_ITEM = '[data-testid="user-menu-settings"]';
-  var NATIVE_SECTIONS = [
-    { hash: "settings/general", icon: "sliders", label: { zh: "通用", en: "General" } },
-    { hash: "settings/account", icon: "user", label: { zh: "账户", en: "Account" } },
-    { hash: "settings/data-privacy-controls", icon: "shield", label: { zh: "隐私", en: "Privacy" } },
-    { hash: "settings/billing", icon: "creditCard", label: { zh: "账单", en: "Billing" } },
-    { hash: "settings/usage", icon: "gauge", label: { zh: "用量", en: "Usage" } },
-    { hash: "settings/capabilities", icon: "grid", label: { zh: "功能", en: "Capabilities" } },
-    { hash: "settings/memory", icon: "brain", label: { zh: "记忆", en: "Memory" } },
-    { hash: "settings/design-systems", icon: "palette", label: { zh: "设计系统", en: "Design systems" } },
-    { hash: "settings/claude-code", icon: "terminal", label: { zh: "Claude Code", en: "Claude Code" } },
-    { hash: "settings/browser-extension", icon: "globe", label: { zh: "Claude in Chrome", en: "Claude in Chrome" } },
-    { hash: "customize/skills/yours", icon: "sparkles", label: { zh: "技能", en: "Skills" } },
-    { hash: "customize/connectors/yours", icon: "link", label: { zh: "连接器", en: "Connectors" } },
-    { hash: "customize/plugins/yours", icon: "puzzle", label: { zh: "插件（claude.ai）", en: "Plugins (claude.ai)" } }
-  ];
-  var L5 = {
-    plugins: { zh: "插件", en: "Plugins" },
-    openSettings: { zh: "打开 CC++ 设置", en: "Open CC++ settings" },
-    openNative: { zh: "打开设置", en: "Open settings" },
-    claude: { zh: "claude.ai", en: "claude.ai" }
-  };
-  function installUserMenu(scope, options) {
-    watch(scope, SEL.menu, (menu) => {
-      if (menu.hasAttribute("data-ccpp-panel-level"))
-        return;
-      let cleanup = null;
-      const tryInsert = () => {
-        if (cleanup)
-          return true;
-        const settingsItem = menu.querySelector(SETTINGS_ITEM);
-        if (!settingsItem)
-          return false;
-        cleanup = enhance(menu, settingsItem, options);
-        return true;
-      };
-      const observer = new MutationObserver(() => tryInsert() && observer.disconnect());
-      if (!tryInsert())
-        observer.observe(menu, { childList: true, subtree: true });
-      return () => {
-        observer.disconnect();
-        cleanup?.();
-      };
-    });
-  }
-  function shortcutHint(settingsItem, keys) {
-    if (!keys.length)
-      return null;
-    const native = settingsItem.querySelector('[data-cds="Shortcut"]');
-    const sample = native?.querySelector("kbd");
-    if (native && sample) {
-      const hint = native.cloneNode(false);
-      for (const key of keys) {
-        const part = sample.cloneNode(true);
-        const glyph = [...part.querySelectorAll("span")].find((el) => !el.matches(".sr-only")) ?? null;
-        const name = part.querySelector(".sr-only");
-        if (glyph)
-          glyph.textContent = key;
-        else
-          part.textContent = key;
-        if (name)
-          name.textContent = KEY_NAMES[key] ?? key;
-        hint.appendChild(part);
-      }
-      hint.setAttribute("data-ccpp-shortcut", "");
-      return hint;
-    }
-    return h("span", { class: "shrink-0 text-muted text-footnote", "data-ccpp-shortcut": "", "aria-hidden": "true", text: keys.join(" "), style: { letterSpacing: ".08em" } });
-  }
-  var KEY_NAMES = { "⇧": "Shift", "⌘": "Command", "⌥": "Option", "⌃": "Control", ".": "Period", ",": "Comma" };
-  function closeMenu(menu) {
-    menu.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
-  }
-  function enhance(menu, settingsItem, options) {
-    const sampleSub = menu.querySelector('[role="menuitem"][aria-haspopup="menu"]');
-    const itemClass = settingsItem.className;
-    const subItemClass = sampleSub?.className ?? `${itemClass} justify-between data-[popup-open]:bg-fill-ghost-hover`;
-    const iconClass = settingsItem.firstElementChild?.className ?? "flex size-icon shrink-0 items-center justify-center";
-    const separatorClass = menu.querySelector('[role="separator"]')?.className ?? "my-1 h-px bg-border";
-    const panelClass = menu.className.replace(/\bw-\[[^\]]+\]/g, "");
-    const scrollClass = menu.firstElementChild?.className ?? "";
-    const added = [];
-    const chevron = () => h("span", { class: "-mr-1 shrink-0 text-muted", "data-ccpp-chevron": "", style: { display: "inline-flex" } }, icon("chevronRight", 16));
-    const row = (iconNode, label, opts = {}) => {
-      const el = h("div", { role: "menuitem", tabindex: "-1", "data-cds-icon-row": "", "data-ccpp-item": "", class: opts.sub ? subItemClass : itemClass, style: { cursor: "pointer" } }, h("span", { class: iconClass }, iconNode), typeof label === "string" ? h("span", { class: "min-w-0 flex-1 truncate", text: label }) : label, opts.trailing ?? null, opts.sub ? chevron() : null);
-      if (opts.sub)
-        el.setAttribute("aria-haspopup", "menu");
-      el.addEventListener("pointerenter", () => highlight(el));
-      el.addEventListener("pointerleave", () => el.removeAttribute("data-highlighted"));
-      if (opts.run) {
-        const run = opts.run;
-        const activate = (event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          closeMenu(menu);
-          setTimeout(run, 0);
-        };
-        el.addEventListener("click", activate);
-        el.addEventListener("keydown", (event) => (event.key === "Enter" || event.key === " ") && activate(event));
-      }
-      return el;
-    };
-    const caption = (text) => h("div", { class: "px-2.5 pt-2 pb-1 text-caption text-muted", style: { fontSize: "var(--cds-font-size-caption, 12px)", opacity: ".8" }, text });
-    const separator = () => h("div", { role: "separator", class: separatorClass });
-    const highlight = (el) => {
-      for (const other of el.parentElement?.querySelectorAll("[data-highlighted]") ?? [])
-        other.removeAttribute("data-highlighted");
-      el.setAttribute("data-highlighted", "");
-    };
-    const panel = (anchor, container, width) => {
-      const scroll = h("div", { class: scrollClass, style: { maxHeight: "min(calc(100vh - 16px), 32rem)", overflowY: "auto", scrollbarWidth: "thin", scrollbarColor: "var(--cds-alpha-2, rgba(127,127,127,.35)) transparent" } });
-      const el = h("div", { role: "menu", "data-ccpp-panel-level": "", class: panelClass, style: { position: "absolute", width, zIndex: "1" } }, scroll);
-      container.appendChild(el);
-      const place = () => {
-        const a = anchor.getBoundingClientRect();
-        const c = container.getBoundingClientRect();
-        const gap = 4;
-        if (window.innerWidth - c.right > el.offsetWidth + gap + 8)
-          el.style.left = `calc(100% + ${gap}px)`;
-        else
-          el.style.right = `calc(100% + ${gap}px)`;
-        const top = a.top - c.top - 4;
-        const maxTop = window.innerHeight - c.top - el.offsetHeight - 8;
-        el.style.top = `${Math.max(-c.top + 8, Math.min(top, maxTop))}px`;
-      };
-      el.addEventListener("pointerover", (event) => event.stopPropagation());
-      return { el, scroll, place };
-    };
-    const level = (container) => {
-      let open = null;
-      const close = () => {
-        if (!open)
-          return;
-        open.close();
-        open.el.remove();
-        open.trigger.removeAttribute("data-popup-open");
-        open.trigger.setAttribute("aria-expanded", "false");
-        open = null;
-      };
-      const attach = (trigger, width, fill) => {
-        trigger.setAttribute("aria-haspopup", "menu");
-        trigger.setAttribute("aria-expanded", "false");
-        const show = () => {
-          if (open?.trigger === trigger)
-            return;
-          close();
-          const { el, scroll, place } = panel(trigger, container, width);
-          const child = level(el);
-          fill(scroll, child);
-          place();
-          scroll.addEventListener("pointerover", (event) => {
-            const target = event.target.closest('[role="menuitem"]');
-            if (target && !target.hasAttribute("aria-haspopup"))
-              child.close();
-          });
-          trigger.setAttribute("data-popup-open", "");
-          trigger.setAttribute("aria-expanded", "true");
-          open = { trigger, el, close: child.close };
-        };
-        trigger.addEventListener("pointerenter", show);
-        if (trigger.hasAttribute("data-ccpp-item")) {
-          trigger.addEventListener("click", (event) => {
-            event.stopPropagation();
-            show();
-          });
-        }
-        trigger.addEventListener("keydown", (event) => {
-          if (event.key !== "ArrowRight")
-            return;
-          event.preventDefault();
-          event.stopPropagation();
-          show();
-          open?.el.querySelector('[role="menuitem"]')?.focus();
-        });
-      };
-      return { attach, close, isOpen: (trigger) => open?.trigger === trigger };
-    };
-    const top = level(menu);
-    const fillPlugins = (scroll) => {
-      for (const plugin of options.plugins()) {
-        const dot = h("span", {
-          class: "shrink-0",
-          ...tipAttrs(isActive(plugin) ? "ON" : "OFF"),
-          style: { width: "6px", height: "6px", borderRadius: "50%", marginInlineStart: "8px", background: isActive(plugin) ? "var(--cds-fill-accent, #2a78d6)" : "var(--cds-alpha-2, rgba(127,127,127,.4))" }
-        });
-        scroll.appendChild(row(icon(plugin.icon ?? "puzzle", 16), t(plugin.title), { trailing: dot, run: () => options.openPlugin(plugin) }));
-      }
-    };
-    const fillCcpp = (scroll, child) => {
-      for (const tab of options.tabs()) {
-        if (tab.id === "plugins") {
-          const plugins = row(icon(tab.icon, 16), t(L5.plugins), { sub: true });
-          child.attach(plugins, "16rem", fillPlugins);
-          scroll.appendChild(plugins);
-        } else
-          scroll.appendChild(row(icon(tab.icon, 16), t(tab.title), { run: () => options.openTab(tab.id) }));
-      }
-    };
-    if (options.settingsFlyout) {
-      settingsItem.classList.add("justify-between");
-      const mark = chevron();
-      settingsItem.appendChild(mark);
-      added.push(mark);
-      top.attach(settingsItem, "15rem", (scroll, child) => {
-        scroll.appendChild(row(icon("settings", 16), t(L5.openNative), { run: () => location.hash = "settings/general" }));
-        scroll.appendChild(separator());
-        scroll.appendChild(caption("CC++"));
-        fillCcpp(scroll, child);
-        scroll.appendChild(separator());
-        scroll.appendChild(caption(t(L5.claude)));
-        for (const section of NATIVE_SECTIONS)
-          scroll.appendChild(row(icon(section.icon, 16), t(section.label), { run: () => location.hash = section.hash }));
-      });
-    }
-    if (options.entry) {
-      const name = h("span", { class: "min-w-0 flex-1 truncate" }, "CC++", h("span", { class: "text-muted", "data-ccpp-version": "", text: ` v${version}`, style: { fontSize: "var(--cds-font-size-caption, 12px)", lineHeight: "1", verticalAlign: "middle", marginInlineStart: "4px" } }));
-      const entry = row(icon("plug", 16), name, { sub: true, trailing: shortcutHint(settingsItem, options.shortcut) });
-      top.attach(entry, "14rem", (scroll, child) => {
-        fillCcpp(scroll, child);
-        scroll.appendChild(separator());
-        scroll.appendChild(row(icon("settings", 16), t(L5.openSettings), { run: () => options.openTab("plugins") }));
-      });
-      settingsItem.after(entry);
-      added.push(entry);
-    }
-    const onOver = (event) => {
-      const target = event.target.closest('[role="menuitem"]');
-      if (target && target !== settingsItem && !target.hasAttribute("data-ccpp-item"))
-        top.close();
-    };
-    menu.addEventListener("pointerover", onOver);
-    return () => {
-      top.close();
-      menu.removeEventListener("pointerover", onOver);
-      for (const el of added)
-        el.remove();
-    };
   }
   // src/plugins/_core/settings/index.ts
   var L6 = {
@@ -7518,7 +7600,7 @@ ${targets.map((t) => `${t} > *`).join(`,
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.80",
+      version: "0.3.81",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -7535,7 +7617,7 @@ ${targets.map((t) => `${t} > *`).join(`,
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.80";
+    win[FLAG] = "0.3.81";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -7552,7 +7634,7 @@ ${targets.map((t) => `${t} > *`).join(`,
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.80"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.81"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();

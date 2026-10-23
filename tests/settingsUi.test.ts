@@ -133,3 +133,50 @@ describe("account menu shortcut hint", () => {
         expect(shortcutHint(document.getElementById("s")!, [])).toBeNull();
     });
 });
+
+describe("account menu icons", () => {
+    test("flyout rows reuse claude.ai's icon box, gear, chevron and learned section icons", async () => {
+        const { NATIVE_SECTIONS } = await import("../src/plugins/_core/settings/userMenu");
+        const { learnNativeIcons, resetNativeIcons } = await import("../src/plugins/_core/settings/nativeIcons");
+        resetNativeIcons();
+        const nav = document.createElement("nav");
+        nav.innerHTML = `<ul><li data-testid="general-settings"><button><span data-cds="Icon"><svg width="20" height="20" viewBox="0 0 20 20" onload="x()"><path d="M1 1h18"/></svg></span><span>General</span></button></li>
+            <li data-testid="whatever"><button><span data-cds="Icon"><svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="8"/></svg></span><span>Memory</span></button></li></ul>`;
+        learnNativeIcons(nav, NATIVE_SECTIONS);
+
+        resetRegistry();
+        registerPlugins(PLUGINS);
+        startPhase("dom-ready");
+        const menu = document.createElement("div");
+        menu.setAttribute("role", "menu");
+        menu.innerHTML = `<div class="scroll"><div role="menuitem" data-testid="user-menu-settings" class="item"><div class="ico"><svg class="gear" width="16" height="16" viewBox="0 0 20 20"><path d="M2 2"/></svg></div><span>Settings</span></div>
+            <div role="menuitem" aria-haspopup="menu" class="item sub"><div class="ico"><svg width="16" height="16"><path d="M3 3"/></svg></div><span>Learn more</span><span class="chev"><svg class="caret"><path d="M9 9"/></svg></span></div></div>`;
+        document.body.appendChild(menu);
+        await tick();
+        const settingsRow = menu.querySelector<HTMLElement>('[data-testid="user-menu-settings"]')!;
+        expect(settingsRow.lastElementChild!.matches(".chev[data-ccpp-chevron]")).toBe(true);
+        settingsRow.dispatchEvent(new Event("pointerenter"));
+        const flyout = [...menu.children].find(el => el.hasAttribute("data-ccpp-panel-level")) as HTMLElement;
+        const rows = [...flyout.querySelectorAll<HTMLElement>('[role="menuitem"]')];
+        const byLabel = (text: string) => rows.find(r => r.textContent!.trim() === text)!;
+        // "Open settings" shows the Settings row's own gear, in the same box.
+        const open = rows[0]!;
+        expect(open.firstElementChild!.className).toBe("ico");
+        expect(open.querySelector("svg")!.getAttribute("class")).toBe("gear");
+        // A learned section icon takes the native box, class and size; its handlers are stripped.
+        const general = byLabel("General").querySelector("svg")!;
+        expect(general.querySelector("path")!.getAttribute("d")).toBe("M1 1h18");
+        expect(general.getAttribute("class")).toBe("gear");
+        expect(general.getAttribute("width")).toBe("16");
+        expect(general.hasAttribute("onload")).toBe(false);
+        // Learned by label when the testid doesn't name the section.
+        expect(byLabel("Memory").querySelector("circle")).not.toBeNull();
+        // Sections we haven't seen fall back to our icon, lighter, in the same box.
+        const account = byLabel("Account");
+        expect(account.firstElementChild!.className).toBe("ico");
+        expect(account.querySelector("svg")!.getAttribute("stroke-width")).toBe("1.75");
+        menu.remove();
+        resetNativeIcons();
+        resetRegistry();
+    });
+});

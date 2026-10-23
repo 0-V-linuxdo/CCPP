@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: MIT
  */
 
-import { t, type Text } from "@kernel/i18n";
+import { t } from "@kernel/i18n";
 import { isActive, type Plugin } from "@kernel/plugins";
 import type { Scope } from "@kernel/scope";
 import { h } from "@lib/dom";
@@ -12,13 +12,14 @@ import { icon } from "@lib/icons";
 import { tipAttrs } from "@lib/tooltip";
 import { SEL, watch } from "@api/dom";
 
+import { nativeIcon } from "./nativeIcons";
 import { type SettingsTab, version } from "./state";
 
 /** The "Settings" row of claude.ai's account menu, which tells that menu apart from others. */
 const SETTINGS_ITEM = '[data-testid="user-menu-settings"]';
 
 /** claude.ai's own settings pages and the hash that opens each. */
-export const NATIVE_SECTIONS: { hash: string; icon: string; label: Text }[] = [
+export const NATIVE_SECTIONS: { hash: string; icon: string; label: { zh: string; en: string } }[] = [
     { hash: "settings/general", icon: "sliders", label: { zh: "通用", en: "General" } },
     { hash: "settings/account", icon: "user", label: { zh: "账户", en: "Account" } },
     { hash: "settings/data-privacy-controls", icon: "shield", label: { zh: "隐私", en: "Privacy" } },
@@ -123,19 +124,54 @@ function enhance(menu: HTMLElement, settingsItem: HTMLElement, options: UserMenu
     const sampleSub = menu.querySelector<HTMLElement>('[role="menuitem"][aria-haspopup="menu"]');
     const itemClass = settingsItem.className;
     const subItemClass = sampleSub?.className ?? `${itemClass} justify-between data-[popup-open]:bg-fill-ghost-hover`;
-    const iconClass = settingsItem.firstElementChild?.className ?? "flex size-icon shrink-0 items-center justify-center";
+    const iconSlot = settingsItem.firstElementChild as HTMLElement | null;
+    const sampleIcon = iconSlot?.querySelector("svg") ?? null;
+    const iconSize = Math.round(sampleIcon?.getBoundingClientRect().width || Number(sampleIcon?.getAttribute("width")) || 16);
     const separatorClass = menu.querySelector('[role="separator"]')?.className ?? "my-1 h-px bg-border";
     const panelClass = menu.className.replace(/\bw-\[[^\]]+\]/g, "");
     const scrollClass = (menu.firstElementChild as HTMLElement | null)?.className ?? "";
     const added: Element[] = [];
 
-    const chevron = () => h("span", { class: "-mr-1 shrink-0 text-muted", "data-ccpp-chevron": "", style: { display: "inline-flex" } }, icon("chevronRight", 16));
+    // A native submenu row's trailing chevron, so ours is claude.ai's own glyph.
+    const nativeChevron = sampleSub && sampleSub.lastElementChild !== sampleSub.firstElementChild && sampleSub.lastElementChild?.querySelector("svg") ? (sampleSub.lastElementChild as HTMLElement) : null;
+    const chevron = () => {
+        const mark = (nativeChevron?.cloneNode(true) as HTMLElement | undefined) ?? h("span", { class: "-mr-1 shrink-0 text-muted", style: { display: "inline-flex" } }, icon("chevronRight", 16));
+        mark.setAttribute("data-ccpp-chevron", "");
+        return mark;
+    };
+
+    /**
+     * An icon in the same box as the Settings row's: its slot copied whole, with `svg` taking the native svg's
+     * place, class and size. `svg` defaults to the Settings row's own gear.
+     */
+    const iconBox = (svg?: SVGElement): HTMLElement => {
+        const box = (iconSlot?.cloneNode(true) as HTMLElement | undefined) ?? h("span", { class: "flex size-icon shrink-0 items-center justify-center" });
+        if (!svg) return sampleIcon ? box : ownIcon("settings");
+        const old = box.querySelector("svg");
+        const sampleClass = sampleIcon?.getAttribute("class");
+        if (sampleClass != null) svg.setAttribute("class", sampleClass);
+        for (const name of ["width", "height"]) svg.setAttribute(name, sampleIcon?.getAttribute(name) ?? String(iconSize));
+        svg.setAttribute("aria-hidden", "true");
+        if (old) old.replaceWith(svg);
+        else {
+            box.textContent = "";
+            box.appendChild(svg);
+        }
+        return box;
+    };
+    /** One of our own icons at the native size, a little lighter than lucide's 2px to sit with claude.ai's. */
+    const ownIcon = (name: string): HTMLElement => iconBox(icon(name, iconSize, 1.75));
+    /** claude.ai's icon for a settings section when we've seen it, else ours. */
+    const sectionIcon = (section: { hash: string; icon: string }) => {
+        const svg = nativeIcon(section.hash);
+        return svg ? iconBox(svg) : ownIcon(section.icon);
+    };
 
     const row = (iconNode: Node | null, label: string | Node, opts: { sub?: boolean; trailing?: Node | null; run?: () => void } = {}) => {
         const el = h(
             "div",
             { role: "menuitem", tabindex: "-1", "data-cds-icon-row": "", "data-ccpp-item": "", class: opts.sub ? subItemClass : itemClass, style: { cursor: "pointer" } },
-            h("span", { class: iconClass }, iconNode),
+            iconNode,
             typeof label === "string" ? h("span", { class: "min-w-0 flex-1 truncate", text: label }) : label,
             opts.trailing ?? null,
             opts.sub ? chevron() : null,
@@ -242,16 +278,16 @@ function enhance(menu: HTMLElement, settingsItem: HTMLElement, options: UserMenu
                 ...tipAttrs(isActive(plugin) ? "ON" : "OFF"),
                 style: { width: "6px", height: "6px", borderRadius: "50%", marginInlineStart: "8px", background: isActive(plugin) ? "var(--cds-fill-accent, #2a78d6)" : "var(--cds-alpha-2, rgba(127,127,127,.4))" },
             });
-            scroll.appendChild(row(icon(plugin.icon ?? "puzzle", 16), t(plugin.title), { trailing: dot, run: () => options.openPlugin(plugin) }));
+            scroll.appendChild(row(ownIcon(plugin.icon ?? "puzzle"), t(plugin.title), { trailing: dot, run: () => options.openPlugin(plugin) }));
         }
     };
     const fillCcpp = (scroll: HTMLElement, child: Level) => {
         for (const tab of options.tabs()) {
             if (tab.id === "plugins") {
-                const plugins = row(icon(tab.icon, 16), t(L.plugins), { sub: true });
+                const plugins = row(ownIcon(tab.icon), t(L.plugins), { sub: true });
                 child.attach(plugins, "16rem", fillPlugins);
                 scroll.appendChild(plugins);
-            } else scroll.appendChild(row(icon(tab.icon, 16), t(tab.title), { run: () => options.openTab(tab.id) }));
+            } else scroll.appendChild(row(ownIcon(tab.icon), t(tab.title), { run: () => options.openTab(tab.id) }));
         }
     };
 
@@ -262,23 +298,23 @@ function enhance(menu: HTMLElement, settingsItem: HTMLElement, options: UserMenu
         settingsItem.appendChild(mark);
         added.push(mark);
         top.attach(settingsItem, "15rem", (scroll, child) => {
-            scroll.appendChild(row(icon("settings", 16), t(L.openNative), { run: () => (location.hash = "settings/general") }));
+            scroll.appendChild(row(iconBox(), t(L.openNative), { run: () => (location.hash = "settings/general") }));
             scroll.appendChild(separator());
             scroll.appendChild(caption("CC++"));
             fillCcpp(scroll, child);
             scroll.appendChild(separator());
             scroll.appendChild(caption(t(L.claude)));
-            for (const section of NATIVE_SECTIONS) scroll.appendChild(row(icon(section.icon, 16), t(section.label), { run: () => (location.hash = section.hash) }));
+            for (const section of NATIVE_SECTIONS) scroll.appendChild(row(sectionIcon(section), t(section.label), { run: () => (location.hash = section.hash) }));
         });
     }
 
     if (options.entry) {
         const name = h("span", { class: "min-w-0 flex-1 truncate" }, "CC++", h("span", { class: "text-muted", "data-ccpp-version": "", text: ` v${version}`, style: { fontSize: "var(--cds-font-size-caption, 12px)", lineHeight: "1", verticalAlign: "middle", marginInlineStart: "4px" } }));
-        const entry = row(icon("plug", 16), name, { sub: true, trailing: shortcutHint(settingsItem, options.shortcut) });
+        const entry = row(ownIcon("plug"), name, { sub: true, trailing: shortcutHint(settingsItem, options.shortcut) });
         top.attach(entry, "14rem", (scroll, child) => {
             fillCcpp(scroll, child);
             scroll.appendChild(separator());
-            scroll.appendChild(row(icon("settings", 16), t(L.openSettings), { run: () => options.openTab("plugins") }));
+            scroll.appendChild(row(iconBox(), t(L.openSettings), { run: () => options.openTab("plugins") }));
         });
         settingsItem.after(entry);
         added.push(entry);

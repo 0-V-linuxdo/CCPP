@@ -15,7 +15,9 @@ import { addStyle } from "@api/styles";
 
 import { NATIVE_DIALOG, openModal } from "./layer";
 import { onRedraw, type SettingsTab, tabs, version } from "./state";
+import { learnNativeIcons } from "./nativeIcons";
 import { PANEL_CSS } from "./styles";
+import { NATIVE_SECTIONS } from "./userMenu";
 
 const NAV = '[data-perf-region="settings_nav"]';
 /** CC++ pages get their own hash, #settings/ccpp-<tab>, so reload and Back work like native pages. */
@@ -105,6 +107,7 @@ export function installNative(scope: Scope, position: () => "above" | "below") {
         const paintNav = () => {
             const root = nav();
             if (!root) return;
+            learnNativeIcons(root, NATIVE_SECTIONS);
             const c = learnClasses(root);
             if (!c) return;
             const scroller = root.querySelector<HTMLElement>("ul")?.parentElement;
