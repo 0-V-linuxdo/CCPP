@@ -98,7 +98,7 @@ const GLYPHS: Record<string, number> = {
     brush: 0xe13d,
     linkOff: 0xe05d,
     micOff: 0xe0ad,
-    user: 0xe104,
+    user: 0xe106,
     creditCard: 0xe058,
     brain: 0xe0a8,
     grid: 0xe084,

@@ -13,7 +13,7 @@ import { readJson, writeJson } from "@kernel/storage";
  */
 const SECTION_GLYPHS: Record<string, number> = {
     "settings/general": 0xe0d6,
-    "settings/account": 0xe105,
+    "settings/account": 0xe104,
     "settings/data-privacy-controls": 0xe0a3,
     "settings/billing": 0xe058,
     "settings/usage": 0xe130,

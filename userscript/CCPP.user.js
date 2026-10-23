@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.84
+// @version      20261013.0.3.85
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -1530,7 +1530,7 @@
     brush: 57661,
     linkOff: 57437,
     micOff: 57517,
-    user: 57604,
+    user: 57606,
     creditCard: 57432,
     brain: 57512,
     grid: 57476,
@@ -2681,7 +2681,7 @@ ${IMAGE_FIELD_CSS}`;
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.84";
+  var version = "0.3.85";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -2721,7 +2721,7 @@ ${IMAGE_FIELD_CSS}`;
   // src/plugins/_core/settings/nativeIcons.ts
   var SECTION_GLYPHS = {
     "settings/general": 57558,
-    "settings/account": 57605,
+    "settings/account": 57604,
     "settings/data-privacy-controls": 57507,
     "settings/billing": 57432,
     "settings/usage": 57648,
@@ -7881,7 +7881,7 @@ ${targets.map((t) => `${t} > *`).join(`,
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.84",
+      version: "0.3.85",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -7898,7 +7898,7 @@ ${targets.map((t) => `${t} > *`).join(`,
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.84";
+    win[FLAG] = "0.3.85";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -7915,7 +7915,7 @@ ${targets.map((t) => `${t} > *`).join(`,
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.84"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.85"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();
