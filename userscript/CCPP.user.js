@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.83
+// @version      20261013.0.3.84
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -1497,10 +1497,11 @@
     pencil: [p("M21.17 6.81a1 1 0 0 0-3.99-3.99L3.84 16.17a2 2 0 0 0-.5.83l-1.32 4.35a.5.5 0 0 0 .62.62l4.35-1.32a2 2 0 0 0 .83-.5z"), p("m15 5 4 4")],
     plus: [p("M5 12h14"), p("M12 5v14")],
     alert: [p("m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"), p("M12 9v4"), p("M12 17h.01")],
-    info: [c(12, 12, 10), p("M12 16v-4"), p("M12 8h.01")]
+    info: [c(12, 12, 10), p("M12 16v-4"), p("M12 8h.01")],
+    braces: [p("M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5c0 1.1.9 2 2 2h1"), p("M16 21h1a2 2 0 0 0 2-2v-5c0-1.1.9-2 2-2a2 2 0 0 1-2-2V5a2 2 0 0 0-2-2h-1")]
   };
   var GLYPHS = {
-    plug: 57541,
+    plug: 57613,
     settings: 57558,
     star: 57575,
     pin: 57533,
@@ -1511,14 +1512,14 @@
     upload: 57562,
     history: 57481,
     list: 57500,
-    gauge: 57648,
+    gauge: 57647,
     bell: 57524,
     eyeOff: 57450,
     width: 57366,
-    palette: 57528,
+    palette: 57522,
     message: 57399,
     keyboard: 57490,
-    code: 57416,
+    code: 57417,
     link: 57498,
     clock: 57411,
     shield: 57602,
@@ -1526,7 +1527,7 @@
     trash: 57601,
     chevronDown: 57383,
     chevronRight: 57386,
-    brush: 57677,
+    brush: 57661,
     linkOff: 57437,
     micOff: 57517,
     user: 57604,
@@ -1539,15 +1540,16 @@
     blend: 57559,
     tab: 57574,
     collapse: 57421,
-    puzzle: 57429,
+    puzzle: 57376,
     sliders: 57456,
-    globe: 57474,
+    globe: 57618,
     folder: 57458,
     copy: 57455,
     pencil: 57444,
     plus: 57345,
+    braces: 57418,
     alert: 57609,
-    info: 57487
+    info: 57486
   };
   function glyph(name) {
     const code = GLYPHS[name];
@@ -2679,7 +2681,7 @@ ${IMAGE_FIELD_CSS}`;
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.83";
+  var version = "0.3.84";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -3844,7 +3846,7 @@ ${IMAGE_FIELD_CSS}`;
     title: L8.title,
     description: { zh: "在设置里写自己的 CSS，实时作用于页面。", en: "Write your own CSS in settings and see it applied live." },
     category: "appearance",
-    icon: "brush",
+    icon: "braces",
     enabledByDefault: true,
     dependencies: ["StylesApi", "Settings"],
     settings: settings3,
@@ -3856,7 +3858,7 @@ ${IMAGE_FIELD_CSS}`;
       registerTab(scope, {
         id: "quick-css",
         title: L8.title,
-        icon: "brush",
+        icon: "braces",
         order: 20,
         render(container) {
           const sw = h("button", { type: "button", class: "switch", role: "switch", "aria-checked": String(settings3.store.apply), "aria-label": t(settings3.def.apply.label) });
@@ -7879,7 +7881,7 @@ ${targets.map((t) => `${t} > *`).join(`,
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.83",
+      version: "0.3.84",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -7896,7 +7898,7 @@ ${targets.map((t) => `${t} > *`).join(`,
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.83";
+    win[FLAG] = "0.3.84";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -7913,7 +7915,7 @@ ${targets.map((t) => `${t} > *`).join(`,
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.83"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.84"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();

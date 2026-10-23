@@ -178,10 +178,24 @@ describe("account menu icons", () => {
         // Not learned (an svg is no glyph): the built-in code point.
         expect(glyphOf("Account")).toBe("\ue105");
         // Our own pages map onto the font too.
-        expect(glyphOf("Themes")).toBe("\ue0b8");
+        expect(glyphOf("Themes")).toBe("\ue0b2");
         expect(rows[0]!.querySelector('[data-cds="Icon"]')!.textContent).toBe("\ue0d6");
         menu.remove();
         resetNativeIcons();
         resetRegistry();
+    });
+});
+
+describe("CC++ icon glyphs", () => {
+    test("never reuse a glyph of claude.ai's own settings sections or account menu", async () => {
+        const { glyph, iconNames } = await import("../src/lib/icons");
+        const { NATIVE_SECTIONS } = await import("../src/plugins/_core/settings/userMenu");
+        const { sectionGlyph } = await import("../src/plugins/_core/settings/nativeIcons");
+        // Account menu rows: Usage, Language, Get help, View all plans, Get apps, Learn more, Log out.
+        const native = new Set([...NATIVE_SECTIONS.map(s => sectionGlyph(s.hash)), ...""]);
+        // Only drawn for claude.ai's own rows (as fallbacks) or for rows that open its settings.
+        const nativeOnly = new Set(["settings", "creditCard", "brain"]);
+        const clashes = iconNames.filter(name => !nativeOnly.has(name) && native.has(glyph(name)));
+        expect(clashes).toEqual([]);
     });
 });

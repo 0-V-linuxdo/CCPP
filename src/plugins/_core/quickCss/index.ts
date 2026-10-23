@@ -32,7 +32,7 @@ export default definePlugin({
     title: L.title,
     description: { zh: "在设置里写自己的 CSS，实时作用于页面。", en: "Write your own CSS in settings and see it applied live." },
     category: "appearance",
-    icon: "brush",
+    icon: "braces",
     enabledByDefault: true,
     dependencies: ["StylesApi", "Settings"],
     settings,
@@ -44,7 +44,7 @@ export default definePlugin({
         registerTab(scope, {
             id: "quick-css",
             title: L.title,
-            icon: "brush",
+            icon: "braces",
             order: 20,
             render(container) {
                 const sw = h("button", { type: "button", class: "switch", role: "switch", "aria-checked": String(settings.store.apply), "aria-label": t(settings.def.apply.label) });

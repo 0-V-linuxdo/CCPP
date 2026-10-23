@@ -59,14 +59,17 @@ const ICONS: Record<string, Shape[]> = {
     plus: [p("M5 12h14"), p("M12 5v14")],
     alert: [p("m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"), p("M12 9v4"), p("M12 17h.01")],
     info: [c(12, 12, 10), p("M12 16v-4"), p("M12 8h.01")],
+    braces: [p("M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5c0 1.1.9 2 2 2h1"), p("M16 21h1a2 2 0 0 0 2-2v-5c0-1.1.9-2 2-2a2 2 0 0 1-2-2V5a2 2 0 0 0-2-2h-1")],
 };
 
 /**
  * The same icons in claude.ai's own Anthropicons font, where it has one (code points as of 2026-10). Inside
- * claude.ai a `span[data-cds="Icon"]` holding the character draws it exactly like the native icons.
+ * claude.ai a `span[data-cds="Icon"]` holding the character draws it exactly like the native icons. None of
+ * them repeats a glyph claude.ai uses for its own settings sections or account menu rows, so CC++ entries
+ * never look like native ones; "settings" is the exception, as it only marks rows that open claude.ai's settings.
  */
 const GLYPHS: Record<string, number> = {
-    plug: 0xe0c5,
+    plug: 0xe10d,
     settings: 0xe0d6,
     star: 0xe0e7,
     pin: 0xe0bd,
@@ -77,14 +80,14 @@ const GLYPHS: Record<string, number> = {
     upload: 0xe0da,
     history: 0xe089,
     list: 0xe09c,
-    gauge: 0xe130,
+    gauge: 0xe12f,
     bell: 0xe0b4,
     eyeOff: 0xe06a,
     width: 0xe016,
-    palette: 0xe0b8,
+    palette: 0xe0b2,
     message: 0xe037,
     keyboard: 0xe092,
-    code: 0xe048,
+    code: 0xe049,
     link: 0xe09a,
     clock: 0xe043,
     shield: 0xe102,
@@ -92,7 +95,7 @@ const GLYPHS: Record<string, number> = {
     trash: 0xe101,
     chevronDown: 0xe027,
     chevronRight: 0xe02a,
-    brush: 0xe14d,
+    brush: 0xe13d,
     linkOff: 0xe05d,
     micOff: 0xe0ad,
     user: 0xe104,
@@ -105,15 +108,16 @@ const GLYPHS: Record<string, number> = {
     blend: 0xe0d7,
     tab: 0xe0e6,
     collapse: 0xe04d,
-    puzzle: 0xe055,
+    puzzle: 0xe020,
     sliders: 0xe070,
-    globe: 0xe082,
+    globe: 0xe112,
     folder: 0xe072,
     copy: 0xe06f,
     pencil: 0xe064,
     plus: 0xe001,
+    braces: 0xe04a,
     alert: 0xe109,
-    info: 0xe08f,
+    info: 0xe08e,
 };
 
 /** The Anthropicons character for an icon, or null when the font has none. */
