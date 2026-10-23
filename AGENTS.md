@@ -37,3 +37,4 @@ Notes for AI agents working on CC++.
 3. Reload the claude.ai tab under test and check `window.__ccpp` for the version.
    raw.githubusercontent.com can lag a few minutes behind a push; retry if the version hasn't moved.
 4. Close every Violentmonkey page the update opened (`close_page`) once the update is done, including any install or confirm tab it popped up. Don't leave it open or just send it to `about:blank`.
+5. Once your Helium test is done, also close every claude.ai page you opened for it (`close_page`). Leave tabs you didn't open alone.
