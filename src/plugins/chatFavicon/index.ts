@@ -7,6 +7,7 @@
 import { definePlugin } from "@kernel/plugins";
 import { definePluginSettings } from "@kernel/settings";
 import { chatPhase } from "@api/chatState";
+import { ApiError, getCodeSession, getProjectSessions, parseCodePhase } from "@api/claude";
 import { getText, onSubmit } from "@api/composer";
 import { SEL } from "@api/dom";
 import { onResponse, sameOrigin } from "@api/network";
@@ -131,19 +132,26 @@ const STOP_EVENT = /^event:\s*message_stop\s*$|"type"\s*:\s*"message_stop"/m;
 const isIconLink = (node: Node): node is HTMLLinkElement => node instanceof HTMLLinkElement && /\bicon\b/i.test(node.rel) && node.id !== ICON_ID;
 /** claude.ai's chat requests whose failure means the reply errored. */
 const isCompletion = (path: string) => /\/chat_conversations\/[^/]+\/(?:completion|retry_completion)$/.test(path);
+/** A Claude Code project page: /code/project/chan_…, with ?thread=cmsg_… when a thread is open. */
+export function codeProjectOf(path: string, search: string) {
+    const channel = /^\/code\/project\/(chan_[A-Za-z0-9]+)/.exec(path)?.[1];
+    if (!channel) return null;
+    const thread = /[?&]thread=(cmsg_[A-Za-z0-9]+)/.exec(search)?.[1] ?? null;
+    return { channel, thread };
+}
 
 export default definePlugin({
     name: "ChatFavicon",
     title: { zh: "标签页图标状态", en: "Chat state favicon" },
     description: {
-        zh: "标签页图标随对话状态变化：回复中、已完成、草稿待发送、出错，5 种样式可选。",
-        en: "The tab icon follows the chat: replying, done, draft ready, error. Five styles.",
+        zh: "标签页图标随对话状态变化：回复中、已完成、草稿待发送、出错，5 种样式可选。Claude Code 项目页跟随项目主对话和打开的线程。",
+        en: "The tab icon follows the chat: replying, done, draft ready, error. Five styles. On Claude Code project pages it follows the project chat and the open thread.",
     },
     category: "notifications",
     icon: "tab",
     enabledByDefault: true,
     updatedAt: "2026-10-23",
-    dependencies: ["ChatStateApi", "ComposerApi", "NetworkApi", "RouterApi"],
+    dependencies: ["ChatStateApi", "ClaudeApi", "ComposerApi", "NetworkApi", "RouterApi"],
     settings,
     start(scope) {
         const removed: HTMLLinkElement[] = [];
@@ -164,7 +172,7 @@ export default definePlugin({
                 .catch(() => {});
         };
         // Only chat pages get a state icon; elsewhere claude.ai's own icon comes back.
-        const onChatSurface = () => ["chat", "new", "project"].includes(currentRoute().kind);
+        const onChatSurface = () => ["chat", "new", "project"].includes(currentRoute().kind) || !!codeProjectOf(location.pathname, location.search);
         // The icon is recomputed from facts on every event and on a short timer, so a missed event
         // (claude.ai changes its streams and routes often) can't leave it stuck in a stale state.
         let errored = false;
@@ -214,7 +222,9 @@ export default definePlugin({
         let pendingUntil = 0;
         // Right after a reply's request ends, claude.ai's streaming mark lags by a few seconds; trust the request.
         let endedAt = 0;
-        const live = () => inflight > 0 || Date.now() < pendingUntil || (chatPhase() === "streaming" && Date.now() - endedAt > 10_000);
+        // On a Claude Code project page the replies run in Code sessions: the project's own and the open thread's.
+        let codeWorking = false;
+        const live = () => codeWorking || inflight > 0 || Date.now() < pendingUntil || (chatPhase() === "streaming" && Date.now() - endedAt > 10_000);
         const update = () => {
             const now = live();
             if (now && !streaming) {
@@ -236,22 +246,75 @@ export default definePlugin({
             pendingUntil = Date.now() + 8000;
             update();
         });
+        let codeKey = "";
+        let codeSessions: Promise<string[]> | null = null;
+        let codeBusy = false;
+        let codePausedUntil = 0;
+        const pollCode = async () => {
+            const page = codeProjectOf(location.pathname, location.search);
+            if (!page) {
+                codeKey = "";
+                codeSessions = null;
+                if (codeWorking) {
+                    codeWorking = false;
+                    update();
+                }
+                return;
+            }
+            if (codeBusy || Date.now() < codePausedUntil) return;
+            codeBusy = true;
+            try {
+                const key = `${page.channel}|${page.thread ?? ""}`;
+                if (key !== codeKey || !codeSessions) {
+                    codeKey = key;
+                    codeSessions = getProjectSessions(page.channel, page.thread, scope.signal);
+                    codeSessions.catch(() => codeKey === key && (codeSessions = null));
+                }
+                const ids = await codeSessions;
+                const phases = await Promise.all(ids.map(id => getCodeSession(id, scope.signal).then(parseCodePhase)));
+                if (!scope.alive || key !== codeKey) return;
+                codeWorking = phases.includes("working");
+                // A session that failed turns the icon red; the next reply clears it.
+                if (!codeWorking && phases.includes("failed") && streaming) errored = true;
+                update();
+            } catch (error) {
+                if (error instanceof ApiError && error.status === 429) codePausedUntil = Date.now() + 60_000;
+            } finally {
+                codeBusy = false;
+            }
+        };
+        scope.interval(pollCode, 3000);
+        void pollCode();
         scope.on("reply:start", update);
         scope.on("reply:end", update);
         scope.interval(update, 500);
         // Only a switch to another chat clears the finished and error marks. Sending from /new gives
         // the chat its id mid-reply, and claude.ai rewrites the URL of the same chat; neither counts.
-        let chatId = currentRoute().chatId ?? null;
-        scope.on("route", () => {
-            const next = currentRoute().chatId ?? null;
-            if (next !== chatId && chatId !== null && !streaming) {
+        // On a Claude Code project page the chat is the project plus its open thread.
+        const chatKey = () => {
+            const page = codeProjectOf(location.pathname, location.search);
+            return page ? `${page.channel}|${page.thread ?? ""}` : (currentRoute().chatId ?? null);
+        };
+        let chatId = chatKey();
+        const onNavigate = () => {
+            const next = chatKey();
+            const code = next?.startsWith("chan_");
+            if (next !== chatId && chatId !== null && (code || !streaming)) {
                 finished = false;
                 errored = false;
+                // A Code session keeps running on its own page; the new page's sessions decide from here.
+                if (code) {
+                    codeWorking = false;
+                    streaming = false;
+                }
             }
             chatId = next;
             update();
             paint();
-        });
+            if (code) void pollCode();
+        };
+        scope.on("route", onNavigate);
+        scope.on("route:search", onNavigate);
         // The editor updates its own state after the input event, so read the draft a moment later.
         let inputTimer: ReturnType<typeof setTimeout> | undefined;
         scope.listen(document, "input", (event: Event) => {

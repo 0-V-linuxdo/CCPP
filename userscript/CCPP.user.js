@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.86
+// @version      20261013.0.3.87
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -911,6 +911,34 @@
     map.catch(() => channelSessions === entry && (channelSessions = null));
     return map;
   }
+  function parseCodePhase(raw) {
+    const root = raw && typeof raw === "object" ? raw : {};
+    const session = root.response_shape && typeof root.response_shape === "object" ? root.response_shape : root;
+    if (normalizeBucket(session.status_bucket) === "failed")
+      return "failed";
+    return parseSessionState(raw) === "working" ? "working" : "idle";
+  }
+  function threadSessionFrom(raw, threadId) {
+    const data = raw && typeof raw === "object" && Array.isArray(raw.data) ? raw.data : [];
+    const message = data.find((m) => m?.id === threadId);
+    const session = (Array.isArray(message?.bound_sessions) ? message.bound_sessions : []).find((s) => typeof s?.id === "string" && SESSION_RE.test(s.id) && s.status !== "archived");
+    return session?.id ?? null;
+  }
+  async function getProjectSessions(channelId, threadId, signal) {
+    if (!CHANNEL_RE.test(channelId) || threadId && !/^cmsg_[A-Za-z0-9]+$/.test(threadId))
+      throw new Error("Bad project id");
+    const [sessions, timeline] = await Promise.all([
+      getChannelSessions(signal).catch(() => new Map),
+      threadId ? getCodeJson(`/v1/code/channels/${channelId}/timeline?limit=200&bound_only=true`, signal) : null
+    ]);
+    const ids = [sessions.get(channelId), threadId && timeline ? threadSessionFrom(timeline, threadId) : null];
+    return ids.filter((id) => !!id);
+  }
+  var getCodeSession = (sessionId, signal) => {
+    if (!SESSION_RE.test(sessionId))
+      return Promise.reject(new Error("Bad session id"));
+    return getCodeJson(`/v1/code/sessions/${sessionId}`, signal);
+  };
   async function getProjectActivity(channelId, signal) {
     if (!CHANNEL_RE.test(channelId))
       throw new Error("Bad project id");
@@ -2681,7 +2709,7 @@ ${IMAGE_FIELD_CSS}`;
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.86";
+  var version = "0.3.87";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -6413,18 +6441,25 @@ ${t(L16.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
   var STOP_EVENT = /^event:\s*message_stop\s*$|"type"\s*:\s*"message_stop"/m;
   var isIconLink = (node) => node instanceof HTMLLinkElement && /\bicon\b/i.test(node.rel) && node.id !== ICON_ID;
   var isCompletion = (path) => /\/chat_conversations\/[^/]+\/(?:completion|retry_completion)$/.test(path);
+  function codeProjectOf(path, search) {
+    const channel = /^\/code\/project\/(chan_[A-Za-z0-9]+)/.exec(path)?.[1];
+    if (!channel)
+      return null;
+    const thread = /[?&]thread=(cmsg_[A-Za-z0-9]+)/.exec(search)?.[1] ?? null;
+    return { channel, thread };
+  }
   var chatFavicon_default = definePlugin({
     name: "ChatFavicon",
     title: { zh: "标签页图标状态", en: "Chat state favicon" },
     description: {
-      zh: "标签页图标随对话状态变化：回复中、已完成、草稿待发送、出错，5 种样式可选。",
-      en: "The tab icon follows the chat: replying, done, draft ready, error. Five styles."
+      zh: "标签页图标随对话状态变化：回复中、已完成、草稿待发送、出错，5 种样式可选。Claude Code 项目页跟随项目主对话和打开的线程。",
+      en: "The tab icon follows the chat: replying, done, draft ready, error. Five styles. On Claude Code project pages it follows the project chat and the open thread."
     },
     category: "notifications",
     icon: "tab",
     enabledByDefault: true,
     updatedAt: "2026-10-23",
-    dependencies: ["ChatStateApi", "ComposerApi", "NetworkApi", "RouterApi"],
+    dependencies: ["ChatStateApi", "ClaudeApi", "ComposerApi", "NetworkApi", "RouterApi"],
     settings: settings11,
     start(scope) {
       const removed = [];
@@ -6443,7 +6478,7 @@ ${t(L16.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
           paint();
         }).catch(() => {});
       };
-      const onChatSurface = () => ["chat", "new", "project"].includes(currentRoute().kind);
+      const onChatSurface = () => ["chat", "new", "project"].includes(currentRoute().kind) || !!codeProjectOf(location.pathname, location.search);
       let errored = false;
       let finished = false;
       let streaming = chatPhase() === "streaming";
@@ -6492,7 +6527,8 @@ ${t(L16.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
       let inflight = 0;
       let pendingUntil = 0;
       let endedAt = 0;
-      const live = () => inflight > 0 || Date.now() < pendingUntil || chatPhase() === "streaming" && Date.now() - endedAt > 1e4;
+      let codeWorking = false;
+      const live = () => codeWorking || inflight > 0 || Date.now() < pendingUntil || chatPhase() === "streaming" && Date.now() - endedAt > 1e4;
       const update = () => {
         const now = live();
         if (now && !streaming) {
@@ -6514,20 +6550,75 @@ ${t(L16.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
         pendingUntil = Date.now() + 8000;
         update();
       });
+      let codeKey = "";
+      let codeSessions = null;
+      let codeBusy = false;
+      let codePausedUntil = 0;
+      const pollCode = async () => {
+        const page = codeProjectOf(location.pathname, location.search);
+        if (!page) {
+          codeKey = "";
+          codeSessions = null;
+          if (codeWorking) {
+            codeWorking = false;
+            update();
+          }
+          return;
+        }
+        if (codeBusy || Date.now() < codePausedUntil)
+          return;
+        codeBusy = true;
+        try {
+          const key = `${page.channel}|${page.thread ?? ""}`;
+          if (key !== codeKey || !codeSessions) {
+            codeKey = key;
+            codeSessions = getProjectSessions(page.channel, page.thread, scope.signal);
+            codeSessions.catch(() => codeKey === key && (codeSessions = null));
+          }
+          const ids = await codeSessions;
+          const phases = await Promise.all(ids.map((id) => getCodeSession(id, scope.signal).then(parseCodePhase)));
+          if (!scope.alive || key !== codeKey)
+            return;
+          codeWorking = phases.includes("working");
+          if (!codeWorking && phases.includes("failed") && streaming)
+            errored = true;
+          update();
+        } catch (error) {
+          if (error instanceof ApiError && error.status === 429)
+            codePausedUntil = Date.now() + 60000;
+        } finally {
+          codeBusy = false;
+        }
+      };
+      scope.interval(pollCode, 3000);
+      pollCode();
       scope.on("reply:start", update);
       scope.on("reply:end", update);
       scope.interval(update, 500);
-      let chatId = currentRoute().chatId ?? null;
-      scope.on("route", () => {
-        const next = currentRoute().chatId ?? null;
-        if (next !== chatId && chatId !== null && !streaming) {
+      const chatKey = () => {
+        const page = codeProjectOf(location.pathname, location.search);
+        return page ? `${page.channel}|${page.thread ?? ""}` : currentRoute().chatId ?? null;
+      };
+      let chatId = chatKey();
+      const onNavigate = () => {
+        const next = chatKey();
+        const code = next?.startsWith("chan_");
+        if (next !== chatId && chatId !== null && (code || !streaming)) {
           finished = false;
           errored = false;
+          if (code) {
+            codeWorking = false;
+            streaming = false;
+          }
         }
         chatId = next;
         update();
         paint();
-      });
+        if (code)
+          pollCode();
+      };
+      scope.on("route", onNavigate);
+      scope.on("route:search", onNavigate);
       let inputTimer;
       scope.listen(document, "input", (event) => {
         if (!event.target?.closest?.(SEL.editor))
@@ -7816,7 +7907,7 @@ ${targets.map((t) => `${t} > *`).join(`,
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.86",
+      version: "0.3.87",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -7833,7 +7924,7 @@ ${targets.map((t) => `${t} > *`).join(`,
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.86";
+    win[FLAG] = "0.3.87";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -7850,7 +7941,7 @@ ${targets.map((t) => `${t} > *`).join(`,
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.86"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.87"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();

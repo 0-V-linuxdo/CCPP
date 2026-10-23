@@ -297,6 +297,43 @@ function getChannelSessions(signal?: AbortSignal) {
     return map;
 }
 
+/** What the tab icon needs from one Code session: is it working, did it fail. */
+export type CodePhase = "working" | "failed" | "idle";
+
+export function parseCodePhase(raw: unknown): CodePhase {
+    const root = raw && typeof raw === "object" ? (raw as any) : {};
+    const session = root.response_shape && typeof root.response_shape === "object" ? root.response_shape : root;
+    if (normalizeBucket(session.status_bucket) === "failed") return "failed";
+    return parseSessionState(raw) === "working" ? "working" : "idle";
+}
+
+/** The session bound to a project thread (its root message), from the project timeline. */
+export function threadSessionFrom(raw: unknown, threadId: string): string | null {
+    const data = raw && typeof raw === "object" && Array.isArray((raw as { data?: unknown }).data) ? (raw as { data: any[] }).data : [];
+    const message = data.find(m => m?.id === threadId);
+    const session = (Array.isArray(message?.bound_sessions) ? message.bound_sessions : []).find((s: any) => typeof s?.id === "string" && SESSION_RE.test(s.id) && s.status !== "archived");
+    return session?.id ?? null;
+}
+
+/**
+ * The Code sessions behind a project page: the project's own session (its main chat) and, when a
+ * thread is open, the thread's session.
+ */
+export async function getProjectSessions(channelId: string, threadId: string | null, signal?: AbortSignal) {
+    if (!CHANNEL_RE.test(channelId) || (threadId && !/^cmsg_[A-Za-z0-9]+$/.test(threadId))) throw new Error("Bad project id");
+    const [sessions, timeline] = await Promise.all([
+        getChannelSessions(signal).catch(() => new Map<string, string>()),
+        threadId ? getCodeJson(`/v1/code/channels/${channelId}/timeline?limit=200&bound_only=true`, signal) : null,
+    ]);
+    const ids = [sessions.get(channelId), threadId && timeline ? threadSessionFrom(timeline, threadId) : null];
+    return ids.filter((id): id is string => !!id);
+}
+
+export const getCodeSession = (sessionId: string, signal?: AbortSignal) => {
+    if (!SESSION_RE.test(sessionId)) return Promise.reject(new Error("Bad session id"));
+    return getCodeJson(`/v1/code/sessions/${sessionId}`, signal);
+};
+
 export async function getProjectActivity(channelId: string, signal?: AbortSignal) {
     if (!CHANNEL_RE.test(channelId)) throw new Error("Bad project id");
     const [timeline, sessions] = await Promise.all([

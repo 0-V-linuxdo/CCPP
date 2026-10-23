@@ -15,9 +15,9 @@ import { splitLinks } from "../src/plugins/betterLinks";
 import { isTelemetry } from "../src/plugins/noTelemetry";
 import { chatKeyFor, reindex, toggleStar } from "../src/plugins/messageStars/store";
 import { starSpot } from "../src/plugins/messageStars/index";
-import { computeState, faviconFor, parseMark } from "../src/plugins/chatFavicon";
+import { codeProjectOf, computeState, faviconFor, parseMark } from "../src/plugins/chatFavicon";
 import { alignWithApi, outlineFromApi } from "../src/plugins/chatNavigator";
-import { parseChannelMessages } from "../src/plugins/_api/claude";
+import { parseChannelMessages, parseCodePhase, threadSessionFrom } from "../src/plugins/_api/claude";
 
 const ID = "2e8860cc-f63c-4514-931c-14080b0aa61e";
 
@@ -172,6 +172,17 @@ describe("chat favicon", () => {
         expect(computeState({ ...f, finished: true, draft: true })).toBe("ready");
         expect(computeState({ ...f, streaming: true, draft: true })).toBe("streaming");
         expect(computeState({ ...f, errored: true, streaming: true })).toBe("error");
+    });
+    test("Claude Code project pages follow their sessions", () => {
+        expect(codeProjectOf("/code/project/chan_01AB", "?thread=cmsg_01XY&x=1")).toEqual({ channel: "chan_01AB", thread: "cmsg_01XY" });
+        expect(codeProjectOf("/code/project/chan_01AB", "")).toEqual({ channel: "chan_01AB", thread: null });
+        expect(codeProjectOf("/chat/abc", "?thread=cmsg_1")).toBeNull();
+        expect(parseCodePhase({ response_shape: { status: "active", status_bucket: "working", worker_status: "running" } })).toBe("working");
+        expect(parseCodePhase({ response_shape: { status: "active", status_bucket: "review_ready", worker_status: "idle" } })).toBe("idle");
+        expect(parseCodePhase({ status: "active", status_bucket: "SESSION_STATUS_BUCKET_FAILED" })).toBe("failed");
+        const timeline = { data: [{ id: "cmsg_A", bound_sessions: [{ id: "cse_1", status: "archived" }, { id: "cse_2", status: "active" }] }, { id: "cmsg_B" }] };
+        expect(threadSessionFrom(timeline, "cmsg_A")).toBe("cse_2");
+        expect(threadSessionFrom(timeline, "cmsg_B")).toBeNull();
     });
     test("five styles, emoji mode keeps the official icon when idle", () => {
         expect(faviconFor("hole", "idle", "https://claude.ai/favicon.ico")).toBe("https://claude.ai/favicon.ico");
