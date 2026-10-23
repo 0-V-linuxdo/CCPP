@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.81
+// @version      20261013.0.3.82
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -1499,6 +1499,60 @@
     alert: [p("m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"), p("M12 9v4"), p("M12 17h.01")],
     info: [c(12, 12, 10), p("M12 16v-4"), p("M12 8h.01")]
   };
+  var GLYPHS = {
+    plug: 57541,
+    settings: 57558,
+    star: 57575,
+    pin: 57533,
+    x: 57615,
+    search: 57555,
+    refresh: 57629,
+    download: 57443,
+    upload: 57562,
+    history: 57481,
+    list: 57500,
+    gauge: 57648,
+    bell: 57524,
+    eyeOff: 57450,
+    width: 57366,
+    palette: 57528,
+    message: 57399,
+    keyboard: 57490,
+    code: 57416,
+    link: 57498,
+    clock: 57411,
+    shield: 57602,
+    sparkles: 57607,
+    trash: 57601,
+    chevronDown: 57383,
+    chevronRight: 57386,
+    brush: 57677,
+    linkOff: 57437,
+    micOff: 57517,
+    user: 57604,
+    creditCard: 57432,
+    brain: 57512,
+    grid: 57476,
+    fileText: 57452,
+    terminal: 57423,
+    incognito: 57461,
+    blend: 57559,
+    tab: 57574,
+    collapse: 57421,
+    puzzle: 57429,
+    sliders: 57456,
+    globe: 57474,
+    folder: 57458,
+    copy: 57455,
+    pencil: 57444,
+    plus: 57345,
+    alert: 57609,
+    info: 57487
+  };
+  function glyph(name) {
+    const code = GLYPHS[name];
+    return code ? String.fromCodePoint(code) : null;
+  }
   var iconNames = Object.keys(ICONS);
   function icon(name, size = 16, strokeWidth = 2) {
     const ns = "http://www.w3.org/2000/svg";
@@ -2625,7 +2679,7 @@ ${IMAGE_FIELD_CSS}`;
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.81";
+  var version = "0.3.82";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -2663,53 +2717,51 @@ ${IMAGE_FIELD_CSS}`;
   };
 
   // src/plugins/_core/settings/nativeIcons.ts
+  var SECTION_GLYPHS = {
+    "settings/general": 57558,
+    "settings/account": 57605,
+    "settings/data-privacy-controls": 57507,
+    "settings/billing": 57432,
+    "settings/usage": 57648,
+    "settings/capabilities": 57600,
+    "settings/memory": 57512,
+    "settings/design-systems": 57528,
+    "settings/claude-code": 57416,
+    "settings/browser-extension": 57433,
+    "customize/skills/yours": 57554,
+    "customize/connectors/yours": 57429,
+    "customize/plugins/yours": 57541
+  };
   var KEY = "native-icons";
-  var cache2 = readJson(KEY, {});
-  var SHAPES = new Set(["svg", "g", "path", "circle", "ellipse", "rect", "line", "polyline", "polygon", "defs", "clippath", "mask", "lineargradient", "radialgradient", "stop", "title"]);
+  var learned = readJson(KEY, {});
   function sectionOf(sections, row) {
-    const id = row.dataset.testid?.replace(/-settings$/, "");
-    const label = row.textContent?.trim().toLowerCase() ?? "";
+    const id = row.dataset.testid?.replace(/-settings$/, "").replace(/^customize-/, "");
     const byId = id && sections.find((s) => s.hash.split("/")[1] === id);
     if (byId)
       return byId.hash;
+    const label = (row.textContent ?? "").replace(/[\ue000-\uf8ff]/g, "").trim().toLowerCase();
     return sections.find((s) => label === s.label.en.toLowerCase() || label === s.label.zh)?.hash ?? null;
   }
+  var isGlyph = (text) => /^[-]$/.test(text);
   function learnNativeIcons(nav, sections) {
     let changed = false;
     for (const row of nav.querySelectorAll("li:not([data-ccpp-nav])")) {
-      const svg = row.querySelector('[data-cds="Icon"] svg') ?? row.querySelector("button svg");
-      const hash = svg && sectionOf(sections, row);
-      if (!svg || !hash)
+      const text = row.querySelector('[data-cds="Icon"]')?.textContent ?? "";
+      const hash = isGlyph(text) && sectionOf(sections, row);
+      if (!hash || learned[hash] === text)
         continue;
-      const markup = svg.outerHTML;
-      if (cache2[hash] === markup)
-        continue;
-      cache2 = { ...cache2, [hash]: markup };
+      learned = { ...learned, [hash]: text };
       changed = true;
     }
     if (changed)
-      writeJson(KEY, cache2);
+      writeJson(KEY, learned);
   }
-  function nativeIcon(hash) {
-    const markup = cache2[hash];
-    if (!markup)
-      return null;
-    try {
-      const doc = new DOMParser().parseFromString(markup, "image/svg+xml");
-      const svg = doc.documentElement;
-      if (svg.localName !== "svg" || doc.querySelector("parsererror"))
-        return null;
-      for (const el of [svg, ...svg.querySelectorAll("*")]) {
-        if (!SHAPES.has(el.localName.toLowerCase()))
-          return null;
-        for (const attr of [...el.attributes])
-          if (/^on|href$/i.test(attr.name))
-            el.removeAttribute(attr.name);
-      }
-      return document.importNode(svg, true);
-    } catch {
-      return null;
-    }
+  function sectionGlyph(hash) {
+    const seen = learned[hash];
+    if (seen && isGlyph(seen))
+      return seen;
+    const code = SECTION_GLYPHS[hash];
+    return code ? String.fromCodePoint(code) : null;
   }
 
   // src/plugins/_core/settings/userMenu.ts
@@ -2791,42 +2843,34 @@ ${IMAGE_FIELD_CSS}`;
     const itemClass = settingsItem.className;
     const subItemClass = sampleSub?.className ?? `${itemClass} justify-between data-[popup-open]:bg-fill-ghost-hover`;
     const iconSlot = settingsItem.firstElementChild;
-    const sampleIcon = iconSlot?.querySelector("svg") ?? null;
-    const iconSize = Math.round(sampleIcon?.getBoundingClientRect().width || Number(sampleIcon?.getAttribute("width")) || 16);
     const separatorClass = menu.querySelector('[role="separator"]')?.className ?? "my-1 h-px bg-border";
     const panelClass = menu.className.replace(/\bw-\[[^\]]+\]/g, "");
     const scrollClass = menu.firstElementChild?.className ?? "";
     const added = [];
-    const nativeChevron = sampleSub && sampleSub.lastElementChild !== sampleSub.firstElementChild && sampleSub.lastElementChild?.querySelector("svg") ? sampleSub.lastElementChild : null;
+    const subLast = sampleSub?.lastElementChild;
+    const nativeChevron = subLast && subLast !== sampleSub.firstElementChild && (subLast.matches('[data-cds="Icon"]') || subLast.querySelector('[data-cds="Icon"], svg')) ? subLast : null;
     const chevron = () => {
       const mark = nativeChevron?.cloneNode(true) ?? h("span", { class: "-mr-1 shrink-0 text-muted", style: { display: "inline-flex" } }, icon("chevronRight", 16));
       mark.setAttribute("data-ccpp-chevron", "");
       return mark;
     };
-    const iconBox = (svg) => {
+    const iconBox = (char, name) => {
       const box = iconSlot?.cloneNode(true) ?? h("span", { class: "flex size-icon shrink-0 items-center justify-center" });
-      if (!svg)
-        return sampleIcon ? box : ownIcon("settings");
-      const old = box.querySelector("svg");
-      const sampleClass = sampleIcon?.getAttribute("class");
-      if (sampleClass != null)
-        svg.setAttribute("class", sampleClass);
-      for (const name of ["width", "height"])
-        svg.setAttribute(name, sampleIcon?.getAttribute(name) ?? String(iconSize));
-      svg.setAttribute("aria-hidden", "true");
-      if (old)
-        old.replaceWith(svg);
-      else {
-        box.textContent = "";
-        box.appendChild(svg);
+      const native = box.querySelector('[data-cds="Icon"]');
+      if (char && native) {
+        native.textContent = char;
+        native.removeAttribute("data-cds-mirror");
+        return box;
       }
+      box.textContent = "";
+      if (char)
+        box.appendChild(h("span", { "data-cds": "Icon", "aria-hidden": "true", text: char, style: { fontSize: "calc(1.25rem * var(--cds-rem-scale, 1))", fontWeight: "433.3" } }));
+      else
+        box.appendChild(icon(name, 20, 1.75));
       return box;
     };
-    const ownIcon = (name) => iconBox(icon(name, iconSize, 1.75));
-    const sectionIcon = (section) => {
-      const svg = nativeIcon(section.hash);
-      return svg ? iconBox(svg) : ownIcon(section.icon);
-    };
+    const ownIcon = (name) => iconBox(glyph(name), name);
+    const sectionIcon = (section) => iconBox(sectionGlyph(section.hash) ?? glyph(section.icon), section.icon);
     const row = (iconNode, label, opts = {}) => {
       const el = h("div", { role: "menuitem", tabindex: "-1", "data-cds-icon-row": "", "data-ccpp-item": "", class: opts.sub ? subItemClass : itemClass, style: { cursor: "pointer" } }, iconNode, typeof label === "string" ? h("span", { class: "min-w-0 flex-1 truncate", text: label }) : label, opts.trailing ?? null, opts.sub ? chevron() : null);
       if (opts.sub)
@@ -2948,7 +2992,7 @@ ${IMAGE_FIELD_CSS}`;
       settingsItem.appendChild(mark);
       added.push(mark);
       top.attach(settingsItem, "15rem", (scroll, child) => {
-        scroll.appendChild(row(iconBox(), t(L3.openNative), { run: () => location.hash = "settings/general" }));
+        scroll.appendChild(row(ownIcon("settings"), t(L3.openNative), { run: () => location.hash = "settings/general" }));
         scroll.appendChild(separator());
         scroll.appendChild(caption("CC++"));
         fillCcpp(scroll, child);
@@ -2964,7 +3008,7 @@ ${IMAGE_FIELD_CSS}`;
       top.attach(entry, "14rem", (scroll, child) => {
         fillCcpp(scroll, child);
         scroll.appendChild(separator());
-        scroll.appendChild(row(iconBox(), t(L3.openSettings), { run: () => options.openTab("plugins") }));
+        scroll.appendChild(row(ownIcon("settings"), t(L3.openSettings), { run: () => options.openTab("plugins") }));
       });
       settingsItem.after(entry);
       added.push(entry);
@@ -3001,6 +3045,12 @@ ${IMAGE_FIELD_CSS}`;
 [data-ccpp-nav-head] { display: flex !important; align-items: baseline; gap: 6px; }
 [data-ccpp-nav-version] { opacity: .7; font-size: .92em; font-variant-numeric: tabular-nums; }
 `;
+  function nativeGlyph(name, cls) {
+    const char = glyph(name);
+    if (char)
+      return h("span", { class: cls, "data-cds": "Icon", "aria-hidden": "true", text: char, style: { fontSize: "calc(1.25rem * var(--cds-rem-scale, 1))", fontWeight: "433.3" } });
+    return h("span", { class: cls, "aria-hidden": "true", style: { display: "inline-flex", width: "1.25rem", justifyContent: "center" } }, icon(name, 18));
+  }
   var sortedTabs = () => [...tabs.values()].sort((a, b) => a.order - b.order);
   function renderPage(tab, box) {
     const previous = box.querySelector(".page-body");
@@ -3070,7 +3120,7 @@ ${IMAGE_FIELD_CSS}`;
           group?.remove();
           const ul = h("ul", { class: c.list, "aria-label": L4.group });
           for (const tab of list) {
-            const button = h("button", { type: "button", class: c.off, "data-tab": tab.id }, h("span", { class: c.icon, "aria-hidden": "true", style: { display: "inline-flex", width: "1.25rem", justifyContent: "center" } }, icon(tab.icon, 18)), h("span", { class: c.label, text: t(tab.title) }));
+            const button = h("button", { type: "button", class: c.off, "data-tab": tab.id }, nativeGlyph(tab.icon, c.icon), h("span", { class: c.label, text: t(tab.title) }));
             button.addEventListener("click", (event) => {
               event.preventDefault();
               activate(tab.id);
@@ -6156,7 +6206,7 @@ ${t(L16.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
   var recolor = (inner, color) => inner.replace(/\b(fill|stroke)="(?!none)[^"]*"/g, `$1="${color}"`).replace(/#[0-9a-f]{3,8}\b|rgba?\([^)]*\)/gi, color);
   var place3 = (mark, inner, x = 0, y = 0, size = 64) => `<svg x="${x}" y="${y}" width="${size}" height="${size}" viewBox="${mark.viewBox}">${inner}</svg>`;
   var svgUrl = (inner) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">${inner}</svg>`)}`;
-  function glyph(state) {
+  function glyph2(state) {
     const s = `fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"`;
     if (state === "streaming")
       return `<path d="M51.5 45.5a6 6 0 1 1-5.2 3" ${s}/>`;
@@ -6177,7 +6227,7 @@ ${t(L16.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
       return svgUrl(place3(m, recolor(m.inner, color)));
     if (style === "bg")
       return svgUrl(`<rect width="64" height="64" rx="14" fill="${color}"/>${place3(m, recolor(m.inner, "#fff"), 9, 9, 46)}`);
-    const badge = style === "dot" ? `<circle cx="52" cy="52" r="11" fill="#fff"/><circle cx="52" cy="52" r="8" fill="${color}"/>` : `<circle cx="51.5" cy="51.5" r="12.5" fill="#fff"/><circle cx="51.5" cy="51.5" r="10" fill="${color}"/>${glyph(state)}`;
+    const badge = style === "dot" ? `<circle cx="52" cy="52" r="11" fill="#fff"/><circle cx="52" cy="52" r="8" fill="${color}"/>` : `<circle cx="51.5" cy="51.5" r="12.5" fill="#fff"/><circle cx="51.5" cy="51.5" r="10" fill="${color}"/>${glyph2(state)}`;
     return svgUrl(place3(m, m.inner) + badge);
   }
   function computeState(facts) {
@@ -7600,7 +7650,7 @@ ${targets.map((t) => `${t} > *`).join(`,
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.81",
+      version: "0.3.82",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -7617,7 +7667,7 @@ ${targets.map((t) => `${t} > *`).join(`,
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.81";
+    win[FLAG] = "0.3.82";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -7634,7 +7684,7 @@ ${targets.map((t) => `${t} > *`).join(`,
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.81"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.82"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();

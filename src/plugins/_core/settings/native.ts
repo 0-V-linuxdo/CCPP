@@ -7,7 +7,7 @@
 import { t } from "@kernel/i18n";
 import type { Scope } from "@kernel/scope";
 import { clear, h } from "@lib/dom";
-import { icon } from "@lib/icons";
+import { glyph, icon } from "@lib/icons";
 import { shadowBox } from "@lib/ui";
 import { tipAttrs } from "@lib/tooltip";
 import { watch } from "@api/dom";
@@ -41,6 +41,13 @@ const DOC_CSS = `
 [data-ccpp-nav-head] { display: flex !important; align-items: baseline; gap: 6px; }
 [data-ccpp-nav-version] { opacity: .7; font-size: .92em; font-variant-numeric: tabular-nums; }
 `;
+
+/** An icon like the native nav's: claude.ai's Anthropicons glyph when the font has one, else our svg. */
+function nativeGlyph(name: string, cls: string) {
+    const char = glyph(name);
+    if (char) return h("span", { class: cls, "data-cds": "Icon", "aria-hidden": "true", text: char, style: { fontSize: "calc(1.25rem * var(--cds-rem-scale, 1))", fontWeight: "433.3" } });
+    return h("span", { class: cls, "aria-hidden": "true", style: { display: "inline-flex", width: "1.25rem", justifyContent: "center" } }, icon(name, 18));
+}
 
 export const sortedTabs = () => [...tabs.values()].sort((a, b) => a.order - b.order);
 
@@ -121,7 +128,7 @@ export function installNative(scope: Scope, position: () => "above" | "below") {
                     const button = h(
                         "button",
                         { type: "button", class: c.off, "data-tab": tab.id },
-                        h("span", { class: c.icon, "aria-hidden": "true", style: { display: "inline-flex", width: "1.25rem", justifyContent: "center" } }, icon(tab.icon, 18)),
+                        nativeGlyph(tab.icon, c.icon),
                         h("span", { class: c.label, text: t(tab.title) }),
                     );
                     button.addEventListener("click", event => {

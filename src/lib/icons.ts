@@ -61,6 +61,67 @@ const ICONS: Record<string, Shape[]> = {
     info: [c(12, 12, 10), p("M12 16v-4"), p("M12 8h.01")],
 };
 
+/**
+ * The same icons in claude.ai's own Anthropicons font, where it has one (code points as of 2026-10). Inside
+ * claude.ai a `span[data-cds="Icon"]` holding the character draws it exactly like the native icons.
+ */
+const GLYPHS: Record<string, number> = {
+    plug: 0xe0c5,
+    settings: 0xe0d6,
+    star: 0xe0e7,
+    pin: 0xe0bd,
+    x: 0xe10f,
+    search: 0xe0d3,
+    refresh: 0xe11d,
+    download: 0xe063,
+    upload: 0xe0da,
+    history: 0xe089,
+    list: 0xe09c,
+    gauge: 0xe130,
+    bell: 0xe0b4,
+    eyeOff: 0xe06a,
+    width: 0xe016,
+    palette: 0xe0b8,
+    message: 0xe037,
+    keyboard: 0xe092,
+    code: 0xe048,
+    link: 0xe09a,
+    clock: 0xe043,
+    shield: 0xe102,
+    sparkles: 0xe107,
+    trash: 0xe101,
+    chevronDown: 0xe027,
+    chevronRight: 0xe02a,
+    brush: 0xe14d,
+    linkOff: 0xe05d,
+    micOff: 0xe0ad,
+    user: 0xe104,
+    creditCard: 0xe058,
+    brain: 0xe0a8,
+    grid: 0xe084,
+    fileText: 0xe06c,
+    terminal: 0xe04f,
+    incognito: 0xe075,
+    blend: 0xe0d7,
+    tab: 0xe0e6,
+    collapse: 0xe04d,
+    puzzle: 0xe055,
+    sliders: 0xe070,
+    globe: 0xe082,
+    folder: 0xe072,
+    copy: 0xe06f,
+    pencil: 0xe064,
+    plus: 0xe001,
+    alert: 0xe109,
+    info: 0xe08f,
+};
+
+/** The Anthropicons character for an icon, or null when the font has none. */
+export function glyph(name: string): string | null {
+    const code = GLYPHS[name];
+    return code ? String.fromCodePoint(code) : null;
+}
+
 export const iconNames = Object.keys(ICONS);
 
 export function icon(name: string, size = 16, strokeWidth = 2) {

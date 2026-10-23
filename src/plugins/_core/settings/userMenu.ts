@@ -8,11 +8,11 @@ import { t } from "@kernel/i18n";
 import { isActive, type Plugin } from "@kernel/plugins";
 import type { Scope } from "@kernel/scope";
 import { h } from "@lib/dom";
-import { icon } from "@lib/icons";
+import { glyph, icon } from "@lib/icons";
 import { tipAttrs } from "@lib/tooltip";
 import { SEL, watch } from "@api/dom";
 
-import { nativeIcon } from "./nativeIcons";
+import { sectionGlyph } from "./nativeIcons";
 import { type SettingsTab, version } from "./state";
 
 /** The "Settings" row of claude.ai's account menu, which tells that menu apart from others. */
@@ -125,15 +125,14 @@ function enhance(menu: HTMLElement, settingsItem: HTMLElement, options: UserMenu
     const itemClass = settingsItem.className;
     const subItemClass = sampleSub?.className ?? `${itemClass} justify-between data-[popup-open]:bg-fill-ghost-hover`;
     const iconSlot = settingsItem.firstElementChild as HTMLElement | null;
-    const sampleIcon = iconSlot?.querySelector("svg") ?? null;
-    const iconSize = Math.round(sampleIcon?.getBoundingClientRect().width || Number(sampleIcon?.getAttribute("width")) || 16);
     const separatorClass = menu.querySelector('[role="separator"]')?.className ?? "my-1 h-px bg-border";
     const panelClass = menu.className.replace(/\bw-\[[^\]]+\]/g, "");
     const scrollClass = (menu.firstElementChild as HTMLElement | null)?.className ?? "";
     const added: Element[] = [];
 
-    // A native submenu row's trailing chevron, so ours is claude.ai's own glyph.
-    const nativeChevron = sampleSub && sampleSub.lastElementChild !== sampleSub.firstElementChild && sampleSub.lastElementChild?.querySelector("svg") ? (sampleSub.lastElementChild as HTMLElement) : null;
+    // A native submenu row's trailing chevron (an Anthropicons glyph), so ours is claude.ai's own.
+    const subLast = sampleSub?.lastElementChild as HTMLElement | null | undefined;
+    const nativeChevron = subLast && subLast !== sampleSub!.firstElementChild && (subLast.matches('[data-cds="Icon"]') || subLast.querySelector('[data-cds="Icon"], svg')) ? subLast : null;
     const chevron = () => {
         const mark = (nativeChevron?.cloneNode(true) as HTMLElement | undefined) ?? h("span", { class: "-mr-1 shrink-0 text-muted", style: { display: "inline-flex" } }, icon("chevronRight", 16));
         mark.setAttribute("data-ccpp-chevron", "");
@@ -141,31 +140,24 @@ function enhance(menu: HTMLElement, settingsItem: HTMLElement, options: UserMenu
     };
 
     /**
-     * An icon in the same box as the Settings row's: its slot copied whole, with `svg` taking the native svg's
-     * place, class and size. `svg` defaults to the Settings row's own gear.
+     * An icon in the same box as the Settings row's: its slot copied whole, holding `char` in claude.ai's
+     * Anthropicons font like every native row. Icons the font lacks fall back to our svg at the glyph's size.
      */
-    const iconBox = (svg?: SVGElement): HTMLElement => {
+    const iconBox = (char: string | null, name: string): HTMLElement => {
         const box = (iconSlot?.cloneNode(true) as HTMLElement | undefined) ?? h("span", { class: "flex size-icon shrink-0 items-center justify-center" });
-        if (!svg) return sampleIcon ? box : ownIcon("settings");
-        const old = box.querySelector("svg");
-        const sampleClass = sampleIcon?.getAttribute("class");
-        if (sampleClass != null) svg.setAttribute("class", sampleClass);
-        for (const name of ["width", "height"]) svg.setAttribute(name, sampleIcon?.getAttribute(name) ?? String(iconSize));
-        svg.setAttribute("aria-hidden", "true");
-        if (old) old.replaceWith(svg);
-        else {
-            box.textContent = "";
-            box.appendChild(svg);
+        const native = box.querySelector<HTMLElement>('[data-cds="Icon"]');
+        if (char && native) {
+            native.textContent = char;
+            native.removeAttribute("data-cds-mirror");
+            return box;
         }
+        box.textContent = "";
+        if (char) box.appendChild(h("span", { "data-cds": "Icon", "aria-hidden": "true", text: char, style: { fontSize: "calc(1.25rem * var(--cds-rem-scale, 1))", fontWeight: "433.3" } }));
+        else box.appendChild(icon(name, 20, 1.75));
         return box;
     };
-    /** One of our own icons at the native size, a little lighter than lucide's 2px to sit with claude.ai's. */
-    const ownIcon = (name: string): HTMLElement => iconBox(icon(name, iconSize, 1.75));
-    /** claude.ai's icon for a settings section when we've seen it, else ours. */
-    const sectionIcon = (section: { hash: string; icon: string }) => {
-        const svg = nativeIcon(section.hash);
-        return svg ? iconBox(svg) : ownIcon(section.icon);
-    };
+    const ownIcon = (name: string) => iconBox(glyph(name), name);
+    const sectionIcon = (section: { hash: string; icon: string }) => iconBox(sectionGlyph(section.hash) ?? glyph(section.icon), section.icon);
 
     const row = (iconNode: Node | null, label: string | Node, opts: { sub?: boolean; trailing?: Node | null; run?: () => void } = {}) => {
         const el = h(
@@ -298,7 +290,7 @@ function enhance(menu: HTMLElement, settingsItem: HTMLElement, options: UserMenu
         settingsItem.appendChild(mark);
         added.push(mark);
         top.attach(settingsItem, "15rem", (scroll, child) => {
-            scroll.appendChild(row(iconBox(), t(L.openNative), { run: () => (location.hash = "settings/general") }));
+            scroll.appendChild(row(ownIcon("settings"), t(L.openNative), { run: () => (location.hash = "settings/general") }));
             scroll.appendChild(separator());
             scroll.appendChild(caption("CC++"));
             fillCcpp(scroll, child);
@@ -314,7 +306,7 @@ function enhance(menu: HTMLElement, settingsItem: HTMLElement, options: UserMenu
         top.attach(entry, "14rem", (scroll, child) => {
             fillCcpp(scroll, child);
             scroll.appendChild(separator());
-            scroll.appendChild(row(iconBox(), t(L.openSettings), { run: () => options.openTab("plugins") }));
+            scroll.appendChild(row(ownIcon("settings"), t(L.openSettings), { run: () => options.openTab("plugins") }));
         });
         settingsItem.after(entry);
         added.push(entry);
