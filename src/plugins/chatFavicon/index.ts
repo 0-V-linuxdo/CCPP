@@ -10,7 +10,7 @@ import { chatPhase } from "@api/chatState";
 import { ApiError, type CodePhase, getProjectPhases } from "@api/claude";
 import { getText, onSubmit } from "@api/composer";
 import { SEL } from "@api/dom";
-import { onRequestError, onResponse, sameOrigin, type RequestInfoLite } from "@api/network";
+import { onRequestError, onResponse, sameOrigin } from "@api/network";
 import { currentRoute } from "@api/router";
 
 export type FaviconState = "idle" | "streaming" | "done" | "ready" | "error";
@@ -131,13 +131,6 @@ const STOP_EVENT = /^event:\s*message_stop\s*$|"type"\s*:\s*"message_stop"/m;
 const isIconLink = (node: Node): node is HTMLLinkElement => node instanceof HTMLLinkElement && /\bicon\b/i.test(node.rel) && node.id !== ICON_ID;
 /** claude.ai's chat requests whose failure means the reply errored. */
 const isCompletion = (path: string) => /\/chat_conversations\/[^/]+\/(?:completion|retry_completion)$/.test(path);
-/** A message sent on a Claude Code project page, to the project chat or a thread. */
-export const isChannelSend = (path: string) => /^\/v1\/code\/channels\/chan_[A-Za-z0-9]+\/messages$/.test(path);
-/**
- * claude.ai retries a failed project send up to 3 times, at most 4s apart, and only says
- * "Couldn't send the message" once the last one fails. A failure no retry follows within this long is final.
- */
-const SEND_RETRY_GRACE_MS = 6000;
 /** A Claude Code project page: /code/project/chan_…, with ?thread=cmsg_… when a thread is open. */
 export function codeProjectOf(path: string, search: string) {
     const channel = /^\/code\/project\/(chan_[A-Za-z0-9]+)/.exec(path)?.[1];
@@ -340,25 +333,8 @@ export default definePlugin({
         onRequestError(scope, req => sameOrigin(req) && req.method === "POST" && isCompletion(req.url.pathname), error => {
             if (!(error instanceof DOMException && error.name === "AbortError")) fail();
         });
-        // Project pages send through the channel API. Each attempt is counted as it starts, so a failure
-        // that claude.ai retries doesn't turn the icon red; one with no retry after it does.
-        let sendAttempt = 0;
-        let sendTimer: ReturnType<typeof setTimeout> | undefined;
-        const isSend = (req: RequestInfoLite) => sameOrigin(req) && req.method === "POST" && isChannelSend(req.url.pathname);
-        const sendFailed = () => {
-            const attempt = sendAttempt;
-            clearTimeout(sendTimer);
-            sendTimer = setTimeout(() => scope.alive && attempt === sendAttempt && fail(), SEND_RETRY_GRACE_MS);
-        };
-        const countAttempt = (req: RequestInfoLite) => {
-            if (!isSend(req)) return false;
-            sendAttempt++;
-            clearTimeout(sendTimer);
-            return true;
-        };
-        onResponse(scope, countAttempt, response => (response.ok ? clearTimeout(sendTimer) : sendFailed()));
-        onRequestError(scope, isSend, sendFailed);
-        scope.defer(() => clearTimeout(sendTimer));
+        // claude.ai gave up sending a message on a project page ("Couldn't send the message").
+        scope.on("send:failed", fail);
         onResponse(scope, req => sameOrigin(req) && req.method === "POST" && isCompletion(req.url.pathname), async response => {
             inflight++;
             pendingUntil = 0;

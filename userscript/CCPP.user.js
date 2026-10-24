@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.91
+// @version      20261013.0.3.92
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -986,6 +986,114 @@
     start() {}
   });
 
+  // src/plugins/_api/network/index.ts
+  var logger5 = new Logger("NetworkApi");
+  var responseHooks = new Set;
+  var errorHooks = new Set;
+  var blockers = new Set;
+  function describe(input, init) {
+    try {
+      const raw = input instanceof Request ? input.url : String(input);
+      const method = (init?.method ?? (input instanceof Request ? input.method : "GET")).toUpperCase();
+      return { url: new URL(raw, location.href), method };
+    } catch {
+      return null;
+    }
+  }
+  function onResponse(scope, match, handle) {
+    const hook = { match, handle };
+    responseHooks.add(hook);
+    scope.defer(() => responseHooks.delete(hook));
+  }
+  function onRequestError(scope, match, handle) {
+    const hook = { match, handle };
+    errorHooks.add(hook);
+    scope.defer(() => errorHooks.delete(hook));
+  }
+  var matching = (hooks, req) => [...hooks].filter((hook) => {
+    try {
+      return hook.match(req);
+    } catch {
+      return false;
+    }
+  });
+  function block(scope, match) {
+    blockers.add(match);
+    scope.defer(() => blockers.delete(match));
+  }
+  var isBlocked = (req) => [...blockers].some((match) => {
+    try {
+      return match(req);
+    } catch {
+      return false;
+    }
+  });
+  var sameOrigin = (req) => req.url.origin === location.origin;
+  var network_default = definePlugin({
+    name: "NetworkApi",
+    title: { zh: "网络观察", en: "Network API" },
+    description: {
+      zh: "包装 fetch / sendBeacon：插件可以旁路读取响应副本，或拦截指定请求。不修改 claude.ai 拿到的原响应。",
+      en: "Wraps fetch / sendBeacon so plugins can read response copies or block requests. claude.ai's own responses are never altered."
+    },
+    category: "api",
+    icon: "link",
+    hidden: true,
+    startAt: "document-start",
+    start(scope) {
+      const original = pageWindow.fetch;
+      const wrapped = function fetch2(input, init) {
+        const req = describe(input, init);
+        if (req && blockers.size && isBlocked(req))
+          return Promise.resolve(new Response(null, { status: 204 }));
+        const promise = original.call(this ?? pageWindow, input, init);
+        if (req && (responseHooks.size || errorHooks.size)) {
+          const hooks = matching(responseHooks, req);
+          const failed = matching(errorHooks, req);
+          if (hooks.length || failed.length) {
+            promise.then((response) => {
+              for (const hook of hooks) {
+                try {
+                  hook.handle(response.clone(), req);
+                } catch (error) {
+                  logger5.error("Response hook failed:", error);
+                }
+              }
+            }, (reason) => {
+              for (const hook of failed) {
+                try {
+                  hook.handle(reason, req);
+                } catch (error) {
+                  logger5.error("Request error hook failed:", error);
+                }
+              }
+            });
+          }
+        }
+        return promise;
+      };
+      pageWindow.fetch = wrapped;
+      scope.defer(() => {
+        if (pageWindow.fetch === wrapped)
+          pageWindow.fetch = original;
+      });
+      const beacon = pageWindow.navigator.sendBeacon?.bind(pageWindow.navigator);
+      if (beacon) {
+        const wrappedBeacon = (url, data) => {
+          const req = describe(url, { method: "POST" });
+          if (req && isBlocked(req))
+            return true;
+          return beacon(url, data);
+        };
+        pageWindow.navigator.sendBeacon = wrappedBeacon;
+        scope.defer(() => {
+          if (pageWindow.navigator.sendBeacon === wrappedBeacon)
+            pageWindow.navigator.sendBeacon = beacon;
+        });
+      }
+    }
+  });
+
   // src/plugins/_api/router/index.ts
   var UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
   var CHAT_RE = new RegExp(`^/chat/(${UUID})`, "i");
@@ -1084,7 +1192,7 @@
   };
 
   // src/plugins/_api/dom/index.ts
-  var logger5 = new Logger("DomApi");
+  var logger6 = new Logger("DomApi");
   var watchers = new Set;
   var observer = null;
   var pending = null;
@@ -1093,7 +1201,7 @@
     try {
       cleanup?.();
     } catch (error) {
-      logger5.error("Watcher cleanup failed:", error);
+      logger6.error("Watcher cleanup failed:", error);
     }
   }
   function flushWatcher(watcher) {
@@ -1101,7 +1209,7 @@
     try {
       found = new Set(document.querySelectorAll(watcher.selector));
     } catch (error) {
-      logger5.error(`Watcher selector ${watcher.selector} failed:`, error);
+      logger6.error(`Watcher selector ${watcher.selector} failed:`, error);
       return;
     }
     for (const [el, cleanup] of watcher.live) {
@@ -1117,7 +1225,7 @@
         watcher.live.set(el, watcher.onAdd(el));
       } catch (error) {
         watcher.live.set(el, undefined);
-        logger5.error(`Watcher for ${watcher.selector} failed:`, error);
+        logger6.error(`Watcher for ${watcher.selector} failed:`, error);
       }
     }
   }
@@ -1181,6 +1289,10 @@
   });
 
   // src/plugins/_api/chatState/index.ts
+  function channelSendOf(path) {
+    return /^\/v1\/code\/channels\/(chan_[A-Za-z0-9]+)\/messages$/.exec(path)?.[1] ?? null;
+  }
+  var SEND_RETRY_GRACE_MS = 6000;
   var phase2 = "idle";
   var startedAt = 0;
   var quietTicks = 0;
@@ -1217,15 +1329,41 @@
   var chatState_default = definePlugin({
     name: "ChatStateApi",
     title: { zh: "回复状态", en: "Reply state API" },
-    description: { zh: "判断 Claude 是否正在回复，并在开始 / 结束时通知其它插件（后台标签页也有效）。", en: "Knows when Claude starts and finishes replying, also in background tabs." },
+    description: { zh: "判断 Claude 是否正在回复，并在开始 / 结束、项目页消息发送失败时通知其它插件（后台标签页也有效）。", en: "Knows when Claude starts and finishes replying, and when a project message couldn't be sent, also in background tabs." },
     category: "api",
     icon: "sparkles",
     hidden: true,
-    dependencies: ["RouterApi"],
+    dependencies: ["NetworkApi", "RouterApi"],
     start(scope) {
       phase2 = "idle";
       quietTicks = 0;
       scope.interval(() => tick(!!document.querySelector(SEL.streaming)), CHECK_MS);
+      let attempt = 0;
+      let timer;
+      const isSend = (req) => sameOrigin(req) && req.method === "POST" && !!channelSendOf(req.url.pathname);
+      const failed = (req) => {
+        const mine = attempt;
+        clearTimeout(timer);
+        timer = setTimeout(() => {
+          if (scope.alive && mine === attempt)
+            emit("send:failed", { channelId: channelSendOf(req.url.pathname), at: Date.now() });
+        }, SEND_RETRY_GRACE_MS);
+      };
+      const counted = (req) => {
+        if (!isSend(req))
+          return false;
+        attempt++;
+        clearTimeout(timer);
+        return true;
+      };
+      onResponse(scope, counted, (response, req) => {
+        if (!response.ok)
+          return failed(req);
+        clearTimeout(timer);
+        emit("send:ok", { channelId: channelSendOf(req.url.pathname), at: Date.now() });
+      });
+      onRequestError(scope, isSend, (_, req) => failed(req));
+      scope.defer(() => clearTimeout(timer));
       scope.on("route", () => {
         phase2 = "idle";
         quietTicks = 0;
@@ -1291,9 +1429,10 @@
       const target = event.target;
       if (!target?.closest?.(SEL.editor))
         return;
-      const text = getText(target.closest(SEL.editor));
+      const editor = target.closest(SEL.editor);
+      const text = getText(editor);
       if (text)
-        fn(text);
+        fn(text, editor);
     }, { capture: true });
     scope.listen(document, "click", (event) => {
       const button = event.target?.closest?.(SEL.sendButton);
@@ -1302,9 +1441,10 @@
       let near = button;
       while (near && !near.querySelector(SEL.editor))
         near = near.parentElement;
-      const text = getText(near?.querySelector(SEL.editor) ?? getEditor());
+      const editor = near?.querySelector(SEL.editor) ?? getEditor();
+      const text = getText(editor);
       if (text)
-        fn(text);
+        fn(text, editor);
     }, { capture: true });
   }
   var composer_default = definePlugin({
@@ -1396,114 +1536,6 @@
     icon: "list",
     hidden: true,
     start() {}
-  });
-
-  // src/plugins/_api/network/index.ts
-  var logger6 = new Logger("NetworkApi");
-  var responseHooks = new Set;
-  var errorHooks = new Set;
-  var blockers = new Set;
-  function describe(input, init) {
-    try {
-      const raw = input instanceof Request ? input.url : String(input);
-      const method = (init?.method ?? (input instanceof Request ? input.method : "GET")).toUpperCase();
-      return { url: new URL(raw, location.href), method };
-    } catch {
-      return null;
-    }
-  }
-  function onResponse(scope, match, handle) {
-    const hook = { match, handle };
-    responseHooks.add(hook);
-    scope.defer(() => responseHooks.delete(hook));
-  }
-  function onRequestError(scope, match, handle) {
-    const hook = { match, handle };
-    errorHooks.add(hook);
-    scope.defer(() => errorHooks.delete(hook));
-  }
-  var matching = (hooks, req) => [...hooks].filter((hook) => {
-    try {
-      return hook.match(req);
-    } catch {
-      return false;
-    }
-  });
-  function block(scope, match) {
-    blockers.add(match);
-    scope.defer(() => blockers.delete(match));
-  }
-  var isBlocked = (req) => [...blockers].some((match) => {
-    try {
-      return match(req);
-    } catch {
-      return false;
-    }
-  });
-  var sameOrigin = (req) => req.url.origin === location.origin;
-  var network_default = definePlugin({
-    name: "NetworkApi",
-    title: { zh: "网络观察", en: "Network API" },
-    description: {
-      zh: "包装 fetch / sendBeacon：插件可以旁路读取响应副本，或拦截指定请求。不修改 claude.ai 拿到的原响应。",
-      en: "Wraps fetch / sendBeacon so plugins can read response copies or block requests. claude.ai's own responses are never altered."
-    },
-    category: "api",
-    icon: "link",
-    hidden: true,
-    startAt: "document-start",
-    start(scope) {
-      const original = pageWindow.fetch;
-      const wrapped = function fetch2(input, init) {
-        const req = describe(input, init);
-        if (req && blockers.size && isBlocked(req))
-          return Promise.resolve(new Response(null, { status: 204 }));
-        const promise = original.call(this ?? pageWindow, input, init);
-        if (req && (responseHooks.size || errorHooks.size)) {
-          const hooks = matching(responseHooks, req);
-          const failed = matching(errorHooks, req);
-          if (hooks.length || failed.length) {
-            promise.then((response) => {
-              for (const hook of hooks) {
-                try {
-                  hook.handle(response.clone(), req);
-                } catch (error) {
-                  logger6.error("Response hook failed:", error);
-                }
-              }
-            }, (reason) => {
-              for (const hook of failed) {
-                try {
-                  hook.handle(reason, req);
-                } catch (error) {
-                  logger6.error("Request error hook failed:", error);
-                }
-              }
-            });
-          }
-        }
-        return promise;
-      };
-      pageWindow.fetch = wrapped;
-      scope.defer(() => {
-        if (pageWindow.fetch === wrapped)
-          pageWindow.fetch = original;
-      });
-      const beacon = pageWindow.navigator.sendBeacon?.bind(pageWindow.navigator);
-      if (beacon) {
-        const wrappedBeacon = (url, data) => {
-          const req = describe(url, { method: "POST" });
-          if (req && isBlocked(req))
-            return true;
-          return beacon(url, data);
-        };
-        pageWindow.navigator.sendBeacon = wrappedBeacon;
-        scope.defer(() => {
-          if (pageWindow.navigator.sendBeacon === wrappedBeacon)
-            pageWindow.navigator.sendBeacon = beacon;
-        });
-      }
-    }
   });
 
   // src/lib/icons.ts
@@ -2742,7 +2774,7 @@ ${IMAGE_FIELD_CSS}`;
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.91";
+  var version = "0.3.92";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -6483,8 +6515,6 @@ ${t(L16.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
   var STOP_EVENT = /^event:\s*message_stop\s*$|"type"\s*:\s*"message_stop"/m;
   var isIconLink = (node) => node instanceof HTMLLinkElement && /\bicon\b/i.test(node.rel) && node.id !== ICON_ID;
   var isCompletion = (path) => /\/chat_conversations\/[^/]+\/(?:completion|retry_completion)$/.test(path);
-  var isChannelSend = (path) => /^\/v1\/code\/channels\/chan_[A-Za-z0-9]+\/messages$/.test(path);
-  var SEND_RETRY_GRACE_MS = 6000;
   function codeProjectOf(path, search) {
     const channel = /^\/code\/project\/(chan_[A-Za-z0-9]+)/.exec(path)?.[1];
     if (!channel)
@@ -6679,24 +6709,7 @@ ${t(L16.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
         if (!(error instanceof DOMException && error.name === "AbortError"))
           fail();
       });
-      let sendAttempt = 0;
-      let sendTimer;
-      const isSend = (req) => sameOrigin(req) && req.method === "POST" && isChannelSend(req.url.pathname);
-      const sendFailed = () => {
-        const attempt = sendAttempt;
-        clearTimeout(sendTimer);
-        sendTimer = setTimeout(() => scope.alive && attempt === sendAttempt && fail(), SEND_RETRY_GRACE_MS);
-      };
-      const countAttempt = (req) => {
-        if (!isSend(req))
-          return false;
-        sendAttempt++;
-        clearTimeout(sendTimer);
-        return true;
-      };
-      onResponse(scope, countAttempt, (response) => response.ok ? clearTimeout(sendTimer) : sendFailed());
-      onRequestError(scope, isSend, sendFailed);
-      scope.defer(() => clearTimeout(sendTimer));
+      scope.on("send:failed", fail);
       onResponse(scope, (req) => sameOrigin(req) && req.method === "POST" && isCompletion(req.url.pathname), async (response) => {
         inflight++;
         pendingUntil = 0;
@@ -7943,6 +7956,82 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
     }
   });
 
+  // src/plugins/autoRetry/index.ts
+  var settings27 = definePluginSettings({
+    maxRetries: { type: "number", label: { zh: "最多连续重试几次", en: "Maximum retries in a row" }, default: 3, min: 1, max: 10 },
+    delay: { type: "number", label: { zh: "重试前等待", en: "Wait before retrying" }, default: 2, min: 0, max: 60, unit: "s" }
+  });
+  var L20 = {
+    retrying: { zh: "发送失败，正在重试（{n}/{max}）", en: "Couldn't send, retrying ({n}/{max})" },
+    gaveUp: { zh: "已重试 {max} 次仍未发出，请稍后手动发送。", en: "Still not sent after {max} retries. Send it again later." },
+    changed: { zh: "输入框内容已改动，没有自动重试。", en: "The message box changed, so it wasn't retried." }
+  };
+  var norm = (text) => text.replace(/\s+/g, " ").trim();
+  var fill4 = (text, n, max) => text.replace("{n}", String(n)).replace(/\{max\}/g, String(max));
+  function sendButtonFor(editor) {
+    let near = editor;
+    while (near && !near.querySelector(SEL.sendButton))
+      near = near.parentElement;
+    return near?.querySelector(SEL.sendButton) ?? null;
+  }
+  function resend(editor) {
+    const button = sendButtonFor(editor);
+    if (button && !button.disabled)
+      return button.click();
+    editor.focus();
+    editor.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", code: "Enter", keyCode: 13, bubbles: true, cancelable: true }));
+  }
+  var autoRetry_default = definePlugin({
+    name: "AutoRetry",
+    title: { zh: "发送失败自动重试", en: "Auto retry" },
+    description: {
+      zh: "Claude Code 项目页弹出「Couldn't send the message」时，自动把放回输入框的消息重新发送，可设次数和间隔。",
+      en: `When a Claude Code project page says "Couldn't send the message", sends the message claude.ai put back in the box again. Retries and delay are adjustable.`
+    },
+    category: "chats",
+    icon: "refresh",
+    enabledByDefault: true,
+    updatedAt: "2026-10-24",
+    dependencies: ["ChatStateApi", "ComposerApi", "NoticesApi"],
+    settings: settings27,
+    start(scope) {
+      let last = null;
+      const counts = new Map;
+      let timer;
+      scope.defer(() => clearTimeout(timer));
+      onSubmit(scope, (text, editor) => {
+        last = { text: norm(text), editor };
+      });
+      scope.on("send:ok", ({ channelId }) => {
+        counts.delete(channelId);
+      });
+      scope.on("send:failed", ({ channelId }) => {
+        const sent = last;
+        if (!sent?.editor)
+          return;
+        const max = settings27.store.maxRetries;
+        const count = (counts.get(channelId) ?? 0) + 1;
+        if (count > max) {
+          counts.delete(channelId);
+          toast(fill4(t(L20.gaveUp), count, max), { kind: "error", key: "auto-retry", timeoutMs: 8000 });
+          return;
+        }
+        counts.set(channelId, count);
+        toast(fill4(t(L20.retrying), count, max), { kind: "warn", key: "auto-retry" });
+        clearTimeout(timer);
+        timer = setTimeout(() => {
+          const editor = sent.editor;
+          if (!editor.isConnected || norm(getText(editor)) !== sent.text) {
+            counts.delete(channelId);
+            toast(t(L20.changed), { kind: "info", key: "auto-retry" });
+            return;
+          }
+          resend(editor);
+        }, settings27.store.delay * 1000);
+      });
+    }
+  });
+
   // src/plugins/index.ts
   var PLUGINS = [
     dom_default,
@@ -7987,7 +8076,8 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
     chatNoticeHider_default,
     runningPill_default,
     customIdentity_default,
-    hideIdentity_default
+    hideIdentity_default,
+    autoRetry_default
   ];
 
   // src/index.ts
@@ -7996,7 +8086,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.91",
+      version: "0.3.92",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -8013,7 +8103,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.91";
+    win[FLAG] = "0.3.92";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -8030,7 +8120,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.91"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.92"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();

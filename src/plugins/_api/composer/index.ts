@@ -80,10 +80,10 @@ export function setText(text: string, editor = getEditor()) {
 }
 
 /**
- * Calls `fn` with the prompt just before it is sent (Enter without Shift, or the send
+ * Calls `fn` with the prompt, and the editor it came from, just before it is sent (Enter without Shift, or the send
  * button). Runs in the capture phase so the text is still in the editor.
  */
-export function onSubmit(scope: Scope, fn: (text: string) => void) {
+export function onSubmit(scope: Scope, fn: (text: string, editor: HTMLElement | null) => void) {
     scope.listen(
         document,
         "keydown",
@@ -91,8 +91,9 @@ export function onSubmit(scope: Scope, fn: (text: string) => void) {
             if (event.key !== "Enter" || event.shiftKey || event.isComposing || event.keyCode === 229) return;
             const target = event.target as HTMLElement | null;
             if (!target?.closest?.(SEL.editor)) return;
-            const text = getText(target.closest(SEL.editor) as HTMLElement);
-            if (text) fn(text);
+            const editor = target.closest(SEL.editor) as HTMLElement;
+            const text = getText(editor);
+            if (text) fn(text, editor);
         },
         { capture: true },
     );
@@ -105,8 +106,9 @@ export function onSubmit(scope: Scope, fn: (text: string) => void) {
             // The editor next to this button: a project page can show two composers (the chat and a thread).
             let near: HTMLElement | null = button;
             while (near && !near.querySelector(SEL.editor)) near = near.parentElement;
-            const text = getText(near?.querySelector<HTMLElement>(SEL.editor) ?? getEditor());
-            if (text) fn(text);
+            const editor = near?.querySelector<HTMLElement>(SEL.editor) ?? getEditor();
+            const text = getText(editor);
+            if (text) fn(text, editor);
         },
         { capture: true },
     );
