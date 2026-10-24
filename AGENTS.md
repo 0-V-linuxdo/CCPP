@@ -14,8 +14,11 @@ Notes for AI agents working on CC++.
 - Updating the CC++ userscript in Helium is the agent's job, done through the Helium DevTools MCP.
   Never ask the user to click Install or Update in Violentmonkey.
 - After a release, tell whoever verifies in Helium the new version and what changed.
-- Only one thread may use the Helium DevTools MCP at a time, so agents don't fight over the selected page.
-  Before testing, check with the other threads (or the coordinator) that nobody else is testing, say when you start, and say when you're done.
+- All Helium testing goes to one dedicated test thread ("Helium 统一测试"). Development threads don't touch
+  the Helium DevTools MCP: after pushing a release, they message the test thread with the version and what to check,
+  and the test thread replies with the result.
+- The test thread updates the userscript in Helium, uses Haiku for anything it sends on claude.ai, and closes the
+  claude.ai pages it opened when done.
 - When a test sends messages on claude.ai, switch the model to Haiku first.
 - Helium's DevTools MCP is shared by every agent: the selected page can change between two calls.
   Open your own tab with `new_page`, re-select it right before each `evaluate_script`, check
