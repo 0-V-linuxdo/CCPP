@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.95
+// @version      20261013.0.3.96
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -2774,7 +2774,7 @@ ${IMAGE_FIELD_CSS}`;
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.95";
+  var version = "0.3.96";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -8150,20 +8150,17 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
   // src/plugins/codeBrandColor/index.ts
   var CLAUDE_ORANGE = "#c6613f";
   var settings28 = definePluginSettings({
-    color: { type: "color", label: { zh: "颜色", en: "Color" }, description: { zh: "默认是 Claude 的橙色。", en: "Defaults to Claude's orange." }, default: CLAUDE_ORANGE },
-    icon: { type: "boolean", label: { zh: "图标也着色", en: "Color the icon too" }, description: { zh: "左边的侧栏开关图标也用这个颜色。", en: "The sidebar toggle icon to its left uses the color as well." }, default: true }
+    color: { type: "color", label: { zh: "颜色", en: "Color" }, description: { zh: "默认是 Claude 的橙色。", en: "Defaults to Claude's orange." }, default: CLAUDE_ORANGE }
   });
-  var CODE_TITLEBAR = '.df-titlebar:has([data-app-wordmark="code"])';
-  var codeBrandCss = (color, icon) => `
-${CODE_TITLEBAR} [data-app-wordmark="code"] > span { color: ${color} !important; }
-${icon ? `${CODE_TITLEBAR} .df-sidebar-hover-reveal button { color: ${color} !important; }` : ""}
+  var codeBrandCss = (color) => `
+[data-app-wordmark="code"] > span { color: ${color} !important; }
 `;
   var codeBrandColor_default = definePlugin({
     name: "CodeBrandColor",
     title: { zh: "侧栏 Code 主题色", en: "Colored Code title" },
     description: {
-      zh: "Code 模式下，侧栏顶部的「Code」字样和旁边的图标改用主题色，默认 Claude 橙色，可自选颜色。",
-      en: `In Code mode, the "Code" title at the top of the sidebar and the icon beside it use a theme color, Claude's orange by default.`
+      zh: "Code 模式下，侧栏顶部的「Code」字样改用主题色，默认 Claude 橙色，可自选颜色。",
+      en: `In Code mode, the "Code" title at the top of the sidebar uses a theme color, Claude's orange by default.`
     },
     category: "appearance",
     icon: "palette",
@@ -8173,7 +8170,7 @@ ${icon ? `${CODE_TITLEBAR} .df-sidebar-hover-reveal button { color: ${color} !im
     settings: settings28,
     start(scope) {
       const color = () => /^#[0-9a-f]{6}$/i.test(settings28.store.color) ? settings28.store.color : CLAUDE_ORANGE;
-      const css = () => codeBrandCss(color(), settings28.store.icon);
+      const css = () => codeBrandCss(color());
       const set = addStyle(scope, css(), "code-brand-color");
       this.onSettingsChange = () => set(css());
     }
@@ -8234,7 +8231,7 @@ ${icon ? `${CODE_TITLEBAR} .df-sidebar-hover-reveal button { color: ${color} !im
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.95",
+      version: "0.3.96",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -8251,7 +8248,7 @@ ${icon ? `${CODE_TITLEBAR} .df-sidebar-hover-reveal button { color: ${color} !im
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.95";
+    win[FLAG] = "0.3.96";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -8268,7 +8265,7 @@ ${icon ? `${CODE_TITLEBAR} .df-sidebar-hover-reveal button { color: ${color} !im
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.95"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.96"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();
