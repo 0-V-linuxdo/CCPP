@@ -52,24 +52,23 @@ const settings = definePluginSettings({
     nativeDialog: {
         type: "boolean",
         label: { zh: "放进 claude.ai 的设置弹窗", en: "Live inside claude.ai's settings dialog" },
-        description: { zh: "CC++ 的页面作为一组标签出现在 claude.ai 设置的侧栏里。关掉后用独立弹窗。", en: "CC++ pages appear as a group in claude.ai's settings sidebar. Off uses a standalone dialog." },
+        description: { zh: "关闭后用独立弹窗。", en: "Off uses a separate dialog." },
         default: true,
     },
     navPosition: {
         type: "select",
         label: { zh: "CC++ 分组位置", en: "CC++ group position" },
-        description: { zh: "在 claude.ai 设置侧栏里放在原生分区的上方还是下方。", en: "Above or below claude.ai's own sections in the settings sidebar." },
         default: "below",
         options: [
             { value: "below", label: { zh: "下方", en: "Below" } },
             { value: "above", label: { zh: "上方", en: "Above" } },
         ],
     },
-    userMenuEntry: { type: "boolean", label: { zh: "头像菜单里的 CC++ 子菜单", en: "CC++ submenu in the account menu" }, description: { zh: "CC++ › 插件 › 列出全部插件，点开即该插件的设置。", en: "CC++ › Plugins › lists every plugin; click one for its settings." }, default: true },
-    settingsFlyout: { type: "boolean", label: { zh: "头像菜单的「设置」展开成子菜单", en: "Account-menu Settings opens a submenu" }, description: { zh: "悬停展开：CC++ 页面和 claude.ai 各设置页；直接点击仍打开设置。", en: "Hover for CC++ pages and claude.ai's settings pages; a click still opens settings." }, default: true },
-    hotkey: { type: "string", label: { zh: "打开设置的快捷键", en: "Shortcut to open settings" }, description: { zh: "例如 mod+shift+. （mod = ⌘ / Ctrl），留空关闭。", en: "e.g. mod+shift+. (mod = ⌘ / Ctrl). Empty disables it." }, default: "mod+shift+." },
+    userMenuEntry: { type: "boolean", label: { zh: "头像菜单里的 CC++ 子菜单", en: "CC++ submenu in the account menu" }, default: true },
+    settingsFlyout: { type: "boolean", label: { zh: "头像菜单的「设置」展开成子菜单", en: "Account-menu Settings opens a submenu" }, description: { zh: "悬停展开，点击仍打开设置。", en: "Hover to expand; click still opens settings." }, default: true },
+    hotkey: { type: "string", label: { zh: "打开设置的快捷键", en: "Shortcut to open settings" }, description: { zh: "如 mod+shift+.，留空关闭。", en: "e.g. mod+shift+.; empty disables." }, default: "mod+shift+." },
     composerEntry: { type: "boolean", label: { zh: "在输入框旁显示 CC++ 按钮", en: "CC++ button next to the model picker" }, default: false },
-    showApiPlugins: { type: "boolean", label: { zh: "显示 API / 核心插件", en: "Show API and core plugins" }, description: { zh: "它们由其它插件按需自动开启。", en: "They are switched on automatically when another plugin needs them." }, default: false },
+    showApiPlugins: { type: "boolean", label: { zh: "显示 API / 核心插件", en: "Show API and core plugins" }, default: false },
 });
 
 export const isSettingsOpen = () => nativeOpen() || standaloneOpen();

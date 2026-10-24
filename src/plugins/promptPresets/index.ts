@@ -18,7 +18,7 @@ const settings = definePluginSettings({
     presets: {
         type: "text",
         label: { zh: "预设", en: "Presets" },
-        description: { zh: "每段一个预设，段与段之间空一行；第一行是标题。正文里的 \\n 会换行。", en: "One preset per block, blocks separated by a blank line; the first line is the title." },
+        description: { zh: "空行分隔，每段第一行是标题。", en: "Blank line between presets; first line is the title." },
         rows: 10,
         default: t({
             zh: "翻译成中文\n把下面的内容翻译成自然流畅的中文：\n\n逐行解释代码\n逐行解释下面的代码，指出潜在问题：\n\n总结要点\n用 5 条以内的要点总结：",

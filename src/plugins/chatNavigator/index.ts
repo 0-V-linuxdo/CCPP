@@ -32,7 +32,7 @@ const settings = definePluginSettings({
             { value: "none", label: { zh: "无", en: "None" } },
         ],
     },
-    keys: { type: "boolean", label: { zh: "键盘跳转", en: "Keyboard" }, description: { zh: "不在输入框里时：↑ / ↓ 逐条跳转，Home / End 到首尾，Esc 收起目录。", en: "Outside the input: ↑ / ↓ step through messages, Home / End go to the ends, Esc closes the outline." }, default: true },
+    keys: { type: "boolean", label: { zh: "键盘跳转", en: "Keyboard" }, description: { zh: "输入框外 ↑ / ↓ 跳转，Home / End 到首尾。", en: "Outside the input: ↑ / ↓, Home / End." }, default: true },
 });
 
 const L = {

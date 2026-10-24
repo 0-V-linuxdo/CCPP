@@ -23,7 +23,7 @@ const settings = definePluginSettings({
     minSeconds: { type: "number", label: { zh: "回复至少持续多久才提醒", en: "Only replies longer than" }, default: 5, min: 0, max: 120, unit: "s" },
     sound: { type: "boolean", label: { zh: "提示音", en: "Sound" }, default: true },
     volume: { type: "number", label: { zh: "音量", en: "Volume" }, default: 40, min: 5, max: 100, step: 5, unit: "%", visible: v => v.sound === true },
-    desktop: { type: "boolean", label: { zh: "系统通知", en: "Desktop notification" }, description: { zh: "首次需要浏览器授权；点通知回到该对话。", en: "Needs browser permission once; clicking it returns to the chat." }, default: true },
+    desktop: { type: "boolean", label: { zh: "系统通知", en: "Desktop notification" }, default: true },
     toast: { type: "boolean", label: { zh: "页面内提示条", en: "In-page toast" }, default: true },
     test: { type: "action", label: { zh: "试一下", en: "Try it" }, button: { zh: "发送测试提醒", en: "Send a test" }, run: () => notify({ chatId: currentRoute().chatId, title: "CC++", durationMs: 0, at: Date.now() }, true) },
 });

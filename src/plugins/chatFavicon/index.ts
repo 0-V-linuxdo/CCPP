@@ -20,7 +20,6 @@ const settings = definePluginSettings({
     style: {
         type: "select",
         label: { zh: "图标样式", en: "Icon style" },
-        description: { zh: "回复中蓝色、完成绿色、输入框有内容待发送黄色、出错红色。", en: "Blue while replying, green when done, amber when a draft is ready to send, red on error." },
         default: "hole",
         options: [
             { value: "emoji", label: { zh: "只用表情", en: "Emoji only" } },

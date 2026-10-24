@@ -15,7 +15,7 @@ const settings = definePluginSettings({
     phrases: {
         type: "text",
         label: { zh: "问候语（每行一条）", en: "Greetings (one per line)" },
-        description: { zh: "{name} 会替换成你的显示名，{time} 替换成早上好 / 下午好 / 晚上好。", en: "{name} becomes your display name, {time} becomes morning / afternoon / evening." },
+        description: { zh: "可用 {name}、{time}。", en: "Supports {name} and {time}." },
         rows: 5,
         default: t({ zh: "{time}，{name}\n今天想做点什么？\n灵感来了就写下来", en: "{time}, {name}\nWhat shall we work on today?\nWrite it down while the idea is fresh" }),
     },

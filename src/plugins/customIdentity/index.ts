@@ -14,7 +14,7 @@ const settings = definePluginSettings({
     displayName: {
         type: "string",
         label: { zh: "显示名", en: "Display name" },
-        description: { zh: "替换侧栏头像旁和账号菜单里的名字。留空保持官方名字。", en: "Replaces the name next to the sidebar avatar and in the account menu. Empty keeps your real name." },
+        description: { zh: "留空保持官方名字。", en: "Empty keeps your real name." },
         placeholder: { zh: "留空保持官方名字", en: "Empty keeps your real name" },
         default: "",
         maxLength: 80,
@@ -22,7 +22,7 @@ const settings = definePluginSettings({
     avatar: {
         type: "image",
         label: { zh: "头像", en: "Avatar" },
-        description: { zh: "图片链接、data:image，或直接粘贴 / 拖入 / 选择图片，再拖动圆圈裁切。留空保持官方头像。", en: "Image URL, data:image, or paste / drop / choose a picture, then drag the circle to crop. Empty keeps the official avatar." },
+        description: { zh: "链接、粘贴、拖入或选择图片；拖动圆圈裁切。", en: "URL, paste, drop or choose; drag to crop." },
         default: "",
         size: 256,
     },
@@ -44,7 +44,6 @@ const settings = definePluginSettings({
     applyToMenu: {
         type: "boolean",
         label: { zh: "账号菜单里也替换", en: "Also replace in the account menu" },
-        description: { zh: "点开头像弹出的菜单里，顶部的头像和名字也一起换掉。", en: "Also replaces the avatar and name at the top of the menu the avatar opens." },
         default: true,
     },
 });

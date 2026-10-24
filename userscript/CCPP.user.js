@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.89
+// @version      20261013.0.3.90
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -2726,7 +2726,7 @@ ${IMAGE_FIELD_CSS}`;
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.89";
+  var version = "0.3.90";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -3695,24 +3695,23 @@ ${IMAGE_FIELD_CSS}`;
     nativeDialog: {
       type: "boolean",
       label: { zh: "放进 claude.ai 的设置弹窗", en: "Live inside claude.ai's settings dialog" },
-      description: { zh: "CC++ 的页面作为一组标签出现在 claude.ai 设置的侧栏里。关掉后用独立弹窗。", en: "CC++ pages appear as a group in claude.ai's settings sidebar. Off uses a standalone dialog." },
+      description: { zh: "关闭后用独立弹窗。", en: "Off uses a separate dialog." },
       default: true
     },
     navPosition: {
       type: "select",
       label: { zh: "CC++ 分组位置", en: "CC++ group position" },
-      description: { zh: "在 claude.ai 设置侧栏里放在原生分区的上方还是下方。", en: "Above or below claude.ai's own sections in the settings sidebar." },
       default: "below",
       options: [
         { value: "below", label: { zh: "下方", en: "Below" } },
         { value: "above", label: { zh: "上方", en: "Above" } }
       ]
     },
-    userMenuEntry: { type: "boolean", label: { zh: "头像菜单里的 CC++ 子菜单", en: "CC++ submenu in the account menu" }, description: { zh: "CC++ › 插件 › 列出全部插件，点开即该插件的设置。", en: "CC++ › Plugins › lists every plugin; click one for its settings." }, default: true },
-    settingsFlyout: { type: "boolean", label: { zh: "头像菜单的「设置」展开成子菜单", en: "Account-menu Settings opens a submenu" }, description: { zh: "悬停展开：CC++ 页面和 claude.ai 各设置页；直接点击仍打开设置。", en: "Hover for CC++ pages and claude.ai's settings pages; a click still opens settings." }, default: true },
-    hotkey: { type: "string", label: { zh: "打开设置的快捷键", en: "Shortcut to open settings" }, description: { zh: "例如 mod+shift+. （mod = ⌘ / Ctrl），留空关闭。", en: "e.g. mod+shift+. (mod = ⌘ / Ctrl). Empty disables it." }, default: "mod+shift+." },
+    userMenuEntry: { type: "boolean", label: { zh: "头像菜单里的 CC++ 子菜单", en: "CC++ submenu in the account menu" }, default: true },
+    settingsFlyout: { type: "boolean", label: { zh: "头像菜单的「设置」展开成子菜单", en: "Account-menu Settings opens a submenu" }, description: { zh: "悬停展开，点击仍打开设置。", en: "Hover to expand; click still opens settings." }, default: true },
+    hotkey: { type: "string", label: { zh: "打开设置的快捷键", en: "Shortcut to open settings" }, description: { zh: "如 mod+shift+.，留空关闭。", en: "e.g. mod+shift+.; empty disables." }, default: "mod+shift+." },
     composerEntry: { type: "boolean", label: { zh: "在输入框旁显示 CC++ 按钮", en: "CC++ button next to the model picker" }, default: false },
-    showApiPlugins: { type: "boolean", label: { zh: "显示 API / 核心插件", en: "Show API and core plugins" }, description: { zh: "它们由其它插件按需自动开启。", en: "They are switched on automatically when another plugin needs them." }, default: false }
+    showApiPlugins: { type: "boolean", label: { zh: "显示 API / 核心插件", en: "Show API and core plugins" }, default: false }
   });
   var isSettingsOpen = () => nativeOpen() || standaloneOpen();
   async function openSettings(options = {}) {
@@ -4812,7 +4811,7 @@ ${x.css}`)].join(`
         { value: "none", label: { zh: "无", en: "None" } }
       ]
     },
-    keys: { type: "boolean", label: { zh: "键盘跳转", en: "Keyboard" }, description: { zh: "不在输入框里时：↑ / ↓ 逐条跳转，Home / End 到首尾，Esc 收起目录。", en: "Outside the input: ↑ / ↓ step through messages, Home / End go to the ends, Esc closes the outline." }, default: true }
+    keys: { type: "boolean", label: { zh: "键盘跳转", en: "Keyboard" }, description: { zh: "输入框外 ↑ / ↓ 跳转，Home / End 到首尾。", en: "Outside the input: ↑ / ↓, Home / End." }, default: true }
   });
   var L11 = {
     title: { zh: "对话目录", en: "Outline" },
@@ -5673,7 +5672,7 @@ ${x.css}`)].join(`
   // src/plugins/projectStatus/index.ts
   var logger10 = new Logger("ProjectStatus");
   var settings7 = definePluginSettings({
-    showCode: { type: "boolean", label: { zh: "也算上项目自身的 Code 会话", en: "Include the project's own Code session" }, description: { zh: "图标右上角的圆点汇总项目里线程和项目总控 Code 会话的状态；关闭后只看线程。", en: "The icon-corner dot sums up the project's threads and its own Code session; off counts threads only." }, default: true },
+    showCode: { type: "boolean", label: { zh: "也算上项目自身的 Code 会话", en: "Include the project's own Code session" }, description: { zh: "关闭后只看线程。", en: "Off counts threads only." }, default: true },
     showWaiting: { type: "boolean", label: { zh: "也标出「等你回复」的项目", en: "Also mark projects waiting on you" }, description: { zh: "有线程在等你时显示黄色圆点。", en: "A yellow dot when a thread is waiting for you." }, default: true },
     refreshSec: { type: "number", label: { zh: "刷新间隔", en: "Refresh every" }, default: 30, min: 10, max: 300, step: 5, unit: "s" }
   });
@@ -6203,7 +6202,7 @@ ${x.css}`)].join(`
     presets: {
       type: "text",
       label: { zh: "预设", en: "Presets" },
-      description: { zh: "每段一个预设，段与段之间空一行；第一行是标题。正文里的 \\n 会换行。", en: "One preset per block, blocks separated by a blank line; the first line is the title." },
+      description: { zh: "空行分隔，每段第一行是标题。", en: "Blank line between presets; first line is the title." },
       rows: 10,
       default: t({
         zh: `翻译成中文
@@ -6292,7 +6291,7 @@ Summarize in at most 5 bullet points:`
     minSeconds: { type: "number", label: { zh: "回复至少持续多久才提醒", en: "Only replies longer than" }, default: 5, min: 0, max: 120, unit: "s" },
     sound: { type: "boolean", label: { zh: "提示音", en: "Sound" }, default: true },
     volume: { type: "number", label: { zh: "音量", en: "Volume" }, default: 40, min: 5, max: 100, step: 5, unit: "%", visible: (v) => v.sound === true },
-    desktop: { type: "boolean", label: { zh: "系统通知", en: "Desktop notification" }, description: { zh: "首次需要浏览器授权；点通知回到该对话。", en: "Needs browser permission once; clicking it returns to the chat." }, default: true },
+    desktop: { type: "boolean", label: { zh: "系统通知", en: "Desktop notification" }, default: true },
     toast: { type: "boolean", label: { zh: "页面内提示条", en: "In-page toast" }, default: true },
     test: { type: "action", label: { zh: "试一下", en: "Try it" }, button: { zh: "发送测试提醒", en: "Send a test" }, run: () => notify2({ chatId: currentRoute().chatId, title: "CC++", durationMs: 0, at: Date.now() }, true) }
   });
@@ -6383,7 +6382,6 @@ ${t(L16.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
     style: {
       type: "select",
       label: { zh: "图标样式", en: "Icon style" },
-      description: { zh: "回复中蓝色、完成绿色、输入框有内容待发送黄色、出错红色。", en: "Blue while replying, green when done, amber when a draft is ready to send, red on error." },
       default: "hole",
       options: [
         { value: "emoji", label: { zh: "只用表情", en: "Emoji only" } },
@@ -6775,7 +6773,7 @@ ${composer ? `[data-composer-card-holder], [data-cds="ChatComposer"] { max-width
     phrases: {
       type: "text",
       label: { zh: "问候语（每行一条）", en: "Greetings (one per line)" },
-      description: { zh: "{name} 会替换成你的显示名，{time} 替换成早上好 / 下午好 / 晚上好。", en: "{name} becomes your display name, {time} becomes morning / afternoon / evening." },
+      description: { zh: "可用 {name}、{time}。", en: "Supports {name} and {time}." },
       rows: 5,
       default: t({ zh: `{time}，{name}
 今天想做点什么？
@@ -7648,7 +7646,7 @@ ${RUNNING_PILL} {
     displayName: {
       type: "string",
       label: { zh: "显示名", en: "Display name" },
-      description: { zh: "替换侧栏头像旁和账号菜单里的名字。留空保持官方名字。", en: "Replaces the name next to the sidebar avatar and in the account menu. Empty keeps your real name." },
+      description: { zh: "留空保持官方名字。", en: "Empty keeps your real name." },
       placeholder: { zh: "留空保持官方名字", en: "Empty keeps your real name" },
       default: "",
       maxLength: 80
@@ -7656,7 +7654,7 @@ ${RUNNING_PILL} {
     avatar: {
       type: "image",
       label: { zh: "头像", en: "Avatar" },
-      description: { zh: "图片链接、data:image，或直接粘贴 / 拖入 / 选择图片，再拖动圆圈裁切。留空保持官方头像。", en: "Image URL, data:image, or paste / drop / choose a picture, then drag the circle to crop. Empty keeps the official avatar." },
+      description: { zh: "链接、粘贴、拖入或选择图片；拖动圆圈裁切。", en: "URL, paste, drop or choose; drag to crop." },
       default: "",
       size: 256
     },
@@ -7678,7 +7676,6 @@ ${RUNNING_PILL} {
     applyToMenu: {
       type: "boolean",
       label: { zh: "账号菜单里也替换", en: "Also replace in the account menu" },
-      description: { zh: "点开头像弹出的菜单里，顶部的头像和名字也一起换掉。", en: "Also replaces the avatar and name at the top of the menu the avatar opens." },
       default: true
     }
   });
@@ -7819,13 +7816,11 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
     hideEmail: {
       type: "boolean",
       label: { zh: "隐藏邮箱", en: "Hide email" },
-      description: { zh: "点开头像弹出的账号菜单顶部的邮箱，以及头像按钮旁的邮箱。", en: "The email at the top of the account menu the avatar opens, and next to the avatar button." },
       default: true
     },
     hideName: {
       type: "boolean",
       label: { zh: "隐藏用户名", en: "Hide username" },
-      description: { zh: "头像按钮旁和账号菜单里的名字；头像仍可点击。", en: "The name next to the avatar button and in the account menu; the avatar stays clickable." },
       default: false
     }
   });
@@ -7961,7 +7956,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.89",
+      version: "0.3.90",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -7978,7 +7973,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.89";
+    win[FLAG] = "0.3.90";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -7995,7 +7990,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.89"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.90"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();

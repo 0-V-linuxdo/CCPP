@@ -14,13 +14,11 @@ const settings = definePluginSettings({
     hideEmail: {
         type: "boolean",
         label: { zh: "隐藏邮箱", en: "Hide email" },
-        description: { zh: "点开头像弹出的账号菜单顶部的邮箱，以及头像按钮旁的邮箱。", en: "The email at the top of the account menu the avatar opens, and next to the avatar button." },
         default: true,
     },
     hideName: {
         type: "boolean",
         label: { zh: "隐藏用户名", en: "Hide username" },
-        description: { zh: "头像按钮旁和账号菜单里的名字；头像仍可点击。", en: "The name next to the avatar button and in the account menu; the avatar stays clickable." },
         default: false,
     },
 });
