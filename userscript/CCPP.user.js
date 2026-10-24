@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.94
+// @version      20261013.0.3.95
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -2774,7 +2774,7 @@ ${IMAGE_FIELD_CSS}`;
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.94";
+  var version = "0.3.95";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -5739,7 +5739,7 @@ ${x.css}`)].join(`
   var ICON_HOLDER = ".df-leading-slot .relative, [data-leading-slot] .relative";
   var CSS7 = `
 [data-ccpp-corner] { position: absolute; top: -1px; inset-inline-end: -2px; display: flex; pointer-events: none; }
-[data-ccpp-corner] .status-dot { width: 6px; height: 6px; border-radius: 50%; display: block; box-shadow: 0 0 0 1.5px var(--cds-surface-1, var(--df-bg, #1f1e1d)); }
+[data-ccpp-corner] .status-dot { width: 6px; height: 6px; border-radius: 50%; display: block; }
 [data-ccpp-corner] .status-dot[data-kind="clay"] { background-color: #d97757; animation: ccpp-breathe 3s ease-in-out infinite; }
 [data-ccpp-corner] .status-dot[data-kind="awaiting"] { background-color: var(--cds-fill-warning, #c98a12); }
 @keyframes ccpp-breathe { 0%, 100% { transform: scale(.86); opacity: .75; } 50% { transform: scale(1); opacity: 1; } }
@@ -8234,7 +8234,7 @@ ${icon ? `${CODE_TITLEBAR} .df-sidebar-hover-reveal button { color: ${color} !im
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.94",
+      version: "0.3.95",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -8251,7 +8251,7 @@ ${icon ? `${CODE_TITLEBAR} .df-sidebar-hover-reveal button { color: ${color} !im
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.94";
+    win[FLAG] = "0.3.95";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -8268,7 +8268,7 @@ ${icon ? `${CODE_TITLEBAR} .df-sidebar-hover-reveal button { color: ${color} !im
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.94"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.95"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();
