@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.102
+// @version      20261013.0.3.103
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -2830,7 +2830,7 @@ ${IMAGE_FIELD_CSS}`;
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.102";
+  var version = "0.3.103";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -7132,11 +7132,11 @@ Write it down while the idea is fresh` })
       type: "select",
       label: { zh: "输入框占位文字", en: "Input placeholder" },
       description: { zh: "替换成下面的文字，没填就用第一条问候语。", en: "Uses the text below, or the first greeting when it's empty." },
-      default: "project",
+      default: "off",
       options: [
+        { value: "off", label: { zh: "不换", en: "Never" } },
         { value: "project", label: { zh: "只在项目里换", en: "Only in projects" } },
-        { value: "all", label: { zh: "到处都换", en: "Everywhere" } },
-        { value: "off", label: { zh: "不换", en: "Never" } }
+        { value: "all", label: { zh: "到处都换", en: "Everywhere" } }
       ]
     },
     placeholder: { type: "string", label: { zh: "占位文字", en: "Placeholder text" }, description: { zh: "留空用第一条问候语。", en: "Empty uses the first greeting." }, default: "", visible: (v) => v.input !== "off" }
@@ -7191,7 +7191,7 @@ Write it down while the idea is fresh` })
   var customGreeting_default = definePlugin({
     name: "CustomGreeting",
     title: { zh: "自定义问候语", en: "Custom greeting" },
-    description: { zh: "替换首页问候语（含新版首页），多条随机 / 依次轮换；项目里的输入框占位文字也换成你的。", en: "Your own home greeting (new layouts too), rotated on visit, click or a timer; project inputs get your placeholder." },
+    description: { zh: "替换首页问候语（含新版首页），多条随机 / 依次轮换；可选把输入框占位文字也换成你的。", en: "Your own home greeting (new layouts too), rotated on visit, click or a timer; can also set the input placeholder." },
     category: "appearance",
     icon: "message",
     enabledByDefault: false,
@@ -8421,7 +8421,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.102",
+      version: "0.3.103",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -8438,7 +8438,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.102";
+    win[FLAG] = "0.3.103";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -8455,7 +8455,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.102"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.103"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();

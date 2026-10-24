@@ -86,6 +86,8 @@ describe("CustomGreeting", () => {
     test("the placeholder changes from CSS, only in projects unless asked, and comes back", async () => {
         document.body.innerHTML = markedHome();
         const css = () => document.querySelector('[data-ccpp-style="custom-greeting-placeholder"]')?.textContent ?? "";
+        // A greeting in the prompt box looks like claude.ai's own text: it's opt-in.
+        expect((getPlugin("CustomGreeting")!.settings!.def.input as { default: string }).default).toBe("off");
         setRaw("CustomGreeting", "phrases", "First line\nSecond line");
         setRaw("CustomGreeting", "input", "project");
         setEnabled(getPlugin("CustomGreeting")!, true);

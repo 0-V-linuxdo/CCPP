@@ -45,11 +45,12 @@ const settings = definePluginSettings({
         type: "select",
         label: { zh: "输入框占位文字", en: "Input placeholder" },
         description: { zh: "替换成下面的文字，没填就用第一条问候语。", en: "Uses the text below, or the first greeting when it's empty." },
-        default: "project",
+        // Off by default: a greeting in the prompt box reads like claude.ai's own text leaking in.
+        default: "off",
         options: [
+            { value: "off", label: { zh: "不换", en: "Never" } },
             { value: "project", label: { zh: "只在项目里换", en: "Only in projects" } },
             { value: "all", label: { zh: "到处都换", en: "Everywhere" } },
-            { value: "off", label: { zh: "不换", en: "Never" } },
         ],
     },
     placeholder: { type: "string", label: { zh: "占位文字", en: "Placeholder text" }, description: { zh: "留空用第一条问候语。", en: "Empty uses the first greeting." }, default: "", visible: v => v.input !== "off" },
@@ -119,7 +120,7 @@ const CLICKABLE = "data-ccpp-greeting-click";
 export default definePlugin({
     name: "CustomGreeting",
     title: { zh: "自定义问候语", en: "Custom greeting" },
-    description: { zh: "替换首页问候语（含新版首页），多条随机 / 依次轮换；项目里的输入框占位文字也换成你的。", en: "Your own home greeting (new layouts too), rotated on visit, click or a timer; project inputs get your placeholder." },
+    description: { zh: "替换首页问候语（含新版首页），多条随机 / 依次轮换；可选把输入框占位文字也换成你的。", en: "Your own home greeting (new layouts too), rotated on visit, click or a timer; can also set the input placeholder." },
     category: "appearance",
     icon: "message",
     enabledByDefault: false,
