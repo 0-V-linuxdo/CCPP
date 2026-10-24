@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.92
+// @version      20261013.0.3.93
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -1811,7 +1811,7 @@ select.input { padding-right: 6px; }
 .toast.click { cursor: pointer; }
 .toast .dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 6px; flex: none; background: var(--accent); }
 .toast.ok .dot { background: var(--ok); } .toast.warn .dot { background: var(--warn); } .toast.error .dot { background: var(--bad); }
-.toast .body { flex: 1; min-width: 0; } .toast .title { font-weight: 600; } .toast .text { color: var(--fg2); word-break: break-word; }
+.toast .body { flex: 1; min-width: 0; } .toast .title { font-weight: 600; } .toast .text { color: var(--fg2); word-break: break-word; white-space: pre-line; }
 @keyframes in { from { opacity: 0; transform: translateY(-6px); } }
 `;
   var host = null;
@@ -2774,7 +2774,7 @@ ${IMAGE_FIELD_CSS}`;
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.92";
+  var version = "0.3.93";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -5722,6 +5722,12 @@ ${x.css}`)].join(`
   var settings7 = definePluginSettings({
     showCode: { type: "boolean", label: { zh: "也算上项目自身的 Code 会话", en: "Include the project's own Code session" }, description: { zh: "关闭后只看线程。", en: "Off counts threads only." }, default: true },
     showWaiting: { type: "boolean", label: { zh: "也标出「等你回复」的项目", en: "Also mark projects waiting on you" }, description: { zh: "有线程在等你时显示黄色圆点。", en: "A yellow dot when a thread is waiting for you." }, default: true },
+    hideNative: {
+      type: "boolean",
+      label: { zh: "隐藏原生行尾圆点", en: "Hide claude.ai's row-end dot" },
+      description: { zh: "当前打开的项目也只用图标角上的圆点，和其它项目一致。", en: "The open project then shows only the icon-corner dot, like the others." },
+      default: true
+    },
     refreshSec: { type: "number", label: { zh: "刷新间隔", en: "Refresh every" }, default: 30, min: 10, max: 300, step: 5, unit: "s" }
   });
   var L13 = {
@@ -5768,17 +5774,19 @@ ${x.css}`)].join(`
     name: "ProjectStatus",
     title: { zh: "项目运行状态", en: "Project status dots" },
     description: {
-      zh: "claude.ai 侧栏只给当前打开的项目显示运行圆点；本插件在其他项目图标的右上角画一个状态圆点：有线程或 Code 会话在跑就呼吸（橙色），有线程等你回复是黄色。",
-      en: "claude.ai only shows a running dot on the open project; this puts a status dot on the other projects' icon corners: breathing orange while anything runs, yellow when a thread waits for you."
+      zh: "在每个项目图标的右上角画状态圆点（含当前打开的项目）：有线程或 Code 会话在跑就呼吸（橙色），有线程等你回复是黄色；可隐藏 claude.ai 自己的行尾圆点。",
+      en: "A status dot on every project's icon corner, the open one included: breathing orange while anything runs, yellow when a thread waits for you. claude.ai's own row-end dot can be hidden."
     },
     category: "notifications",
     icon: "sparkles",
     enabledByDefault: true,
-    updatedAt: "2026-10-14",
+    updatedAt: "2026-10-24",
     dependencies: ["ClaudeApi", "DomApi", "StylesApi", "RouterApi"],
     settings: settings7,
     start(scope) {
       addStyle(scope, CSS7, "project-status");
+      if (settings7.store.hideNative)
+        addStyle(scope, `${PROJECT_ROW} ${ROW} > [data-row-decoration]:has(> [role="status"]) { display: none !important; }`, "project-status-native");
       const activity = new Map;
       const rows = new Map;
       let busy = false;
@@ -5794,8 +5802,7 @@ ${x.css}`)].join(`
         row.querySelector(":scope > [data-ccpp-status]")?.remove();
         const holder = row.querySelector(ICON_HOLDER);
         const nativeCorner = holder?.querySelector(".status-dot:not([data-ccpp-corner] *), [aria-hidden] > .status-dot:not([data-ccpp-corner] *)");
-        const open = location.pathname.startsWith(`/code/project/${id}`);
-        const corner = holder && !nativeCorner && !open ? projectKind(info, settings7.store.showWaiting, settings7.store.showCode) : null;
+        const corner = holder && !nativeCorner ? projectKind(info, settings7.store.showWaiting, settings7.store.showCode) : null;
         place(row, "[data-ccpp-corner]", corner, "data-ccpp-corner", () => holder);
       };
       const place = (row, selector, kind, attr, parent) => {
@@ -6341,10 +6348,21 @@ Summarize in at most 5 bullet points:`
     volume: { type: "number", label: { zh: "音量", en: "Volume" }, default: 40, min: 5, max: 100, step: 5, unit: "%", visible: (v) => v.sound === true },
     desktop: { type: "boolean", label: { zh: "系统通知", en: "Desktop notification" }, default: true },
     toast: { type: "boolean", label: { zh: "页面内提示条", en: "In-page toast" }, default: true },
+    others: {
+      type: "boolean",
+      label: { zh: "其它对话完成也提醒", en: "Also for other chats" },
+      description: { zh: "侧栏里正在回复的对话完成时弹提示条，点击打开。", en: "A toast when a chat replying in the sidebar finishes; click to open it." },
+      default: true
+    },
+    preview: { type: "boolean", label: { zh: "提示条显示回复开头", en: "Preview the reply" }, default: true },
+    keep: { type: "boolean", label: { zh: "提示条保持到手动关闭", en: "Keep toasts until dismissed" }, description: { zh: "点 × 或打开该对话才关闭。", en: "Close with × or by opening the chat." }, default: false },
+    toastSec: { type: "number", label: { zh: "提示条停留", en: "Toast stays for" }, default: 6, min: 2, max: 30, unit: "s", visible: (v) => !v.keep },
     test: { type: "action", label: { zh: "试一下", en: "Try it" }, button: { zh: "发送测试提醒", en: "Send a test" }, run: () => notify2({ chatId: currentRoute().chatId, title: "CC++", durationMs: 0, at: Date.now() }, true) }
   });
   var L16 = {
     done: { zh: "Claude 回复完成", en: "Claude finished replying" },
+    otherDone: { zh: "另一个对话回复完成", en: "Another chat finished" },
+    otherError: { zh: "另一个对话回复出错", en: "Another chat hit an error" },
     took: { zh: "用时 {s} 秒", en: "Took {s}s" },
     open: { zh: "点击回到对话", en: "Click to return to the chat" }
   };
@@ -6371,21 +6389,64 @@ Summarize in at most 5 bullet points:`
     });
     setTimeout(() => void ctx.close(), 1200);
   }
+  var openToasts = new Map;
+  function openChat(chatId) {
+    window.focus();
+    if (currentRoute().chatId === chatId)
+      return;
+    const link = document.querySelector(`a[href="/chat/${chatId}"]`);
+    if (link)
+      link.click();
+    else
+      location.assign(`/chat/${chatId}`);
+  }
+  function claim(chatId) {
+    if (!chatId)
+      return true;
+    const key = `ccpp:replyNotified:${chatId}`;
+    try {
+      const last = Number(localStorage.getItem(key));
+      if (Date.now() - last < 15000)
+        return false;
+      localStorage.setItem(key, String(Date.now()));
+    } catch {}
+    return true;
+  }
+  async function previewOf(chatId) {
+    if (!chatId || !settings10.store.preview)
+      return "";
+    try {
+      const reply = (await getConversation(chatId)).messages.filter((m) => m.role === "assistant").at(-1);
+      return reply ? snippet(reply.text, 100) : "";
+    } catch {
+      return "";
+    }
+  }
   function notify2(event, test = false) {
     const body = [event.title, event.durationMs ? t(L16.took).replace("{s}", String(Math.round(event.durationMs / 1000))) : ""].filter(Boolean).join(" · ");
+    const title = event.other ? t(event.error ? L16.otherError : L16.otherDone) : t(L16.done);
     const back = () => {
       window.focus();
-      if (event.chatId && currentRoute().chatId !== event.chatId)
-        location.assign(`/chat/${event.chatId}`);
+      if (event.chatId)
+        openChat(event.chatId);
     };
-    if (settings10.store.sound)
+    const away = test || settings10.store.when === "always" || document.hidden || !document.hasFocus();
+    if (settings10.store.sound && away)
       chime(settings10.store.volume);
-    if (settings10.store.toast)
-      toast(body, { title: t(L16.done), kind: "ok", onClick: back, key: "reply-done" });
+    if (settings10.store.toast || event.other) {
+      const key = event.chatId ? `reply-${event.chatId}` : "reply-done";
+      const close = toast([body, event.preview].filter(Boolean).join(`
+`), { title, kind: event.error ? "error" : "ok", onClick: back, key, timeoutMs: settings10.store.keep ? 0 : settings10.store.toastSec * 1000 });
+      if (event.chatId)
+        openToasts.set(event.chatId, close);
+    }
+    if (!away)
+      return;
     if (settings10.store.desktop && "Notification" in window) {
       const show = () => {
         try {
-          const n = new Notification(t(L16.done), { body: `${body}
+          const n = new Notification(title, { body: `${[body, event.preview].filter(Boolean).join(`
+`)}
 ${t(L16.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
           n.onclick = () => {
             back();
@@ -6399,6 +6460,39 @@ ${t(L16.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
         Notification.requestPermission().then((p) => p === "granted" && show());
     }
   }
+  function readRows(root = document) {
+    const rows = new Map;
+    for (const link of root.querySelectorAll('a[href^="/chat/"][data-row-main-button]')) {
+      const id = /^\/chat\/([0-9a-f-]{36})/i.exec(link.getAttribute("href") ?? "")?.[1]?.toLowerCase();
+      if (!id)
+        continue;
+      const attention = link.querySelector("[data-attention]")?.getAttribute("data-attention") ?? "";
+      const state = attention === "working" ? "working" : /error|fail/i.test(attention) ? "error" : "idle";
+      const label = link.querySelector("[data-row-label]");
+      const shimmer = label?.querySelector('[data-cds="ShimmerText"]');
+      const title = ((shimmer?.firstChild?.textContent ?? label?.textContent) || "").trim();
+      const prev = rows.get(id);
+      if (!prev || state === "working")
+        rows.set(id, { state, title: title || prev?.title || "" });
+    }
+    return rows;
+  }
+  function finished(working, rows, now) {
+    const done = [];
+    for (const [chatId, row] of rows) {
+      const was = working.get(chatId);
+      if (row.state === "working") {
+        if (!was)
+          working.set(chatId, { since: now, title: row.title });
+        continue;
+      }
+      if (!was)
+        continue;
+      working.delete(chatId);
+      done.push({ chatId, title: row.title || was.title, durationMs: now - was.since, error: row.state === "error" });
+    }
+    return done;
+  }
   var replyNotification_default = definePlugin({
     name: "ReplyNotification",
     title: { zh: "回复完成提醒", en: "Reply notification" },
@@ -6409,7 +6503,7 @@ ${t(L16.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
     category: "notifications",
     icon: "bell",
     enabledByDefault: true,
-    dependencies: ["ChatStateApi", "NoticesApi", "RouterApi"],
+    dependencies: ["ChatStateApi", "NoticesApi", "RouterApi", "ClaudeApi"],
     settings: settings10,
     start(scope) {
       scope.on("reply:end", (event) => {
@@ -6417,8 +6511,29 @@ ${t(L16.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
           return;
         if (settings10.store.when === "hidden" && !document.hidden && document.hasFocus())
           return;
-        notify2(event);
+        if (!claim(event.chatId))
+          return;
+        previewOf(event.chatId).then((preview) => scope.alive && notify2({ ...event, preview }));
       });
+      const working = new Map;
+      scope.interval(() => {
+        const rows = readRows();
+        for (const done of finished(working, rows, Date.now())) {
+          if (!settings10.store.others || done.chatId === currentRoute().chatId)
+            continue;
+          if (!claim(done.chatId))
+            continue;
+          previewOf(done.chatId).then((preview) => scope.alive && notify2({ ...done, at: Date.now(), other: true, preview }));
+        }
+      }, 1000);
+      onRoute(scope, (route) => {
+        const close = route.chatId ? openToasts.get(route.chatId) : undefined;
+        if (close) {
+          close();
+          openToasts.delete(route.chatId);
+        }
+      });
+      scope.defer(() => openToasts.clear());
       if (settings10.store.desktop && "Notification" in window && Notification.permission === "default") {
         scope.listen(document, "pointerdown", () => void Notification.requestPermission(), { once: true });
       }
@@ -8086,7 +8201,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.92",
+      version: "0.3.93",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -8103,7 +8218,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.92";
+    win[FLAG] = "0.3.93";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -8120,7 +8235,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.92"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.93"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();

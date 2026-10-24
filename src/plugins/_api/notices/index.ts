@@ -25,7 +25,7 @@ const CSS = `
 .toast.click { cursor: pointer; }
 .toast .dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 6px; flex: none; background: var(--accent); }
 .toast.ok .dot { background: var(--ok); } .toast.warn .dot { background: var(--warn); } .toast.error .dot { background: var(--bad); }
-.toast .body { flex: 1; min-width: 0; } .toast .title { font-weight: 600; } .toast .text { color: var(--fg2); word-break: break-word; }
+.toast .body { flex: 1; min-width: 0; } .toast .title { font-weight: 600; } .toast .text { color: var(--fg2); word-break: break-word; white-space: pre-line; }
 @keyframes in { from { opacity: 0; transform: translateY(-6px); } }
 `;
 

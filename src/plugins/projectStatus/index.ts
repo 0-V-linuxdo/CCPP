@@ -20,6 +20,12 @@ const logger = new Logger("ProjectStatus");
 const settings = definePluginSettings({
     showCode: { type: "boolean", label: { zh: "也算上项目自身的 Code 会话", en: "Include the project's own Code session" }, description: { zh: "关闭后只看线程。", en: "Off counts threads only." }, default: true },
     showWaiting: { type: "boolean", label: { zh: "也标出「等你回复」的项目", en: "Also mark projects waiting on you" }, description: { zh: "有线程在等你时显示黄色圆点。", en: "A yellow dot when a thread is waiting for you." }, default: true },
+    hideNative: {
+        type: "boolean",
+        label: { zh: "隐藏原生行尾圆点", en: "Hide claude.ai's row-end dot" },
+        description: { zh: "当前打开的项目也只用图标角上的圆点，和其它项目一致。", en: "The open project then shows only the icon-corner dot, like the others." },
+        default: true,
+    },
     refreshSec: { type: "number", label: { zh: "刷新间隔", en: "Refresh every" }, default: 30, min: 10, max: 300, step: 5, unit: "s" },
 });
 
@@ -72,17 +78,18 @@ export default definePlugin({
     name: "ProjectStatus",
     title: { zh: "项目运行状态", en: "Project status dots" },
     description: {
-        zh: "claude.ai 侧栏只给当前打开的项目显示运行圆点；本插件在其他项目图标的右上角画一个状态圆点：有线程或 Code 会话在跑就呼吸（橙色），有线程等你回复是黄色。",
-        en: "claude.ai only shows a running dot on the open project; this puts a status dot on the other projects' icon corners: breathing orange while anything runs, yellow when a thread waits for you.",
+        zh: "在每个项目图标的右上角画状态圆点（含当前打开的项目）：有线程或 Code 会话在跑就呼吸（橙色），有线程等你回复是黄色；可隐藏 claude.ai 自己的行尾圆点。",
+        en: "A status dot on every project's icon corner, the open one included: breathing orange while anything runs, yellow when a thread waits for you. claude.ai's own row-end dot can be hidden.",
     },
     category: "notifications",
     icon: "sparkles",
     enabledByDefault: true,
-    updatedAt: "2026-10-14",
+    updatedAt: "2026-10-24",
     dependencies: ["ClaudeApi", "DomApi", "StylesApi", "RouterApi"],
     settings,
     start(scope) {
         addStyle(scope, CSS, "project-status");
+        if (settings.store.hideNative) addStyle(scope, `${PROJECT_ROW} ${ROW} > [data-row-decoration]:has(> [role="status"]) { display: none !important; }`, "project-status-native");
         const activity = new Map<string, ProjectActivity>();
         // One project can be listed twice (the hidden Chat sidebar list and the visible Code one), so each id
         // keeps every group it appears in.
@@ -101,9 +108,8 @@ export default definePlugin({
             // The status goes on the icon corner, where native session icons put theirs; never next to a native one.
             const holder = row.querySelector<HTMLElement>(ICON_HOLDER);
             const nativeCorner = holder?.querySelector(".status-dot:not([data-ccpp-corner] *), [aria-hidden] > .status-dot:not([data-ccpp-corner] *)");
-            // The open project already gets claude.ai's own dot at the end of its row; add nothing there.
-            const open = location.pathname.startsWith(`/code/project/${id}`);
-            const corner = holder && !nativeCorner && !open ? projectKind(info, settings.store.showWaiting, settings.store.showCode) : null;
+            // The open project gets claude.ai's own dot at the row end too; ours goes on its icon like every other row.
+            const corner = holder && !nativeCorner ? projectKind(info, settings.store.showWaiting, settings.store.showCode) : null;
             place(row, "[data-ccpp-corner]", corner, "data-ccpp-corner", () => holder);
         };
 
