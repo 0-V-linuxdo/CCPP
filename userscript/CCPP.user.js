@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.97
+// @version      20261013.0.3.98
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -2775,7 +2775,7 @@ ${IMAGE_FIELD_CSS}`;
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.97";
+  var version = "0.3.98";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -7091,7 +7091,9 @@ Write it down while the idea is fresh` })
   var greetingNodes = (el) => textNodes(el).filter((node) => !node.parentElement?.closest(`svg, [data-new-page-greeting-spark]`));
   var greetingText = (el) => greetingNodes(el).map((node) => node.data).join("");
   var displayName = () => document.querySelector(`${SEL.userMenuButton} [data-cds="Avatar"]`)?.getAttribute("aria-label")?.trim() || document.querySelector(`${SEL.userMenuName} span`)?.textContent?.trim() || "";
-  var ORIG_PLACEHOLDER = "data-ccpp-orig-placeholder";
+  var cssString = (text) => `"${text.replaceAll("\\", "\\\\").replaceAll('"', "\\\"").replaceAll(`
+`, "\\A ")}"`;
+  var placeholderCss = (text) => text ? `${SEL.editor} p.is-editor-empty[data-placeholder]::before { content: ${cssString(text)} !important; }` : "";
   var CLICKABLE = "data-ccpp-greeting-click";
   var customGreeting_default = definePlugin({
     name: "CustomGreeting",
@@ -7107,7 +7109,8 @@ Write it down while the idea is fresh` })
       const phrases = () => settings14.store.phrases.split(`
 `).map((s) => s.trim()).filter(Boolean);
       const swaps = new TextSwaps;
-      addStyle(scope, `[${CLICKABLE}] { cursor: pointer; user-select: none; }`, "custom-greeting");
+      addStyle(scope, `[${CLICKABLE}] { cursor: pointer; }`, "custom-greeting");
+      const setPlaceholderCss = addStyle(scope, "", "custom-greeting-placeholder");
       let template = "";
       let shown = false;
       const fill = (text) => fillPhrase(text, displayName(), new Date().getHours(), /[一-龥]/.test(text));
@@ -7147,20 +7150,13 @@ Write it down while the idea is fresh` })
           return "";
         return settings14.store.placeholder.trim() || fill(phrases()[0] ?? "");
       };
-      let lastPlaceholder = "";
+      let lastCss = "";
       const paintPlaceholders = () => {
-        const text = placeholderText();
-        for (const p of document.querySelectorAll(`${SEL.editor} p[data-placeholder], [${ORIG_PLACEHOLDER}]`)) {
-          const current = p.dataset.placeholder ?? "";
-          if (current !== lastPlaceholder || !p.hasAttribute(ORIG_PLACEHOLDER))
-            p.setAttribute(ORIG_PLACEHOLDER, current);
-          const want = text || p.getAttribute(ORIG_PLACEHOLDER);
-          if (current !== want)
-            p.dataset.placeholder = want;
-          if (!text)
-            p.removeAttribute(ORIG_PLACEHOLDER);
-        }
-        lastPlaceholder = text;
+        const css = placeholderCss(placeholderText());
+        if (css === lastCss)
+          return;
+        lastCss = css;
+        setPlaceholderCss(css);
       };
       const paint = () => {
         paintGreeting();
@@ -7172,7 +7168,7 @@ Write it down while the idea is fresh` })
         if (scope.alive)
           paint();
       }, 60));
-      observer.observe(document.documentElement, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["data-placeholder", "aria-label"] });
+      observer.observe(document.documentElement, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["aria-label"] });
       scope.defer(() => {
         observer.disconnect();
         if (timer)
@@ -7180,16 +7176,17 @@ Write it down while the idea is fresh` })
         swaps.restore();
         for (const el of document.querySelectorAll(`[${CLICKABLE}]`))
           el.removeAttribute(CLICKABLE);
-        for (const p of document.querySelectorAll(`[${ORIG_PLACEHOLDER}]`)) {
-          if (p.dataset.placeholder === lastPlaceholder)
-            p.dataset.placeholder = p.getAttribute(ORIG_PLACEHOLDER);
-          p.removeAttribute(ORIG_PLACEHOLDER);
-        }
       });
       scope.listen(document, "click", (event) => {
+        const target = event.target instanceof Element ? event.target : null;
+        const home = target?.closest("a[href]");
+        if (home && ["/", "/new"].includes(home.getAttribute("href")) && ["/", "/new"].includes(location.pathname)) {
+          shown = false;
+          setTimeout(() => scope.alive && paint(), 120);
+          return;
+        }
         if (settings14.store.rotate !== "click" || phrases().length < 2)
           return;
-        const target = event.target instanceof Element ? event.target : null;
         if (!target || !findGreetings().some((el) => el.contains(target)))
           return;
         if (String(window.getSelection?.() ?? "").trim())
@@ -7206,6 +7203,7 @@ Write it down while the idea is fresh` })
         }, settings14.store.intervalSec * 1000);
       onRoute(scope, () => {
         shown = false;
+        paintPlaceholders();
       }, false);
       paint();
     }
@@ -8318,7 +8316,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.97",
+      version: "0.3.98",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -8335,7 +8333,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.97";
+    win[FLAG] = "0.3.98";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -8352,7 +8350,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.97"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.98"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();

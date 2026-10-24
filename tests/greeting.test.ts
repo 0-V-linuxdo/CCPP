@@ -9,7 +9,7 @@ const tick = () => new Promise(resolve => setTimeout(resolve, 150));
 const $ = (sel: string) => document.querySelector<HTMLElement>(sel)!;
 
 const SPARK = '<svg data-cds="Spark" viewBox="0 0 100 100"><path d="m0 0"/></svg>';
-const PROMPT = '<div data-cds="ChatComposer"><div data-testid="chat-input"><p data-placeholder="Type / for skills"></p></div></div>';
+const PROMPT = '<div data-cds="ChatComposer"><div data-testid="chat-input"><p data-placeholder="Type / for skills" class="is-empty is-editor-empty"></p></div></div>';
 
 /** The new-chat home as claude.ai marks it. */
 const markedHome = () => `<main><div><div data-new-page-greeting-spark="">${SPARK}</div><span data-new-page-greeting-text="">Good evening, GG</span></div>${PROMPT}</main>`;
@@ -83,28 +83,46 @@ describe("CustomGreeting", () => {
         expect($(".hero").textContent).toBe("Good evening,");
     });
 
-    test("the placeholder changes only in projects unless asked, and comes back", async () => {
+    test("the placeholder changes from CSS, only in projects unless asked, and comes back", async () => {
         document.body.innerHTML = markedHome();
+        const css = () => document.querySelector('[data-ccpp-style="custom-greeting-placeholder"]')?.textContent ?? "";
         setRaw("CustomGreeting", "phrases", "First line\nSecond line");
         setRaw("CustomGreeting", "input", "project");
         setEnabled(getPlugin("CustomGreeting")!, true);
         await tick();
-        expect($("p[data-placeholder]").dataset.placeholder).toBe("Type / for skills");
+        expect(css()).toBe("");
 
         setRaw("CustomGreeting", "input", "all");
         await tick();
-        expect($("p[data-placeholder]").dataset.placeholder).toBe("First line");
+        expect(css()).toContain('p.is-editor-empty[data-placeholder]::before { content: "First line" !important; }');
+        // The editor's own attribute is left alone: it rebuilds the paragraph all the time.
+        expect($("p[data-placeholder]").dataset.placeholder).toBe("Type / for skills");
 
-        setRaw("CustomGreeting", "placeholder", "Go on…");
+        setRaw("CustomGreeting", "placeholder", 'Say "hi"');
         await tick();
-        expect($("p[data-placeholder]").dataset.placeholder).toBe("Go on…");
+        expect(css()).toContain('content: "Say \\"hi\\"" !important;');
 
         setEnabled(getPlugin("CustomGreeting")!, false);
         await tick();
-        expect($("p[data-placeholder]").dataset.placeholder).toBe("Type / for skills");
-        expect(document.querySelector("[data-ccpp-orig-placeholder]")).toBeNull();
+        expect(document.querySelector('[data-ccpp-style="custom-greeting-placeholder"]')).toBeNull();
         setRaw("CustomGreeting", "placeholder", "");
         setRaw("CustomGreeting", "input", "project");
+    });
+
+    test("New chat on the home page is a new visit", async () => {
+        document.body.innerHTML = `<a href="/new" id="new-chat">New</a>${markedHome()}`;
+        setRaw("CustomGreeting", "phrases", "One\nTwo");
+        setRaw("CustomGreeting", "order", "sequential");
+        setEnabled(getPlugin("CustomGreeting")!, true);
+        await tick();
+        const before = $("[data-new-page-greeting-text]").textContent;
+        $("#new-chat").addEventListener("click", e => e.preventDefault(), { once: true });
+        $("#new-chat").click();
+        await tick();
+        expect($("[data-new-page-greeting-text]").textContent).not.toBe(before);
+        setEnabled(getPlugin("CustomGreeting")!, false);
+        await tick();
+        setRaw("CustomGreeting", "order", "random");
     });
 
     test("click mode rotates on a click on the greeting", async () => {

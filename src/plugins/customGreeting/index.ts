@@ -106,7 +106,14 @@ const greetingText = (el: Element) => greetingNodes(el).map(node => node.data).j
 
 const displayName = () => document.querySelector(`${SEL.userMenuButton} [data-cds="Avatar"]`)?.getAttribute("aria-label")?.trim() || document.querySelector(`${SEL.userMenuName} span`)?.textContent?.trim() || "";
 
-const ORIG_PLACEHOLDER = "data-ccpp-orig-placeholder";
+/** A CSS string literal (for `content:`). */
+export const cssString = (text: string) => `"${text.replaceAll("\\", "\\\\").replaceAll('"', '\\"').replaceAll("\n", "\\A ")}"`;
+
+/**
+ * The editor rebuilds its empty paragraph (and its data-placeholder) all the time, so the
+ * placeholder is replaced from CSS: the ::before that shows it gets our text instead.
+ */
+export const placeholderCss = (text: string) => (text ? `${SEL.editor} p.is-editor-empty[data-placeholder]::before { content: ${cssString(text)} !important; }` : "");
 const CLICKABLE = "data-ccpp-greeting-click";
 
 export default definePlugin({
@@ -122,7 +129,8 @@ export default definePlugin({
     start(scope) {
         const phrases = () => settings.store.phrases.split("\n").map(s => s.trim()).filter(Boolean);
         const swaps = new TextSwaps();
-        addStyle(scope, `[${CLICKABLE}] { cursor: pointer; user-select: none; }`, "custom-greeting");
+        addStyle(scope, `[${CLICKABLE}] { cursor: pointer; }`, "custom-greeting");
+        const setPlaceholderCss = addStyle(scope, "", "custom-greeting-placeholder");
         let template = "";
         let shown = false;
         const fill = (text: string) => fillPhrase(text, displayName(), new Date().getHours(), /[一-龥]/.test(text));
@@ -158,18 +166,12 @@ export default definePlugin({
             if (mode === "off" || (mode === "project" && !isProjectPage(location.pathname))) return "";
             return settings.store.placeholder.trim() || fill(phrases()[0] ?? "");
         };
-        let lastPlaceholder = "";
+        let lastCss = "";
         const paintPlaceholders = () => {
-            const text = placeholderText();
-            for (const p of document.querySelectorAll<HTMLElement>(`${SEL.editor} p[data-placeholder], [${ORIG_PLACEHOLDER}]`)) {
-                const current = p.dataset.placeholder ?? "";
-                // claude.ai wrote a new placeholder since our last change: that's the original now.
-                if (current !== lastPlaceholder || !p.hasAttribute(ORIG_PLACEHOLDER)) p.setAttribute(ORIG_PLACEHOLDER, current);
-                const want = text || p.getAttribute(ORIG_PLACEHOLDER)!;
-                if (current !== want) p.dataset.placeholder = want;
-                if (!text) p.removeAttribute(ORIG_PLACEHOLDER);
-            }
-            lastPlaceholder = text;
+            const css = placeholderCss(placeholderText());
+            if (css === lastCss) return;
+            lastCss = css;
+            setPlaceholderCss(css);
         };
 
         const paint = () => {
@@ -183,21 +185,24 @@ export default definePlugin({
             timer = null;
             if (scope.alive) paint();
         }, 60)));
-        observer.observe(document.documentElement, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["data-placeholder", "aria-label"] });
+        observer.observe(document.documentElement, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["aria-label"] });
         scope.defer(() => {
             observer.disconnect();
             if (timer) clearTimeout(timer);
             swaps.restore();
             for (const el of document.querySelectorAll(`[${CLICKABLE}]`)) el.removeAttribute(CLICKABLE);
-            for (const p of document.querySelectorAll<HTMLElement>(`[${ORIG_PLACEHOLDER}]`)) {
-                if (p.dataset.placeholder === lastPlaceholder) p.dataset.placeholder = p.getAttribute(ORIG_PLACEHOLDER)!;
-                p.removeAttribute(ORIG_PLACEHOLDER);
-            }
         });
 
         scope.listen(document, "click", event => {
-            if (settings.store.rotate !== "click" || phrases().length < 2) return;
             const target = event.target instanceof Element ? event.target : null;
+            // New chat while already on the home page: same URL, same greeting element, still a new visit.
+            const home: Element | null | undefined = target?.closest("a[href]");
+            if (home && ["/", "/new"].includes(home.getAttribute("href")!) && ["/", "/new"].includes(location.pathname)) {
+                shown = false;
+                setTimeout(() => scope.alive && paint(), 120);
+                return;
+            }
+            if (settings.store.rotate !== "click" || phrases().length < 2) return;
             if (!target || !findGreetings().some(el => el.contains(target))) return;
             // Selecting the greeting's text is not a request for a new one.
             if (String(window.getSelection?.() ?? "").trim()) return;
@@ -213,6 +218,7 @@ export default definePlugin({
         // The route changes before React swaps the page; the observer repaints once it has.
         onRoute(scope, () => {
             shown = false;
+            paintPlaceholders();
         }, false);
         paint();
     },
