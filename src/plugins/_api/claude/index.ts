@@ -241,17 +241,28 @@ function normalizeBucket(value: unknown): string {
     return value.replace(/^SESSION_STATUS_BUCKET_/, "").toLowerCase();
 }
 
+/**
+ * The sessions bound to a project's threads, from its timeline. A resolved thread is left out: the project page
+ * files it under Resolved whatever its session's bucket says, so it is never running or waiting on you.
+ */
+function threadSessions(raw: unknown): any[] {
+    const data = raw && typeof raw === "object" && Array.isArray((raw as { data?: unknown }).data) ? (raw as { data: any[] }).data : [];
+    const sessions: any[] = [];
+    for (const message of data) {
+        if (message?.thread_status === "resolved") continue;
+        if (Array.isArray(message?.bound_sessions)) sessions.push(...message.bound_sessions);
+    }
+    return sessions;
+}
+
 /** Counts a project's thread sessions by state, from the same timeline the project page reads. */
 export function parseActivity(channelId: string, raw: unknown): ProjectActivity {
-    const data = raw && typeof raw === "object" && Array.isArray((raw as { data?: unknown }).data) ? (raw as { data: any[] }).data : [];
     const activity: ProjectActivity = { channelId, working: 0, blocked: 0 };
-    for (const message of data) {
-        for (const session of Array.isArray(message?.bound_sessions) ? message.bound_sessions : []) {
-            if (session?.status === "archived") continue;
-            const bucket = normalizeBucket(session?.status_bucket);
-            if (bucket === "working") activity.working++;
-            else if (bucket === "blocked") activity.blocked++;
-        }
+    for (const session of threadSessions(raw)) {
+        if (session?.status === "archived") continue;
+        const bucket = normalizeBucket(session?.status_bucket);
+        if (bucket === "working") activity.working++;
+        else if (bucket === "blocked") activity.blocked++;
     }
     return activity;
 }
@@ -316,14 +327,11 @@ export function parseCodePhase(raw: unknown): CodePhase {
     return phaseOf(root.response_shape && typeof root.response_shape === "object" ? root.response_shape : root);
 }
 
-/** Every thread session of a project, by id, from the project timeline. */
+/** Every thread session of a project, by id, from the project timeline; resolved threads left out. */
 export function threadPhasesFrom(raw: unknown): Map<string, CodePhase> {
     const phases = new Map<string, CodePhase>();
-    const data = raw && typeof raw === "object" && Array.isArray((raw as { data?: unknown }).data) ? (raw as { data: any[] }).data : [];
-    for (const message of data) {
-        for (const session of Array.isArray(message?.bound_sessions) ? message.bound_sessions : []) {
-            if (typeof session?.id === "string" && SESSION_RE.test(session.id)) phases.set(session.id, phaseOf(session));
-        }
+    for (const session of threadSessions(raw)) {
+        if (typeof session?.id === "string" && SESSION_RE.test(session.id)) phases.set(session.id, phaseOf(session));
     }
     return phases;
 }

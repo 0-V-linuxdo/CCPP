@@ -54,6 +54,9 @@ describe("claude.ai API parsing", () => {
     test("project activity counts working and blocked threads", () => {
         const raw = { data: [{ bound_sessions: [{ status: "active", status_bucket: "working" }] }, { bound_sessions: [{ status: "active", status_bucket: "blocked" }, { status: "archived", status_bucket: "working" }] }, {}] };
         expect(parseActivity("chan_x", raw)).toEqual({ channelId: "chan_x", working: 1, blocked: 1 });
+        // A resolved thread is filed under Resolved, even while its session's bucket still says blocked.
+        const resolved = { data: [{ thread_status: "resolved", bound_sessions: [{ status: "active", status_bucket: "blocked" }] }, { thread_status: "idle", bound_sessions: [{ status: "active", status_bucket: "completed" }] }] };
+        expect(parseActivity("chan_x", resolved)).toEqual({ channelId: "chan_x", working: 0, blocked: 0 });
         expect(dotKind({ channelId: "c", working: 0, blocked: 2 }, true)).toBe("awaiting");
         expect(dotKind({ channelId: "c", working: 0, blocked: 2 }, false)).toBeNull();
         expect(dotKind({ channelId: "c", working: 1, blocked: 0 }, true)).toBe("clay");
@@ -191,6 +194,8 @@ describe("chat favicon", () => {
             { id: "cmsg_C" },
         ] };
         expect([...threadPhasesFrom(timeline)]).toEqual([["cse_1", "idle"], ["cse_2", "working"], ["cse_3", "blocked"], ["cse_4", "idle"]]);
+        const withResolved = { data: [...timeline.data, { id: "cmsg_D", thread_status: "resolved", bound_sessions: [{ id: "cse_5", status: "active", status_bucket: "blocked" }] }] };
+        expect(threadPhasesFrom(withResolved).has("cse_5")).toBe(false);
     });
     test("five styles, emoji mode keeps the official icon when idle", () => {
         expect(faviconFor("hole", "idle", "https://claude.ai/favicon.ico")).toBe("https://claude.ai/favicon.ico");

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.99
+// @version      20261013.0.3.100
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -857,19 +857,27 @@
       return "";
     return value.replace(/^SESSION_STATUS_BUCKET_/, "").toLowerCase();
   }
-  function parseActivity(channelId, raw) {
+  function threadSessions(raw) {
     const data = raw && typeof raw === "object" && Array.isArray(raw.data) ? raw.data : [];
-    const activity = { channelId, working: 0, blocked: 0 };
+    const sessions = [];
     for (const message of data) {
-      for (const session of Array.isArray(message?.bound_sessions) ? message.bound_sessions : []) {
-        if (session?.status === "archived")
-          continue;
-        const bucket = normalizeBucket(session?.status_bucket);
-        if (bucket === "working")
-          activity.working++;
-        else if (bucket === "blocked")
-          activity.blocked++;
-      }
+      if (message?.thread_status === "resolved")
+        continue;
+      if (Array.isArray(message?.bound_sessions))
+        sessions.push(...message.bound_sessions);
+    }
+    return sessions;
+  }
+  function parseActivity(channelId, raw) {
+    const activity = { channelId, working: 0, blocked: 0 };
+    for (const session of threadSessions(raw)) {
+      if (session?.status === "archived")
+        continue;
+      const bucket = normalizeBucket(session?.status_bucket);
+      if (bucket === "working")
+        activity.working++;
+      else if (bucket === "blocked")
+        activity.blocked++;
     }
     return activity;
   }
@@ -930,12 +938,9 @@
   }
   function threadPhasesFrom(raw) {
     const phases = new Map;
-    const data = raw && typeof raw === "object" && Array.isArray(raw.data) ? raw.data : [];
-    for (const message of data) {
-      for (const session of Array.isArray(message?.bound_sessions) ? message.bound_sessions : []) {
-        if (typeof session?.id === "string" && SESSION_RE.test(session.id))
-          phases.set(session.id, phaseOf(session));
-      }
+    for (const session of threadSessions(raw)) {
+      if (typeof session?.id === "string" && SESSION_RE.test(session.id))
+        phases.set(session.id, phaseOf(session));
     }
     return phases;
   }
@@ -2776,7 +2781,7 @@ ${IMAGE_FIELD_CSS}`;
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.99";
+  var version = "0.3.100";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -8329,7 +8334,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.99",
+      version: "0.3.100",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -8346,7 +8351,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.99";
+    win[FLAG] = "0.3.100";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -8363,7 +8368,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.99"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.100"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();
