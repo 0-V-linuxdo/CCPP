@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.100
+// @version      20261013.0.3.101
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -1271,6 +1271,38 @@
     });
     fn();
   }
+  var MAX_BAR = 160;
+  function barOf(el, y) {
+    if (el.closest(`${SEL.transcriptRow}, ${SEL.transcript}, ${SEL.composer}`))
+      return null;
+    for (let node = el;node && node !== document.body; node = node.parentElement) {
+      const r = node.getBoundingClientRect();
+      if (r.height > MAX_BAR)
+        return null;
+      if (r.top <= y && r.bottom > y && /^(fixed|sticky|absolute)$/.test(getComputedStyle(node).position))
+        return r;
+    }
+    return null;
+  }
+  function topBarBottom(x, from) {
+    let bottom = from;
+    for (let step = 0;step < 4; step++) {
+      const y = bottom + 2;
+      const hit = document.elementsFromPoint(x, y).find((el) => !el.closest("[data-ccpp]"));
+      const bar = hit && barOf(hit, y);
+      if (!bar || bar.bottom <= bottom)
+        break;
+      bottom = bar.bottom;
+    }
+    for (const el of document.querySelectorAll(`${SEL.chatHeader}, [data-cds="Toolbar"]`)) {
+      if (el.closest(`${SEL.transcriptRow}, [data-ccpp]`))
+        continue;
+      const r = el.getBoundingClientRect();
+      if (r.width && r.left <= x && r.right >= x && r.top <= from + 8 && r.bottom > from && r.height <= MAX_BAR)
+        bottom = Math.max(bottom, r.bottom);
+    }
+    return Math.min(bottom, from + MAX_BAR);
+  }
   var dom_default = definePlugin({
     name: "DomApi",
     title: { zh: "DOM 观察", en: "DOM API" },
@@ -1839,6 +1871,7 @@ select.input { padding-right: 6px; }
       el.addEventListener("click", () => (options.onClick(), close()));
     if (options.key)
       byKey.set(options.key, el);
+    stack.style.top = `${Math.max(64, topBarBottom(window.innerWidth - 40, 0) + 8)}px`;
     stack.appendChild(el);
     const timeout = options.timeoutMs ?? 5000;
     if (timeout > 0)
@@ -2781,7 +2814,7 @@ ${IMAGE_FIELD_CSS}`;
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.100";
+  var version = "0.3.101";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -5117,9 +5150,11 @@ ${x.css}`)].join(`
           }
           rail.style.display = "";
           const rect = scroller.getBoundingClientRect();
-          const height = Math.max(120, rect.height - 48);
-          rail.style.right = `${Math.max(0, window.innerWidth - paneRight(scroller))}px`;
-          rail.style.top = `${rect.top + rect.height / 2 - height / 2}px`;
+          const right = paneRight(scroller);
+          const top = Math.max(rect.top + 24, topBarBottom(right - 10, rect.top) + 8);
+          const height = Math.max(120, rect.bottom - 24 - top);
+          rail.style.right = `${Math.max(0, window.innerWidth - right)}px`;
+          rail.style.top = `${top}px`;
           rail.style.height = `${height}px`;
           rail.style.setProperty("--menu-h", `${Math.min(window.innerHeight * 0.7, height)}px`);
           rail.classList.toggle("dense", shown().length * 12 > height);
@@ -8334,7 +8369,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.100",
+      version: "0.3.101",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -8351,7 +8386,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.100";
+    win[FLAG] = "0.3.101";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -8368,7 +8403,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.100"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.101"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();

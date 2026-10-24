@@ -8,7 +8,9 @@ import { definePlugin } from "@kernel/plugins";
 import type { Scope } from "@kernel/scope";
 import { Logger } from "@kernel/logger";
 
-export { SEL } from "./selectors";
+import { SEL } from "./selectors";
+
+export { SEL };
 
 const logger = new Logger("DomApi");
 
@@ -116,6 +118,42 @@ export function waitFor<T extends Element = HTMLElement>(selector: string, timeo
             resolve(null);
         }, timeoutMs);
     });
+}
+
+/** Tallest bar claude.ai lays over the top of a pane (its header, a toolbar); anything taller is the pane itself. */
+const MAX_BAR = 160;
+
+/** The bar `el` belongs to, when it is a positioned strip over the page rather than page content. */
+function barOf(el: Element, y: number): DOMRect | null {
+    if (el.closest(`${SEL.transcriptRow}, ${SEL.transcript}, ${SEL.composer}`)) return null;
+    for (let node: Element | null = el; node && node !== document.body; node = node.parentElement) {
+        const r = node.getBoundingClientRect();
+        if (r.height > MAX_BAR) return null;
+        if (r.top <= y && r.bottom > y && /^(fixed|sticky|absolute)$/.test(getComputedStyle(node).position)) return r;
+    }
+    return null;
+}
+
+/**
+ * Where the top bars over a pane end, at column `x` of a pane whose content starts at `from`: claude.ai's
+ * chat and Claude Code headers float over the top of the transcript, so overlays should start below them.
+ * Returns `from` when nothing covers it.
+ */
+export function topBarBottom(x: number, from: number): number {
+    let bottom = from;
+    for (let step = 0; step < 4; step++) {
+        const y = bottom + 2;
+        const hit = document.elementsFromPoint(x, y).find(el => !el.closest("[data-ccpp]"));
+        const bar = hit && barOf(hit, y);
+        if (!bar || bar.bottom <= bottom) break;
+        bottom = bar.bottom;
+    }
+    for (const el of document.querySelectorAll(`${SEL.chatHeader}, [data-cds="Toolbar"]`)) {
+        if (el.closest(`${SEL.transcriptRow}, [data-ccpp]`)) continue;
+        const r = el.getBoundingClientRect();
+        if (r.width && r.left <= x && r.right >= x && r.top <= from + 8 && r.bottom > from && r.height <= MAX_BAR) bottom = Math.max(bottom, r.bottom);
+    }
+    return Math.min(bottom, from + MAX_BAR);
 }
 
 export default definePlugin({

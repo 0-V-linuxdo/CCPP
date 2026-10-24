@@ -14,6 +14,7 @@ import { snippet } from "@lib/format";
 import { createHost } from "@lib/ui";
 import { chatPhase } from "@api/chatState";
 import { type ChannelMessage, getChannelMessages } from "@api/claude";
+import { topBarBottom } from "@api/dom";
 import { currentRoute, onRoute } from "@api/router";
 import { currentIndex, getMarks, getRows, getScroller, getScrollers, jumpTo, loadConversation, onMarksChange, rowText, totalMessages } from "@api/transcript";
 
@@ -344,10 +345,13 @@ export default definePlugin({
                 }
                 rail.style.display = "";
                 const rect = scroller.getBoundingClientRect();
-                const height = Math.max(120, rect.height - 48);
+                const right = paneRight(scroller);
+                // Start below the header claude.ai floats over the top of the transcript, so the ticks never cover it.
+                const top = Math.max(rect.top + 24, topBarBottom(right - 10, rect.top) + 8);
+                const height = Math.max(120, rect.bottom - 24 - top);
                 // Flush with the right edge of the pane the transcript lives in, leaving only its scrollbar.
-                rail.style.right = `${Math.max(0, window.innerWidth - paneRight(scroller))}px`;
-                rail.style.top = `${rect.top + rect.height / 2 - height / 2}px`;
+                rail.style.right = `${Math.max(0, window.innerWidth - right)}px`;
+                rail.style.top = `${top}px`;
                 rail.style.height = `${height}px`;
                 rail.style.setProperty("--menu-h", `${Math.min(window.innerHeight * 0.7, height)}px`);
                 rail.classList.toggle("dense", shown().length * 12 > height);

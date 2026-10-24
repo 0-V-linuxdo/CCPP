@@ -5,6 +5,7 @@
  */
 
 import { definePlugin } from "@kernel/plugins";
+import { topBarBottom } from "@api/dom";
 import { h } from "@lib/dom";
 import { icon } from "@lib/icons";
 import { createHost, type Host } from "@lib/ui";
@@ -50,6 +51,8 @@ export function toast(text: string, options: ToastOptions = {}) {
     );
     if (options.onClick) el.addEventListener("click", () => (options.onClick!(), close()));
     if (options.key) byKey.set(options.key, el);
+    // Below the page header, whatever its height on this page.
+    stack.style.top = `${Math.max(64, topBarBottom(window.innerWidth - 40, 0) + 8)}px`;
     stack.appendChild(el);
     const timeout = options.timeoutMs ?? 5000;
     if (timeout > 0) setTimeout(close, timeout);
