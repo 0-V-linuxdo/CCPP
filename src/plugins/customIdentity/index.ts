@@ -26,6 +26,15 @@ const settings = definePluginSettings({
         default: "",
         size: 256,
     },
+    avatarSize: {
+        type: "number",
+        label: { zh: "侧栏头像大小", en: "Sidebar avatar size" },
+        description: { zh: "侧栏展开时头像按钮里的头像直径，官方是 20px。收起成窄栏时保持官方大小。", en: "Diameter of the avatar on the sidebar's account button while the sidebar is expanded. claude.ai's own is 20px. A collapsed rail keeps the official size." },
+        default: 24,
+        min: 16,
+        max: 48,
+        unit: "px",
+    },
     greeting: {
         type: "boolean",
         label: { zh: "首页问候语也用这个名字", en: "Use the name in the home greeting too" },
@@ -61,6 +70,17 @@ export function avatarCss(url: string, menu: boolean) {
 ${targets.map(t => `${t} > *`).join(",\n")} { opacity: 0 !important; }`;
 }
 
+/** Marks the account button while its avatar is resized (not on a collapsed rail, where the name is hidden). */
+const SIZED = "data-ccpp-avatar-size";
+
+export function sizeCss(px: number) {
+    const button = `${SEL.userMenuButton}[${SIZED}]`;
+    const size = `${px}px`;
+    return `${button} { height: auto !important; min-height: max(28px, var(--df-footer-btn-size, 32px), calc(${size} + 8px)) !important; }
+${button} ${SEL.avatar} { width: ${size} !important; height: ${size} !important; min-width: ${size} !important; min-height: ${size} !important; font-size: calc(${size} * .45) !important; }
+${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${size}) !important; flex-shrink: 0 !important; }`;
+}
+
 /** Replaces `real` with `name` in a text node: the whole text when `whole`, else every occurrence. */
 export function swapName(text: string, real: string, name: string, whole: boolean) {
     if (!real || !name || real === name) return text;
@@ -83,6 +103,7 @@ export default definePlugin({
         const swaps = new TextSwaps();
         const setCss = addStyle(scope, "", "custom-identity");
         let lastUrl: string | null = null;
+        const setSizeCss = addStyle(scope, sizeCss(settings.store.avatarSize), "custom-identity-size");
 
         const paint = () => {
             const { displayName, avatar, applyToMenu, greeting } = settings.store;
@@ -94,6 +115,12 @@ export default definePlugin({
             }
             const real = realName();
             swaps.prune();
+            for (const button of document.querySelectorAll<HTMLElement>(SEL.userMenuButton)) {
+                // The name beside the avatar is gone when the sidebar is collapsed to a rail.
+                const name = button.querySelector<HTMLElement>(".df-user-menu-trailing");
+                const expanded = !!name && name.offsetWidth > 0;
+                if (expanded !== button.hasAttribute(SIZED)) button.toggleAttribute(SIZED, expanded);
+            }
             const roots = identityRoots().filter(root => applyToMenu || !root.matches(SEL.menu));
 
             for (const avatarEl of document.querySelectorAll<HTMLElement>(SEL.avatar)) {
@@ -133,6 +160,7 @@ export default definePlugin({
         repaintOnChange(scope, paint);
         this.onSettingsChange = () => {
             lastUrl = null;
+            setSizeCss(sizeCss(settings.store.avatarSize));
             swaps.restore();
             for (const el of document.querySelectorAll(`[${ME}]`)) el.removeAttribute(ME);
             paint();
@@ -144,6 +172,7 @@ export default definePlugin({
                 el.removeAttribute(ORIG_LABEL);
             }
             for (const el of document.querySelectorAll(`[${ME}]`)) el.removeAttribute(ME);
+            for (const el of document.querySelectorAll(`[${SIZED}]`)) el.removeAttribute(SIZED);
         });
     },
 });

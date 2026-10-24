@@ -4,7 +4,7 @@ import { getPlugin, registerPlugins, resetRegistry, setEnabled, startPhase } fro
 import { coerce, setRaw } from "../src/kernel/settings";
 import { PLUGINS } from "../src/plugins";
 import { cropRect, imageField } from "../src/plugins/_core/settings/imageField";
-import { avatarCss, cssUrl, initials, swapName } from "../src/plugins/customIdentity";
+import { avatarCss, cssUrl, initials, sizeCss, swapName } from "../src/plugins/customIdentity";
 import { isEmail, stripEmail } from "../src/plugins/hideIdentity";
 
 const tick = () => new Promise(resolve => setTimeout(resolve, 150));
@@ -43,6 +43,7 @@ describe("identity helpers", () => {
         expect(swapName("Evening, Gia Thao", "Gia Thao", "Neo", false)).toBe("Evening, Neo");
         expect(cssUrl('https://x/a"b.png')).toBe('url("https://x/a\\22 b.png")');
         expect(avatarCss("", true)).toBe("");
+        expect(sizeCss(32)).toContain("[data-ccpp-avatar-size] [data-cds=\"Avatar\"] { width: 32px !important; height: 32px !important;");
         expect(avatarCss("data:image/png;base64,AA", false)).not.toContain('[role="menu"]');
     });
 

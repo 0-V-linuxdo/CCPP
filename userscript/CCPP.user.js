@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.87
+// @version      20261013.0.3.88
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -2709,7 +2709,7 @@ ${IMAGE_FIELD_CSS}`;
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.87";
+  var version = "0.3.88";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -7632,6 +7632,15 @@ ${RUNNING_PILL} {
       default: "",
       size: 256
     },
+    avatarSize: {
+      type: "number",
+      label: { zh: "侧栏头像大小", en: "Sidebar avatar size" },
+      description: { zh: "侧栏展开时头像按钮里的头像直径，官方是 20px。收起成窄栏时保持官方大小。", en: "Diameter of the avatar on the sidebar's account button while the sidebar is expanded. claude.ai's own is 20px. A collapsed rail keeps the official size." },
+      default: 24,
+      min: 16,
+      max: 48,
+      unit: "px"
+    },
     greeting: {
       type: "boolean",
       label: { zh: "首页问候语也用这个名字", en: "Use the name in the home greeting too" },
@@ -7664,6 +7673,14 @@ ${RUNNING_PILL} {
 ${targets.map((t) => `${t} > *`).join(`,
 `)} { opacity: 0 !important; }`;
   }
+  var SIZED = "data-ccpp-avatar-size";
+  function sizeCss(px) {
+    const button = `${SEL.userMenuButton}[${SIZED}]`;
+    const size = `${px}px`;
+    return `${button} { height: auto !important; min-height: max(28px, var(--df-footer-btn-size, 32px), calc(${size} + 8px)) !important; }
+${button} ${SEL.avatar} { width: ${size} !important; height: ${size} !important; min-width: ${size} !important; min-height: ${size} !important; font-size: calc(${size} * .45) !important; }
+${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${size}) !important; flex-shrink: 0 !important; }`;
+  }
   function swapName(text, real, name, whole) {
     if (!real || !name || real === name)
       return text;
@@ -7686,6 +7703,7 @@ ${targets.map((t) => `${t} > *`).join(`,
       const swaps = new TextSwaps;
       const setCss = addStyle(scope, "", "custom-identity");
       let lastUrl = null;
+      const setSizeCss = addStyle(scope, sizeCss(settings25.store.avatarSize), "custom-identity-size");
       const paint = () => {
         const { displayName, avatar, applyToMenu, greeting } = settings25.store;
         const name = displayName.trim();
@@ -7696,6 +7714,12 @@ ${targets.map((t) => `${t} > *`).join(`,
         }
         const real = realName();
         swaps.prune();
+        for (const button of document.querySelectorAll(SEL.userMenuButton)) {
+          const name = button.querySelector(".df-user-menu-trailing");
+          const expanded = !!name && name.offsetWidth > 0;
+          if (expanded !== button.hasAttribute(SIZED))
+            button.toggleAttribute(SIZED, expanded);
+        }
         const roots = identityRoots().filter((root) => applyToMenu || !root.matches(SEL.menu));
         for (const avatarEl of document.querySelectorAll(SEL.avatar)) {
           const inRoot = roots.some((root) => root.contains(avatarEl));
@@ -7743,6 +7767,7 @@ ${targets.map((t) => `${t} > *`).join(`,
       repaintOnChange(scope, paint);
       this.onSettingsChange = () => {
         lastUrl = null;
+        setSizeCss(sizeCss(settings25.store.avatarSize));
         swaps.restore();
         for (const el of document.querySelectorAll(`[${ME}]`))
           el.removeAttribute(ME);
@@ -7756,6 +7781,8 @@ ${targets.map((t) => `${t} > *`).join(`,
         }
         for (const el of document.querySelectorAll(`[${ME}]`))
           el.removeAttribute(ME);
+        for (const el of document.querySelectorAll(`[${SIZED}]`))
+          el.removeAttribute(SIZED);
       });
     }
   });
@@ -7907,7 +7934,7 @@ ${targets.map((t) => `${t} > *`).join(`,
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.87",
+      version: "0.3.88",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -7924,7 +7951,7 @@ ${targets.map((t) => `${t} > *`).join(`,
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.87";
+    win[FLAG] = "0.3.88";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -7941,7 +7968,7 @@ ${targets.map((t) => `${t} > *`).join(`,
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.87"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.88"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();
