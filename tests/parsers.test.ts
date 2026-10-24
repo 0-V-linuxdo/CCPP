@@ -17,7 +17,7 @@ import { chatKeyFor, reindex, toggleStar } from "../src/plugins/messageStars/sto
 import { starSpot } from "../src/plugins/messageStars/index";
 import { codeProjectOf, computeState, faviconFor, parseMark } from "../src/plugins/chatFavicon";
 import { alignWithApi, outlineFromApi } from "../src/plugins/chatNavigator";
-import { parseChannelMessages, parseCodePhase, threadSessionFrom } from "../src/plugins/_api/claude";
+import { parseChannelMessages, parseCodePhase, threadPhasesFrom } from "../src/plugins/_api/claude";
 
 const ID = "2e8860cc-f63c-4514-931c-14080b0aa61e";
 
@@ -180,9 +180,13 @@ describe("chat favicon", () => {
         expect(parseCodePhase({ response_shape: { status: "active", status_bucket: "working", worker_status: "running" } })).toBe("working");
         expect(parseCodePhase({ response_shape: { status: "active", status_bucket: "review_ready", worker_status: "idle" } })).toBe("idle");
         expect(parseCodePhase({ status: "active", status_bucket: "SESSION_STATUS_BUCKET_FAILED" })).toBe("failed");
-        const timeline = { data: [{ id: "cmsg_A", bound_sessions: [{ id: "cse_1", status: "archived" }, { id: "cse_2", status: "active" }] }, { id: "cmsg_B" }] };
-        expect(threadSessionFrom(timeline, "cmsg_A")).toBe("cse_2");
-        expect(threadSessionFrom(timeline, "cmsg_B")).toBeNull();
+        expect(parseCodePhase({ response_shape: { status: "active", status_bucket: "blocked", worker_status: "requires_action" } })).toBe("blocked");
+        const timeline = { data: [
+            { id: "cmsg_A", bound_sessions: [{ id: "cse_1", status: "archived", status_bucket: "working" }, { id: "cse_2", status: "active", status_bucket: "SESSION_STATUS_BUCKET_WORKING" }] },
+            { id: "cmsg_B", bound_sessions: [{ id: "cse_3", status: "active", status_bucket: "blocked" }, { id: "cse_4", status: "active", status_bucket: "completed" }] },
+            { id: "cmsg_C" },
+        ] };
+        expect([...threadPhasesFrom(timeline)]).toEqual([["cse_1", "idle"], ["cse_2", "working"], ["cse_3", "blocked"], ["cse_4", "idle"]]);
     });
     test("five styles, emoji mode keeps the official icon when idle", () => {
         expect(faviconFor("hole", "idle", "https://claude.ai/favicon.ico")).toBe("https://claude.ai/favicon.ico");

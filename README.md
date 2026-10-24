@@ -19,7 +19,7 @@ claude.ai 的插件化用户脚本：**一切皆插件**。内核只负责插件
 | 输入历史 InputHistory | 开 | ↑/↓ 调出发送过的提问，Esc 恢复草稿；点输入框上方的计数浏览历史 |
 | 提示词预设 PromptPresets | 关 | 输入框旁一键插入常用提示词 |
 | 回复完成提醒 ReplyNotification | 开 | 后台回复完成时提示音 / 系统通知 / 页面提示条 |
-| 标签页图标状态 ChatFavicon | 开 | 标签页图标随对话状态变色：回复中蓝、完成绿、草稿待发送黄、出错红；5 种样式可选；Claude Code 项目页跟随项目主对话和打开的线程 |
+| 标签页图标状态 ChatFavicon | 开 | 标签页图标随对话状态变色：回复中蓝、完成绿、草稿待发送黄、出错红；5 种样式可选；Claude Code 项目页跟随项目主对话和所有线程（任一在跑蓝、等你回复黄） |
 | 侧栏默认 Code SidebarDefaultCode | 开 | 打开首页时侧栏 Chat / Code 切换自动停在 Code，每次加载只切一次，打开具体对话时不切；可选只在 claude.ai/code 开头的页面切换 |
 | 最近对话切换 RecentChats | 开 | Ctrl+` 弹出最近对话卡片 |
 | 导出对话 ExportChat | 开 | 标题栏导出 Markdown / TXT / JSON，或复制为 Markdown |

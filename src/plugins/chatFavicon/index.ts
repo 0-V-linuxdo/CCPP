@@ -7,7 +7,7 @@
 import { definePlugin } from "@kernel/plugins";
 import { definePluginSettings } from "@kernel/settings";
 import { chatPhase } from "@api/chatState";
-import { ApiError, getCodeSession, getProjectSessions, parseCodePhase } from "@api/claude";
+import { ApiError, type CodePhase, getProjectPhases } from "@api/claude";
 import { getText, onSubmit } from "@api/composer";
 import { SEL } from "@api/dom";
 import { onResponse, sameOrigin } from "@api/network";
@@ -144,8 +144,8 @@ export default definePlugin({
     name: "ChatFavicon",
     title: { zh: "标签页图标状态", en: "Chat state favicon" },
     description: {
-        zh: "标签页图标随对话状态变化：回复中、已完成、草稿待发送、出错，5 种样式可选。Claude Code 项目页跟随项目主对话和打开的线程。",
-        en: "The tab icon follows the chat: replying, done, draft ready, error. Five styles. On Claude Code project pages it follows the project chat and the open thread.",
+        zh: "标签页图标随对话状态变化：回复中、已完成、草稿待发送、出错，5 种样式可选。Claude Code 项目页跟随项目主对话和所有线程。",
+        en: "The tab icon follows the chat: replying, done, draft ready, error. Five styles. On Claude Code project pages it follows the project chat and all its threads.",
     },
     category: "notifications",
     icon: "tab",
@@ -224,6 +224,8 @@ export default definePlugin({
         let endedAt = 0;
         // On a Claude Code project page the replies run in Code sessions: the project's own and the open thread's.
         let codeWorking = false;
+        // A thread (or the project chat) waits on you: shown like a draft waiting to be sent.
+        let codeWaiting = false;
         const live = () => codeWorking || inflight > 0 || Date.now() < pendingUntil || (chatPhase() === "streaming" && Date.now() - endedAt > 10_000);
         const update = () => {
             const now = live();
@@ -232,7 +234,7 @@ export default definePlugin({
                 finished = false;
             } else if (!now && streaming) finished = true;
             streaming = now;
-            const next = computeState({ streaming, errored, finished, draft: draft() });
+            const next = computeState({ streaming, errored, finished, draft: codeWaiting || draft() });
             if (next === state) return;
             state = next;
             paint();
@@ -246,17 +248,18 @@ export default definePlugin({
             pendingUntil = Date.now() + 8000;
             update();
         });
-        let codeKey = "";
-        let codeSessions: Promise<string[]> | null = null;
+        // Every Code session of the open project, so a thread finishing or waiting shows from any page of it.
+        let codeChannel = "";
+        let codePhases = new Map<string, CodePhase>();
         let codeBusy = false;
         let codePausedUntil = 0;
         const pollCode = async () => {
             const page = codeProjectOf(location.pathname, location.search);
             if (!page) {
-                codeKey = "";
-                codeSessions = null;
-                if (codeWorking) {
-                    codeWorking = false;
+                codeChannel = "";
+                codePhases = new Map();
+                if (codeWorking || codeWaiting) {
+                    codeWorking = codeWaiting = false;
                     update();
                 }
                 return;
@@ -264,18 +267,17 @@ export default definePlugin({
             if (codeBusy || Date.now() < codePausedUntil) return;
             codeBusy = true;
             try {
-                const key = `${page.channel}|${page.thread ?? ""}`;
-                if (key !== codeKey || !codeSessions) {
-                    codeKey = key;
-                    codeSessions = getProjectSessions(page.channel, page.thread, scope.signal);
-                    codeSessions.catch(() => codeKey === key && (codeSessions = null));
-                }
-                const ids = await codeSessions;
-                const phases = await Promise.all(ids.map(id => getCodeSession(id, scope.signal).then(parseCodePhase)));
-                if (!scope.alive || key !== codeKey) return;
-                codeWorking = phases.includes("working");
-                // A session that failed turns the icon red; the next reply clears it.
-                if (!codeWorking && phases.includes("failed") && streaming) errored = true;
+                const channel = page.channel;
+                const phases = await getProjectPhases(channel, scope.signal);
+                if (!scope.alive || page.channel !== codeProjectOf(location.pathname, location.search)?.channel) return;
+                const previous = channel === codeChannel ? codePhases : null;
+                codeChannel = channel;
+                codePhases = phases;
+                const all = [...phases.values()];
+                codeWorking = all.includes("working");
+                codeWaiting = all.includes("blocked");
+                // A session that newly failed turns the icon red; the next reply clears it.
+                if (previous && [...phases].some(([id, phase]) => phase === "failed" && previous.get(id) !== "failed")) errored = true;
                 update();
             } catch (error) {
                 if (error instanceof ApiError && error.status === 429) codePausedUntil = Date.now() + 60_000;
@@ -283,17 +285,17 @@ export default definePlugin({
                 codeBusy = false;
             }
         };
-        scope.interval(pollCode, 3000);
+        scope.interval(pollCode, 4000);
         void pollCode();
         scope.on("reply:start", update);
         scope.on("reply:end", update);
         scope.interval(update, 500);
         // Only a switch to another chat clears the finished and error marks. Sending from /new gives
         // the chat its id mid-reply, and claude.ai rewrites the URL of the same chat; neither counts.
-        // On a Claude Code project page the chat is the project plus its open thread.
+        // On a Claude Code project page the whole project counts as one chat, threads included.
         const chatKey = () => {
             const page = codeProjectOf(location.pathname, location.search);
-            return page ? `${page.channel}|${page.thread ?? ""}` : (currentRoute().chatId ?? null);
+            return page ? page.channel : (currentRoute().chatId ?? null);
         };
         let chatId = chatKey();
         const onNavigate = () => {
@@ -304,7 +306,7 @@ export default definePlugin({
                 errored = false;
                 // A Code session keeps running on its own page; the new page's sessions decide from here.
                 if (code) {
-                    codeWorking = false;
+                    codeWorking = codeWaiting = false;
                     streaming = false;
                 }
             }

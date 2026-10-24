@@ -297,42 +297,53 @@ function getChannelSessions(signal?: AbortSignal) {
     return map;
 }
 
-/** What the tab icon needs from one Code session: is it working, did it fail. */
-export type CodePhase = "working" | "failed" | "idle";
+/** What the tab icon needs from one Code session: working, waiting on you, failed, or nothing to show. */
+export type CodePhase = "working" | "blocked" | "failed" | "idle";
+
+function phaseOf(session: any): CodePhase {
+    if (!session || session.status === "archived" || session.status === "deleted") return "idle";
+    const bucket = normalizeBucket(session.status_bucket);
+    if (bucket === "failed") return "failed";
+    if (session.session_status !== undefined || session.worker_status !== undefined) {
+        const state = parseSessionState(session);
+        if (state) return state;
+    }
+    return bucket === "working" ? "working" : bucket === "blocked" ? "blocked" : "idle";
+}
 
 export function parseCodePhase(raw: unknown): CodePhase {
     const root = raw && typeof raw === "object" ? (raw as any) : {};
-    const session = root.response_shape && typeof root.response_shape === "object" ? root.response_shape : root;
-    if (normalizeBucket(session.status_bucket) === "failed") return "failed";
-    return parseSessionState(raw) === "working" ? "working" : "idle";
+    return phaseOf(root.response_shape && typeof root.response_shape === "object" ? root.response_shape : root);
 }
 
-/** The session bound to a project thread (its root message), from the project timeline. */
-export function threadSessionFrom(raw: unknown, threadId: string): string | null {
+/** Every thread session of a project, by id, from the project timeline. */
+export function threadPhasesFrom(raw: unknown): Map<string, CodePhase> {
+    const phases = new Map<string, CodePhase>();
     const data = raw && typeof raw === "object" && Array.isArray((raw as { data?: unknown }).data) ? (raw as { data: any[] }).data : [];
-    const message = data.find(m => m?.id === threadId);
-    const session = (Array.isArray(message?.bound_sessions) ? message.bound_sessions : []).find((s: any) => typeof s?.id === "string" && SESSION_RE.test(s.id) && s.status !== "archived");
-    return session?.id ?? null;
+    for (const message of data) {
+        for (const session of Array.isArray(message?.bound_sessions) ? message.bound_sessions : []) {
+            if (typeof session?.id === "string" && SESSION_RE.test(session.id)) phases.set(session.id, phaseOf(session));
+        }
+    }
+    return phases;
 }
 
-/**
- * The Code sessions behind a project page: the project's own session (its main chat) and, when a
- * thread is open, the thread's session.
- */
-export async function getProjectSessions(channelId: string, threadId: string | null, signal?: AbortSignal) {
-    if (!CHANNEL_RE.test(channelId) || (threadId && !/^cmsg_[A-Za-z0-9]+$/.test(threadId))) throw new Error("Bad project id");
-    const [sessions, timeline] = await Promise.all([
+/** State of every Code session in a project: its threads and its own session (the project chat). */
+export async function getProjectPhases(channelId: string, signal?: AbortSignal) {
+    if (!CHANNEL_RE.test(channelId)) throw new Error("Bad project id");
+    const [timeline, sessions] = await Promise.all([
+        getCodeJson(`/v1/code/channels/${channelId}/timeline?limit=200&bound_only=true`, signal),
         getChannelSessions(signal).catch(() => new Map<string, string>()),
-        threadId ? getCodeJson(`/v1/code/channels/${channelId}/timeline?limit=200&bound_only=true`, signal) : null,
     ]);
-    const ids = [sessions.get(channelId), threadId && timeline ? threadSessionFrom(timeline, threadId) : null];
-    return ids.filter((id): id is string => !!id);
+    const phases = threadPhasesFrom(timeline);
+    const own = sessions.get(channelId);
+    if (own) {
+        try {
+            phases.set(own, parseCodePhase(await getCodeJson(`/v1/code/sessions/${own}`, signal)));
+        } catch {}
+    }
+    return phases;
 }
-
-export const getCodeSession = (sessionId: string, signal?: AbortSignal) => {
-    if (!SESSION_RE.test(sessionId)) return Promise.reject(new Error("Bad session id"));
-    return getCodeJson(`/v1/code/sessions/${sessionId}`, signal);
-};
 
 export async function getProjectActivity(channelId: string, signal?: AbortSignal) {
     if (!CHANNEL_RE.test(channelId)) throw new Error("Bad project id");

@@ -911,34 +911,50 @@
     map.catch(() => channelSessions === entry && (channelSessions = null));
     return map;
   }
+  function phaseOf(session) {
+    if (!session || session.status === "archived" || session.status === "deleted")
+      return "idle";
+    const bucket = normalizeBucket(session.status_bucket);
+    if (bucket === "failed")
+      return "failed";
+    if (session.session_status !== undefined || session.worker_status !== undefined) {
+      const state = parseSessionState(session);
+      if (state)
+        return state;
+    }
+    return bucket === "working" ? "working" : bucket === "blocked" ? "blocked" : "idle";
+  }
   function parseCodePhase(raw) {
     const root = raw && typeof raw === "object" ? raw : {};
-    const session = root.response_shape && typeof root.response_shape === "object" ? root.response_shape : root;
-    if (normalizeBucket(session.status_bucket) === "failed")
-      return "failed";
-    return parseSessionState(raw) === "working" ? "working" : "idle";
+    return phaseOf(root.response_shape && typeof root.response_shape === "object" ? root.response_shape : root);
   }
-  function threadSessionFrom(raw, threadId) {
+  function threadPhasesFrom(raw) {
+    const phases = new Map;
     const data = raw && typeof raw === "object" && Array.isArray(raw.data) ? raw.data : [];
-    const message = data.find((m) => m?.id === threadId);
-    const session = (Array.isArray(message?.bound_sessions) ? message.bound_sessions : []).find((s) => typeof s?.id === "string" && SESSION_RE.test(s.id) && s.status !== "archived");
-    return session?.id ?? null;
+    for (const message of data) {
+      for (const session of Array.isArray(message?.bound_sessions) ? message.bound_sessions : []) {
+        if (typeof session?.id === "string" && SESSION_RE.test(session.id))
+          phases.set(session.id, phaseOf(session));
+      }
+    }
+    return phases;
   }
-  async function getProjectSessions(channelId, threadId, signal) {
-    if (!CHANNEL_RE.test(channelId) || threadId && !/^cmsg_[A-Za-z0-9]+$/.test(threadId))
+  async function getProjectPhases(channelId, signal) {
+    if (!CHANNEL_RE.test(channelId))
       throw new Error("Bad project id");
-    const [sessions, timeline] = await Promise.all([
-      getChannelSessions(signal).catch(() => new Map),
-      threadId ? getCodeJson(`/v1/code/channels/${channelId}/timeline?limit=200&bound_only=true`, signal) : null
+    const [timeline, sessions] = await Promise.all([
+      getCodeJson(`/v1/code/channels/${channelId}/timeline?limit=200&bound_only=true`, signal),
+      getChannelSessions(signal).catch(() => new Map)
     ]);
-    const ids = [sessions.get(channelId), threadId && timeline ? threadSessionFrom(timeline, threadId) : null];
-    return ids.filter((id) => !!id);
+    const phases = threadPhasesFrom(timeline);
+    const own = sessions.get(channelId);
+    if (own) {
+      try {
+        phases.set(own, parseCodePhase(await getCodeJson(`/v1/code/sessions/${own}`, signal)));
+      } catch {}
+    }
+    return phases;
   }
-  var getCodeSession = (sessionId, signal) => {
-    if (!SESSION_RE.test(sessionId))
-      return Promise.reject(new Error("Bad session id"));
-    return getCodeJson(`/v1/code/sessions/${sessionId}`, signal);
-  };
   async function getProjectActivity(channelId, signal) {
     if (!CHANNEL_RE.test(channelId))
       throw new Error("Bad project id");
@@ -6452,8 +6468,8 @@ ${t(L16.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
     name: "ChatFavicon",
     title: { zh: "标签页图标状态", en: "Chat state favicon" },
     description: {
-      zh: "标签页图标随对话状态变化：回复中、已完成、草稿待发送、出错，5 种样式可选。Claude Code 项目页跟随项目主对话和打开的线程。",
-      en: "The tab icon follows the chat: replying, done, draft ready, error. Five styles. On Claude Code project pages it follows the project chat and the open thread."
+      zh: "标签页图标随对话状态变化：回复中、已完成、草稿待发送、出错，5 种样式可选。Claude Code 项目页跟随项目主对话和所有线程。",
+      en: "The tab icon follows the chat: replying, done, draft ready, error. Five styles. On Claude Code project pages it follows the project chat and all its threads."
     },
     category: "notifications",
     icon: "tab",
@@ -6528,6 +6544,7 @@ ${t(L16.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
       let pendingUntil = 0;
       let endedAt = 0;
       let codeWorking = false;
+      let codeWaiting = false;
       const live = () => codeWorking || inflight > 0 || Date.now() < pendingUntil || chatPhase() === "streaming" && Date.now() - endedAt > 1e4;
       const update = () => {
         const now = live();
@@ -6537,7 +6554,7 @@ ${t(L16.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
         } else if (!now && streaming)
           finished = true;
         streaming = now;
-        const next = computeState({ streaming, errored, finished, draft: draft() });
+        const next = computeState({ streaming, errored, finished, draft: codeWaiting || draft() });
         if (next === state)
           return;
         state = next;
@@ -6550,17 +6567,17 @@ ${t(L16.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
         pendingUntil = Date.now() + 8000;
         update();
       });
-      let codeKey = "";
-      let codeSessions = null;
+      let codeChannel = "";
+      let codePhases = new Map;
       let codeBusy = false;
       let codePausedUntil = 0;
       const pollCode = async () => {
         const page = codeProjectOf(location.pathname, location.search);
         if (!page) {
-          codeKey = "";
-          codeSessions = null;
-          if (codeWorking) {
-            codeWorking = false;
+          codeChannel = "";
+          codePhases = new Map;
+          if (codeWorking || codeWaiting) {
+            codeWorking = codeWaiting = false;
             update();
           }
           return;
@@ -6569,18 +6586,17 @@ ${t(L16.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
           return;
         codeBusy = true;
         try {
-          const key = `${page.channel}|${page.thread ?? ""}`;
-          if (key !== codeKey || !codeSessions) {
-            codeKey = key;
-            codeSessions = getProjectSessions(page.channel, page.thread, scope.signal);
-            codeSessions.catch(() => codeKey === key && (codeSessions = null));
-          }
-          const ids = await codeSessions;
-          const phases = await Promise.all(ids.map((id) => getCodeSession(id, scope.signal).then(parseCodePhase)));
-          if (!scope.alive || key !== codeKey)
+          const channel = page.channel;
+          const phases = await getProjectPhases(channel, scope.signal);
+          if (!scope.alive || page.channel !== codeProjectOf(location.pathname, location.search)?.channel)
             return;
-          codeWorking = phases.includes("working");
-          if (!codeWorking && phases.includes("failed") && streaming)
+          const previous = channel === codeChannel ? codePhases : null;
+          codeChannel = channel;
+          codePhases = phases;
+          const all = [...phases.values()];
+          codeWorking = all.includes("working");
+          codeWaiting = all.includes("blocked");
+          if (previous && [...phases].some(([id, phase]) => phase === "failed" && previous.get(id) !== "failed"))
             errored = true;
           update();
         } catch (error) {
@@ -6590,14 +6606,14 @@ ${t(L16.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
           codeBusy = false;
         }
       };
-      scope.interval(pollCode, 3000);
+      scope.interval(pollCode, 4000);
       pollCode();
       scope.on("reply:start", update);
       scope.on("reply:end", update);
       scope.interval(update, 500);
       const chatKey = () => {
         const page = codeProjectOf(location.pathname, location.search);
-        return page ? `${page.channel}|${page.thread ?? ""}` : currentRoute().chatId ?? null;
+        return page ? page.channel : currentRoute().chatId ?? null;
       };
       let chatId = chatKey();
       const onNavigate = () => {
@@ -6607,7 +6623,7 @@ ${t(L16.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
           finished = false;
           errored = false;
           if (code) {
-            codeWorking = false;
+            codeWorking = codeWaiting = false;
             streaming = false;
           }
         }
