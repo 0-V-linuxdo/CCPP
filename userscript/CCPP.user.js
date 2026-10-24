@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.90
+// @version      20261013.0.3.91
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -1401,6 +1401,7 @@
   // src/plugins/_api/network/index.ts
   var logger6 = new Logger("NetworkApi");
   var responseHooks = new Set;
+  var errorHooks = new Set;
   var blockers = new Set;
   function describe(input, init) {
     try {
@@ -1416,6 +1417,18 @@
     responseHooks.add(hook);
     scope.defer(() => responseHooks.delete(hook));
   }
+  function onRequestError(scope, match, handle) {
+    const hook = { match, handle };
+    errorHooks.add(hook);
+    scope.defer(() => errorHooks.delete(hook));
+  }
+  var matching = (hooks, req) => [...hooks].filter((hook) => {
+    try {
+      return hook.match(req);
+    } catch {
+      return false;
+    }
+  });
   function block(scope, match) {
     blockers.add(match);
     scope.defer(() => blockers.delete(match));
@@ -1446,15 +1459,10 @@
         if (req && blockers.size && isBlocked(req))
           return Promise.resolve(new Response(null, { status: 204 }));
         const promise = original.call(this ?? pageWindow, input, init);
-        if (req && responseHooks.size) {
-          const hooks = [...responseHooks].filter((hook) => {
-            try {
-              return hook.match(req);
-            } catch {
-              return false;
-            }
-          });
-          if (hooks.length) {
+        if (req && (responseHooks.size || errorHooks.size)) {
+          const hooks = matching(responseHooks, req);
+          const failed = matching(errorHooks, req);
+          if (hooks.length || failed.length) {
             promise.then((response) => {
               for (const hook of hooks) {
                 try {
@@ -1463,7 +1471,15 @@
                   logger6.error("Response hook failed:", error);
                 }
               }
-            }, () => {});
+            }, (reason) => {
+              for (const hook of failed) {
+                try {
+                  hook.handle(reason, req);
+                } catch (error) {
+                  logger6.error("Request error hook failed:", error);
+                }
+              }
+            });
           }
         }
         return promise;
@@ -2726,7 +2742,7 @@ ${IMAGE_FIELD_CSS}`;
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.90";
+  var version = "0.3.91";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -6467,6 +6483,8 @@ ${t(L16.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
   var STOP_EVENT = /^event:\s*message_stop\s*$|"type"\s*:\s*"message_stop"/m;
   var isIconLink = (node) => node instanceof HTMLLinkElement && /\bicon\b/i.test(node.rel) && node.id !== ICON_ID;
   var isCompletion = (path) => /\/chat_conversations\/[^/]+\/(?:completion|retry_completion)$/.test(path);
+  var isChannelSend = (path) => /^\/v1\/code\/channels\/chan_[A-Za-z0-9]+\/messages$/.test(path);
+  var SEND_RETRY_GRACE_MS = 6000;
   function codeProjectOf(path, search) {
     const channel = /^\/code\/project\/(chan_[A-Za-z0-9]+)/.exec(path)?.[1];
     if (!channel)
@@ -6478,13 +6496,13 @@ ${t(L16.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
     name: "ChatFavicon",
     title: { zh: "标签页图标状态", en: "Chat state favicon" },
     description: {
-      zh: "标签页图标随对话状态变化：回复中、已完成、草稿待发送、出错，5 种样式可选。Claude Code 项目页跟随项目主对话和所有线程。",
-      en: "The tab icon follows the chat: replying, done, draft ready, error. Five styles. On Claude Code project pages it follows the project chat and all its threads."
+      zh: "标签页图标随对话状态变化：回复中、已完成、草稿待发送、出错（含消息发送失败），5 种样式可选。Claude Code 项目页跟随项目主对话和所有线程。",
+      en: "The tab icon follows the chat: replying, done, draft ready, error (including a message that couldn't be sent). Five styles. On Claude Code project pages it follows the project chat and all its threads."
     },
     category: "notifications",
     icon: "tab",
     enabledByDefault: true,
-    updatedAt: "2026-10-23",
+    updatedAt: "2026-10-24",
     dependencies: ["ChatStateApi", "ClaudeApi", "ComposerApi", "NetworkApi", "RouterApi"],
     settings: settings11,
     start(scope) {
@@ -6657,6 +6675,28 @@ ${t(L16.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
         errored = true;
         update();
       };
+      onRequestError(scope, (req) => sameOrigin(req) && req.method === "POST" && isCompletion(req.url.pathname), (error) => {
+        if (!(error instanceof DOMException && error.name === "AbortError"))
+          fail();
+      });
+      let sendAttempt = 0;
+      let sendTimer;
+      const isSend = (req) => sameOrigin(req) && req.method === "POST" && isChannelSend(req.url.pathname);
+      const sendFailed = () => {
+        const attempt = sendAttempt;
+        clearTimeout(sendTimer);
+        sendTimer = setTimeout(() => scope.alive && attempt === sendAttempt && fail(), SEND_RETRY_GRACE_MS);
+      };
+      const countAttempt = (req) => {
+        if (!isSend(req))
+          return false;
+        sendAttempt++;
+        clearTimeout(sendTimer);
+        return true;
+      };
+      onResponse(scope, countAttempt, (response) => response.ok ? clearTimeout(sendTimer) : sendFailed());
+      onRequestError(scope, isSend, sendFailed);
+      scope.defer(() => clearTimeout(sendTimer));
       onResponse(scope, (req) => sameOrigin(req) && req.method === "POST" && isCompletion(req.url.pathname), async (response) => {
         inflight++;
         pendingUntil = 0;
@@ -7956,7 +7996,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.90",
+      version: "0.3.91",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -7973,7 +8013,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.90";
+    win[FLAG] = "0.3.91";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -7990,7 +8030,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.90"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.91"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();

@@ -10,7 +10,7 @@ import { chatPhase } from "@api/chatState";
 import { ApiError, type CodePhase, getProjectPhases } from "@api/claude";
 import { getText, onSubmit } from "@api/composer";
 import { SEL } from "@api/dom";
-import { onResponse, sameOrigin } from "@api/network";
+import { onRequestError, onResponse, sameOrigin, type RequestInfoLite } from "@api/network";
 import { currentRoute } from "@api/router";
 
 export type FaviconState = "idle" | "streaming" | "done" | "ready" | "error";
@@ -131,6 +131,13 @@ const STOP_EVENT = /^event:\s*message_stop\s*$|"type"\s*:\s*"message_stop"/m;
 const isIconLink = (node: Node): node is HTMLLinkElement => node instanceof HTMLLinkElement && /\bicon\b/i.test(node.rel) && node.id !== ICON_ID;
 /** claude.ai's chat requests whose failure means the reply errored. */
 const isCompletion = (path: string) => /\/chat_conversations\/[^/]+\/(?:completion|retry_completion)$/.test(path);
+/** A message sent on a Claude Code project page, to the project chat or a thread. */
+export const isChannelSend = (path: string) => /^\/v1\/code\/channels\/chan_[A-Za-z0-9]+\/messages$/.test(path);
+/**
+ * claude.ai retries a failed project send up to 3 times, at most 4s apart, and only says
+ * "Couldn't send the message" once the last one fails. A failure no retry follows within this long is final.
+ */
+const SEND_RETRY_GRACE_MS = 6000;
 /** A Claude Code project page: /code/project/chan_…, with ?thread=cmsg_… when a thread is open. */
 export function codeProjectOf(path: string, search: string) {
     const channel = /^\/code\/project\/(chan_[A-Za-z0-9]+)/.exec(path)?.[1];
@@ -143,13 +150,13 @@ export default definePlugin({
     name: "ChatFavicon",
     title: { zh: "标签页图标状态", en: "Chat state favicon" },
     description: {
-        zh: "标签页图标随对话状态变化：回复中、已完成、草稿待发送、出错，5 种样式可选。Claude Code 项目页跟随项目主对话和所有线程。",
-        en: "The tab icon follows the chat: replying, done, draft ready, error. Five styles. On Claude Code project pages it follows the project chat and all its threads.",
+        zh: "标签页图标随对话状态变化：回复中、已完成、草稿待发送、出错（含消息发送失败），5 种样式可选。Claude Code 项目页跟随项目主对话和所有线程。",
+        en: "The tab icon follows the chat: replying, done, draft ready, error (including a message that couldn't be sent). Five styles. On Claude Code project pages it follows the project chat and all its threads.",
     },
     category: "notifications",
     icon: "tab",
     enabledByDefault: true,
-    updatedAt: "2026-10-23",
+    updatedAt: "2026-10-24",
     dependencies: ["ChatStateApi", "ClaudeApi", "ComposerApi", "NetworkApi", "RouterApi"],
     settings,
     start(scope) {
@@ -329,6 +336,29 @@ export default definePlugin({
             errored = true;
             update();
         };
+        // A chat request that never got an answer (offline, connection dropped) failed too; a stop by the user didn't.
+        onRequestError(scope, req => sameOrigin(req) && req.method === "POST" && isCompletion(req.url.pathname), error => {
+            if (!(error instanceof DOMException && error.name === "AbortError")) fail();
+        });
+        // Project pages send through the channel API. Each attempt is counted as it starts, so a failure
+        // that claude.ai retries doesn't turn the icon red; one with no retry after it does.
+        let sendAttempt = 0;
+        let sendTimer: ReturnType<typeof setTimeout> | undefined;
+        const isSend = (req: RequestInfoLite) => sameOrigin(req) && req.method === "POST" && isChannelSend(req.url.pathname);
+        const sendFailed = () => {
+            const attempt = sendAttempt;
+            clearTimeout(sendTimer);
+            sendTimer = setTimeout(() => scope.alive && attempt === sendAttempt && fail(), SEND_RETRY_GRACE_MS);
+        };
+        const countAttempt = (req: RequestInfoLite) => {
+            if (!isSend(req)) return false;
+            sendAttempt++;
+            clearTimeout(sendTimer);
+            return true;
+        };
+        onResponse(scope, countAttempt, response => (response.ok ? clearTimeout(sendTimer) : sendFailed()));
+        onRequestError(scope, isSend, sendFailed);
+        scope.defer(() => clearTimeout(sendTimer));
         onResponse(scope, req => sameOrigin(req) && req.method === "POST" && isCompletion(req.url.pathname), async response => {
             inflight++;
             pendingUntil = 0;

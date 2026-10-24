@@ -15,7 +15,7 @@ import { splitLinks } from "../src/plugins/betterLinks";
 import { isTelemetry } from "../src/plugins/noTelemetry";
 import { chatKeyFor, reindex, toggleStar } from "../src/plugins/messageStars/store";
 import { starSpot } from "../src/plugins/messageStars/index";
-import { codeProjectOf, computeState, faviconFor, parseMark } from "../src/plugins/chatFavicon";
+import { codeProjectOf, computeState, faviconFor, isChannelSend, parseMark } from "../src/plugins/chatFavicon";
 import { alignWithApi, outlineFromApi } from "../src/plugins/chatNavigator";
 import { parseChannelMessages, parseCodePhase, threadPhasesFrom } from "../src/plugins/_api/claude";
 
@@ -177,6 +177,9 @@ describe("chat favicon", () => {
         expect(codeProjectOf("/code/project/chan_01AB", "?thread=cmsg_01XY&x=1")).toEqual({ channel: "chan_01AB", thread: "cmsg_01XY" });
         expect(codeProjectOf("/code/project/chan_01AB", "")).toEqual({ channel: "chan_01AB", thread: null });
         expect(codeProjectOf("/chat/abc", "?thread=cmsg_1")).toBeNull();
+        expect(isChannelSend("/v1/code/channels/chan_01AB/messages")).toBe(true);
+        expect(isChannelSend("/v1/code/channels/chan_01AB/messages/cmsg_1")).toBe(false);
+        expect(isChannelSend("/v1/code/channels/chan_01AB/timeline")).toBe(false);
         expect(parseCodePhase({ response_shape: { status: "active", status_bucket: "working", worker_status: "running" } })).toBe("working");
         expect(parseCodePhase({ response_shape: { status: "active", status_bucket: "review_ready", worker_status: "idle" } })).toBe("idle");
         expect(parseCodePhase({ status: "active", status_bucket: "SESSION_STATUS_BUCKET_FAILED" })).toBe("failed");

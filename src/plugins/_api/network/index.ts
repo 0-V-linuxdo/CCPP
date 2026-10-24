@@ -18,8 +18,10 @@ export interface RequestInfoLite {
 
 type Matcher = (req: RequestInfoLite) => boolean;
 type ResponseHandler = (response: Response, req: RequestInfoLite) => void;
+type ErrorHandler = (error: unknown, req: RequestInfoLite) => void;
 
 const responseHooks = new Set<{ match: Matcher; handle: ResponseHandler }>();
+const errorHooks = new Set<{ match: Matcher; handle: ErrorHandler }>();
 const blockers = new Set<Matcher>();
 
 export function describe(input: RequestInfo | URL, init?: RequestInit): RequestInfoLite | null {
@@ -41,6 +43,22 @@ export function onResponse(scope: Scope, match: Matcher, handle: ResponseHandler
     responseHooks.add(hook);
     scope.defer(() => responseHooks.delete(hook));
 }
+
+/** Observes matching requests that never got a response (network error, abort, timeout). */
+export function onRequestError(scope: Scope, match: Matcher, handle: ErrorHandler) {
+    const hook = { match, handle };
+    errorHooks.add(hook);
+    scope.defer(() => errorHooks.delete(hook));
+}
+
+const matching = <T extends { match: Matcher }>(hooks: Set<T>, req: RequestInfoLite) =>
+    [...hooks].filter(hook => {
+        try {
+            return hook.match(req);
+        } catch {
+            return false;
+        }
+    });
 
 /** Answers matching requests with an empty 204 instead of sending them. */
 export function block(scope: Scope, match: Matcher) {
@@ -75,24 +93,30 @@ export default definePlugin({
             const req = describe(input, init);
             if (req && blockers.size && isBlocked(req)) return Promise.resolve(new Response(null, { status: 204 }));
             const promise = original.call(this ?? pageWindow, input, init);
-            if (req && responseHooks.size) {
-                const hooks = [...responseHooks].filter(hook => {
-                    try {
-                        return hook.match(req);
-                    } catch {
-                        return false;
-                    }
-                });
-                if (hooks.length) {
-                    promise.then(response => {
-                        for (const hook of hooks) {
-                            try {
-                                hook.handle(response.clone(), req);
-                            } catch (error) {
-                                logger.error("Response hook failed:", error);
+            if (req && (responseHooks.size || errorHooks.size)) {
+                const hooks = matching(responseHooks, req);
+                const failed = matching(errorHooks, req);
+                if (hooks.length || failed.length) {
+                    promise.then(
+                        response => {
+                            for (const hook of hooks) {
+                                try {
+                                    hook.handle(response.clone(), req);
+                                } catch (error) {
+                                    logger.error("Response hook failed:", error);
+                                }
                             }
-                        }
-                    }, () => {});
+                        },
+                        reason => {
+                            for (const hook of failed) {
+                                try {
+                                    hook.handle(reason, req);
+                                } catch (error) {
+                                    logger.error("Request error hook failed:", error);
+                                }
+                            }
+                        },
+                    );
                 }
             }
             return promise;
