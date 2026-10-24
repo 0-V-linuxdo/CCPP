@@ -26,7 +26,7 @@ claude.ai 的插件化用户脚本：**一切皆插件**。内核只负责插件
 | 界面清理 Cleaner | 开 | 隐藏升级推销、Claude Code 推广提示等 |
 | 加宽对话 WiderChat | 关 | 调整对话与输入框最大宽度 |
 | 输入框外观 ComposerLook | 关 | 输入框背景不透明度 / 毛玻璃 / 圆角 |
-| 自定义问候语 CustomGreeting | 关 | 替换首页问候语（新版首页没有官方文字标记时靠 Claude 星标定位），多条轮换；可选把输入框占位文字换成第一句或自定义文字（只在项目里 / 到处） |
+| 自定义问候语 CustomGreeting | 关 | 替换首页问候语（新版首页没有官方文字标记时靠 Claude 星标定位），多条轮换；不改输入框 |
 | 消息时间 MessageTimestamps | 关 | 回复时间常显并显示具体时间 |
 | 折叠长代码 CollapseCode | 关 | 长代码块折叠，按钮展开 |
 | 裸域名可点击 BetterLinks | 关 | 回复里的 example.com 变成链接 |

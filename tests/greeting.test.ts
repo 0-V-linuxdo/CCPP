@@ -1,9 +1,9 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
 import { getPlugin, registerPlugins, resetRegistry, setEnabled, startPhase } from "../src/kernel/plugins";
-import { setRaw } from "../src/kernel/settings";
+import { getRaw, setRaw } from "../src/kernel/settings";
 import { PLUGINS } from "../src/plugins";
-import { findGreetings, isProjectPage } from "../src/plugins/customGreeting";
+import { findGreetings } from "../src/plugins/customGreeting";
 
 const tick = () => new Promise(resolve => setTimeout(resolve, 150));
 const $ = (sel: string) => document.querySelector<HTMLElement>(sel)!;
@@ -19,13 +19,6 @@ const bareHome = () => `<main><h1 class="hero"><span>${SPARK}</span><span>Good e
 describe("greeting finder", () => {
     afterAll(() => {
         document.body.innerHTML = "";
-    });
-
-    test("project pages", () => {
-        expect(isProjectPage("/project/0f0e")).toBe(true);
-        expect(isProjectPage("/code/project/chan_01")).toBe(true);
-        expect(isProjectPage("/code/projects/browse")).toBe(false);
-        expect(isProjectPage("/new")).toBe(false);
     });
 
     test("finds the marked greeting, or the spark's row without the marker", () => {
@@ -83,39 +76,20 @@ describe("CustomGreeting", () => {
         expect($(".hero").textContent).toBe("Good evening,");
     });
 
-    test("the placeholder changes from CSS, only in projects unless asked, and comes back", async () => {
+    test("leaves the input placeholder alone and drops old placeholder settings", async () => {
         document.body.innerHTML = markedHome();
-        const css = () => document.querySelector('[data-ccpp-style="custom-greeting-placeholder"]')?.textContent ?? "";
-        // A greeting in the prompt box looks like claude.ai's own text: it's opt-in.
-        expect((getPlugin("CustomGreeting")!.settings!.def.input as { default: string }).default).toBe("off");
-        setRaw("CustomGreeting", "phrases", "First line\nSecond line");
-        setRaw("CustomGreeting", "input", "project");
+        setRaw("CustomGreeting", "input", "all");
+        setRaw("CustomGreeting", "placeholder", "Go on…");
+        setRaw("CustomGreeting", "phrases", "First line");
         setEnabled(getPlugin("CustomGreeting")!, true);
         await tick();
-        expect(css()).toBe("");
+        expect($("[data-new-page-greeting-text]").textContent).toBe("First line");
         expect($("[data-composer-placeholder]").textContent).toBe("Type / for skills");
-
-        setRaw("CustomGreeting", "input", "all");
-        await tick();
-        expect(css()).toContain('p.is-editor-empty[data-placeholder]::before { content: "First line" !important; }');
-        expect($("[data-composer-placeholder]").textContent).toBe("First line");
-        // claude.ai writing its text back gets replaced again.
-        $("[data-composer-placeholder]").textContent = "Type / for skills";
-        await tick();
-        expect($("[data-composer-placeholder]").textContent).toBe("First line");
-        // The editor's own attribute is left alone: it rebuilds the paragraph all the time.
         expect($("p[data-placeholder]").dataset.placeholder).toBe("Type / for skills");
-
-        setRaw("CustomGreeting", "placeholder", 'Say "hi"');
-        await tick();
-        expect(css()).toContain('content: "Say \\"hi\\"" !important;');
-
+        expect(getRaw("CustomGreeting", "input")).toBeUndefined();
+        expect(getRaw("CustomGreeting", "placeholder")).toBeUndefined();
         setEnabled(getPlugin("CustomGreeting")!, false);
         await tick();
-        expect(document.querySelector('[data-ccpp-style="custom-greeting-placeholder"]')).toBeNull();
-        expect($("[data-composer-placeholder]").textContent).toBe("Type / for skills");
-        setRaw("CustomGreeting", "placeholder", "");
-        setRaw("CustomGreeting", "input", "project");
     });
 
     test("New chat on the home page is a new visit", async () => {

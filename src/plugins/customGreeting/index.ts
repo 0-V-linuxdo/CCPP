@@ -6,7 +6,7 @@
 
 import { t } from "@kernel/i18n";
 import { definePlugin } from "@kernel/plugins";
-import { definePluginSettings } from "@kernel/settings";
+import { definePluginSettings, resetRaw } from "@kernel/settings";
 import { persisted } from "@kernel/storage";
 import { SEL } from "@api/dom";
 import { onRoute } from "@api/router";
@@ -41,19 +41,6 @@ const settings = definePluginSettings({
         ],
     },
     intervalSec: { type: "number", label: { zh: "定时间隔", en: "Timer interval" }, default: 30, min: 5, max: 600, step: 5, unit: "s", visible: v => v.rotate === "timer" },
-    input: {
-        type: "select",
-        label: { zh: "输入框占位文字", en: "Input placeholder" },
-        description: { zh: "替换成下面的文字，没填就用第一条问候语。", en: "Uses the text below, or the first greeting when it's empty." },
-        // Off by default: a greeting in the prompt box reads like claude.ai's own text leaking in.
-        default: "off",
-        options: [
-            { value: "off", label: { zh: "不换", en: "Never" } },
-            { value: "project", label: { zh: "只在项目里换", en: "Only in projects" } },
-            { value: "all", label: { zh: "到处都换", en: "Everywhere" } },
-        ],
-    },
-    placeholder: { type: "string", label: { zh: "占位文字", en: "Placeholder text" }, description: { zh: "留空用第一条问候语。", en: "Empty uses the first greeting." }, default: "", visible: v => v.input !== "off" },
 });
 
 const position = persisted<number>("greeting-index", 0, (v): v is number => Number.isInteger(v));
@@ -73,9 +60,6 @@ export function fillPhrase(text: string, name: string, hour: number, zh: boolean
     const time = hour < 5 ? (zh ? "夜深了" : "Good night") : hour < 12 ? (zh ? "早上好" : "Good morning") : hour < 18 ? (zh ? "下午好" : "Good afternoon") : zh ? "晚上好" : "Good evening";
     return text.replaceAll("{name}", name).replaceAll("{time}", time);
 }
-
-/** Claude Code project pages and claude.ai project pages. */
-export const isProjectPage = (path: string) => /^\/(code\/)?project\//.test(path);
 
 /**
  * The home greeting(s). Pages that drop claude.ai's text marker (some new-chat and Code layouts)
@@ -107,20 +91,12 @@ const greetingText = (el: Element) => greetingNodes(el).map(node => node.data).j
 
 const displayName = () => document.querySelector(`${SEL.userMenuButton} [data-cds="Avatar"]`)?.getAttribute("aria-label")?.trim() || document.querySelector(`${SEL.userMenuName} span`)?.textContent?.trim() || "";
 
-/** A CSS string literal (for `content:`). */
-export const cssString = (text: string) => `"${text.replaceAll("\\", "\\\\").replaceAll('"', '\\"').replaceAll("\n", "\\A ")}"`;
-
-/**
- * Older builds drew the placeholder as the editor's p::before. The editor rebuilds that paragraph
- * (and its data-placeholder) all the time, so it is replaced from CSS instead.
- */
-export const placeholderCss = (text: string) => (text ? `${SEL.editor} p.is-editor-empty[data-placeholder]::before { content: ${cssString(text)} !important; }` : "");
 const CLICKABLE = "data-ccpp-greeting-click";
 
 export default definePlugin({
     name: "CustomGreeting",
     title: { zh: "自定义问候语", en: "Custom greeting" },
-    description: { zh: "替换首页问候语（含新版首页），多条随机 / 依次轮换；可选把输入框占位文字也换成你的。", en: "Your own home greeting (new layouts too), rotated on visit, click or a timer; can also set the input placeholder." },
+    description: { zh: "替换首页问候语（含新版首页），多条随机 / 依次轮换（打开时、点击或定时）。", en: "Your own home greeting (new layouts too), rotated on visit, click or a timer." },
     category: "appearance",
     icon: "message",
     enabledByDefault: false,
@@ -129,9 +105,10 @@ export default definePlugin({
     settings,
     start(scope) {
         const phrases = () => settings.store.phrases.split("\n").map(s => s.trim()).filter(Boolean);
+        // The input placeholder options are gone; drop what older versions saved for them.
+        resetRaw(settings.owner(), ["input", "placeholder"]);
         const swaps = new TextSwaps();
         addStyle(scope, `[${CLICKABLE}] { cursor: pointer; }`, "custom-greeting");
-        const setPlaceholderCss = addStyle(scope, "", "custom-greeting-placeholder");
         let template = "";
         let shown = false;
         const fill = (text: string) => fillPhrase(text, displayName(), new Date().getHours(), /[一-龥]/.test(text));
@@ -162,32 +139,7 @@ export default definePlugin({
             }
         };
 
-        const placeholderText = () => {
-            const mode = settings.store.input;
-            if (mode === "off" || (mode === "project" && !isProjectPage(location.pathname))) return "";
-            return settings.store.placeholder.trim() || fill(phrases()[0] ?? "");
-        };
-        let lastCss = "";
-        const placeholderSwaps = new TextSwaps();
-        const paintPlaceholders = () => {
-            const text = placeholderText();
-            // Current claude.ai draws the placeholder in a span beside the editor: swap its words.
-            placeholderSwaps.prune();
-            for (const el of document.querySelectorAll(SEL.composerPlaceholder)) {
-                const nodes = textNodes(el);
-                if (!text) for (const node of nodes) placeholderSwaps.restore(node);
-                else nodes.forEach((node, i) => placeholderSwaps.set(node, i ? "" : text));
-            }
-            const css = placeholderCss(text);
-            if (css === lastCss) return;
-            lastCss = css;
-            setPlaceholderCss(css);
-        };
-
-        const paint = () => {
-            paintGreeting();
-            paintPlaceholders();
-        };
+        const paint = paintGreeting;
 
         // React writes the original text back on re-render; keep ours.
         let timer: ReturnType<typeof setTimeout> | null = null;
@@ -200,7 +152,6 @@ export default definePlugin({
             observer.disconnect();
             if (timer) clearTimeout(timer);
             swaps.restore();
-            placeholderSwaps.restore();
             for (const el of document.querySelectorAll(`[${CLICKABLE}]`)) el.removeAttribute(CLICKABLE);
         });
 
@@ -229,7 +180,6 @@ export default definePlugin({
         // The route changes before React swaps the page; the observer repaints once it has.
         onRoute(scope, () => {
             shown = false;
-            paintPlaceholders();
         }, false);
         paint();
     },

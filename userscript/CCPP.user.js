@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.103
+// @version      20261013.0.3.104
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -1204,7 +1204,6 @@
     composer: '[data-cds="ChatComposer"]',
     composerCard: "[data-composer-card-holder]",
     editor: ':is([data-testid="chat-input"], [data-testid="code-prompt-input"])',
-    composerPlaceholder: "[data-composer-placeholder]",
     sendButton: ':is([data-testid="chat-input-send"], [data-testid="code-prompt-send"])',
     modelSelector: ':is([data-testid="model-selector-dropdown"], [data-testid="epitaxy-cds-model-selector"], [data-testid="environment-row-model"])',
     greeting: "[data-new-page-greeting-text]",
@@ -2830,7 +2829,7 @@ ${IMAGE_FIELD_CSS}`;
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.103";
+  var version = "0.3.104";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -7127,19 +7126,7 @@ Write it down while the idea is fresh` })
         { value: "timer", label: { zh: "定时", en: "A timer" } }
       ]
     },
-    intervalSec: { type: "number", label: { zh: "定时间隔", en: "Timer interval" }, default: 30, min: 5, max: 600, step: 5, unit: "s", visible: (v) => v.rotate === "timer" },
-    input: {
-      type: "select",
-      label: { zh: "输入框占位文字", en: "Input placeholder" },
-      description: { zh: "替换成下面的文字，没填就用第一条问候语。", en: "Uses the text below, or the first greeting when it's empty." },
-      default: "off",
-      options: [
-        { value: "off", label: { zh: "不换", en: "Never" } },
-        { value: "project", label: { zh: "只在项目里换", en: "Only in projects" } },
-        { value: "all", label: { zh: "到处都换", en: "Everywhere" } }
-      ]
-    },
-    placeholder: { type: "string", label: { zh: "占位文字", en: "Placeholder text" }, description: { zh: "留空用第一条问候语。", en: "Empty uses the first greeting." }, default: "", visible: (v) => v.input !== "off" }
+    intervalSec: { type: "number", label: { zh: "定时间隔", en: "Timer interval" }, default: 30, min: 5, max: 600, step: 5, unit: "s", visible: (v) => v.rotate === "timer" }
   });
   var position = persisted("greeting-index", 0, (v) => Number.isInteger(v));
   function pickPhrase(phrases, order, last, random = Math.random) {
@@ -7158,7 +7145,6 @@ Write it down while the idea is fresh` })
     const time = hour < 5 ? zh ? "夜深了" : "Good night" : hour < 12 ? zh ? "早上好" : "Good morning" : hour < 18 ? zh ? "下午好" : "Good afternoon" : zh ? "晚上好" : "Good evening";
     return text.replaceAll("{name}", name).replaceAll("{time}", time);
   }
-  var isProjectPage = (path) => /^\/(code\/)?project\//.test(path);
   function findGreetings(root = document) {
     const marked = [...root.querySelectorAll(SEL.greeting)];
     if (marked.length)
@@ -7184,14 +7170,11 @@ Write it down while the idea is fresh` })
   var greetingNodes = (el) => textNodes(el).filter((node) => !node.parentElement?.closest(`svg, [data-new-page-greeting-spark]`));
   var greetingText = (el) => greetingNodes(el).map((node) => node.data).join("");
   var displayName = () => document.querySelector(`${SEL.userMenuButton} [data-cds="Avatar"]`)?.getAttribute("aria-label")?.trim() || document.querySelector(`${SEL.userMenuName} span`)?.textContent?.trim() || "";
-  var cssString = (text) => `"${text.replaceAll("\\", "\\\\").replaceAll('"', "\\\"").replaceAll(`
-`, "\\A ")}"`;
-  var placeholderCss = (text) => text ? `${SEL.editor} p.is-editor-empty[data-placeholder]::before { content: ${cssString(text)} !important; }` : "";
   var CLICKABLE = "data-ccpp-greeting-click";
   var customGreeting_default = definePlugin({
     name: "CustomGreeting",
     title: { zh: "自定义问候语", en: "Custom greeting" },
-    description: { zh: "替换首页问候语（含新版首页），多条随机 / 依次轮换；可选把输入框占位文字也换成你的。", en: "Your own home greeting (new layouts too), rotated on visit, click or a timer; can also set the input placeholder." },
+    description: { zh: "替换首页问候语（含新版首页），多条随机 / 依次轮换（打开时、点击或定时）。", en: "Your own home greeting (new layouts too), rotated on visit, click or a timer." },
     category: "appearance",
     icon: "message",
     enabledByDefault: false,
@@ -7201,9 +7184,9 @@ Write it down while the idea is fresh` })
     start(scope) {
       const phrases = () => settings14.store.phrases.split(`
 `).map((s) => s.trim()).filter(Boolean);
+      resetRaw(settings14.owner(), ["input", "placeholder"]);
       const swaps = new TextSwaps;
       addStyle(scope, `[${CLICKABLE}] { cursor: pointer; }`, "custom-greeting");
-      const setPlaceholderCss = addStyle(scope, "", "custom-greeting-placeholder");
       let template = "";
       let shown = false;
       const fill = (text) => fillPhrase(text, displayName(), new Date().getHours(), /[一-龥]/.test(text));
@@ -7237,35 +7220,7 @@ Write it down while the idea is fresh` })
             el.toggleAttribute(CLICKABLE, clickable);
         }
       };
-      const placeholderText = () => {
-        const mode = settings14.store.input;
-        if (mode === "off" || mode === "project" && !isProjectPage(location.pathname))
-          return "";
-        return settings14.store.placeholder.trim() || fill(phrases()[0] ?? "");
-      };
-      let lastCss = "";
-      const placeholderSwaps = new TextSwaps;
-      const paintPlaceholders = () => {
-        const text = placeholderText();
-        placeholderSwaps.prune();
-        for (const el of document.querySelectorAll(SEL.composerPlaceholder)) {
-          const nodes = textNodes(el);
-          if (!text)
-            for (const node of nodes)
-              placeholderSwaps.restore(node);
-          else
-            nodes.forEach((node, i) => placeholderSwaps.set(node, i ? "" : text));
-        }
-        const css = placeholderCss(text);
-        if (css === lastCss)
-          return;
-        lastCss = css;
-        setPlaceholderCss(css);
-      };
-      const paint = () => {
-        paintGreeting();
-        paintPlaceholders();
-      };
+      const paint = paintGreeting;
       let timer = null;
       const observer = new MutationObserver(() => timer ??= setTimeout(() => {
         timer = null;
@@ -7278,7 +7233,6 @@ Write it down while the idea is fresh` })
         if (timer)
           clearTimeout(timer);
         swaps.restore();
-        placeholderSwaps.restore();
         for (const el of document.querySelectorAll(`[${CLICKABLE}]`))
           el.removeAttribute(CLICKABLE);
       });
@@ -7308,7 +7262,6 @@ Write it down while the idea is fresh` })
         }, settings14.store.intervalSec * 1000);
       onRoute(scope, () => {
         shown = false;
-        paintPlaceholders();
       }, false);
       paint();
     }
@@ -8421,7 +8374,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.103",
+      version: "0.3.104",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -8438,7 +8391,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.103";
+    win[FLAG] = "0.3.104";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -8455,7 +8408,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.103"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.104"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();
