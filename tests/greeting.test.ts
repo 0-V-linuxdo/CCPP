@@ -9,7 +9,7 @@ const tick = () => new Promise(resolve => setTimeout(resolve, 150));
 const $ = (sel: string) => document.querySelector<HTMLElement>(sel)!;
 
 const SPARK = '<svg data-cds="Spark" viewBox="0 0 100 100"><path d="m0 0"/></svg>';
-const PROMPT = '<div data-cds="ChatComposer"><div data-testid="chat-input"><p data-placeholder="Type / for skills" class="is-empty is-editor-empty"></p></div></div>';
+const PROMPT = '<div data-cds="ChatComposer"><div class="relative"><div data-testid="chat-input"><p data-placeholder="Type / for skills" class="is-empty is-editor-empty"></p></div><span data-composer-placeholder="" aria-hidden="true">Type / for skills</span></div></div>';
 
 /** The new-chat home as claude.ai marks it. */
 const markedHome = () => `<main><div><div data-new-page-greeting-spark="">${SPARK}</div><span data-new-page-greeting-text="">Good evening, GG</span></div>${PROMPT}</main>`;
@@ -91,10 +91,16 @@ describe("CustomGreeting", () => {
         setEnabled(getPlugin("CustomGreeting")!, true);
         await tick();
         expect(css()).toBe("");
+        expect($("[data-composer-placeholder]").textContent).toBe("Type / for skills");
 
         setRaw("CustomGreeting", "input", "all");
         await tick();
         expect(css()).toContain('p.is-editor-empty[data-placeholder]::before { content: "First line" !important; }');
+        expect($("[data-composer-placeholder]").textContent).toBe("First line");
+        // claude.ai writing its text back gets replaced again.
+        $("[data-composer-placeholder]").textContent = "Type / for skills";
+        await tick();
+        expect($("[data-composer-placeholder]").textContent).toBe("First line");
         // The editor's own attribute is left alone: it rebuilds the paragraph all the time.
         expect($("p[data-placeholder]").dataset.placeholder).toBe("Type / for skills");
 
@@ -105,6 +111,7 @@ describe("CustomGreeting", () => {
         setEnabled(getPlugin("CustomGreeting")!, false);
         await tick();
         expect(document.querySelector('[data-ccpp-style="custom-greeting-placeholder"]')).toBeNull();
+        expect($("[data-composer-placeholder]").textContent).toBe("Type / for skills");
         setRaw("CustomGreeting", "placeholder", "");
         setRaw("CustomGreeting", "input", "project");
     });

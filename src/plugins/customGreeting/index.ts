@@ -110,8 +110,8 @@ const displayName = () => document.querySelector(`${SEL.userMenuButton} [data-cd
 export const cssString = (text: string) => `"${text.replaceAll("\\", "\\\\").replaceAll('"', '\\"').replaceAll("\n", "\\A ")}"`;
 
 /**
- * The editor rebuilds its empty paragraph (and its data-placeholder) all the time, so the
- * placeholder is replaced from CSS: the ::before that shows it gets our text instead.
+ * Older builds drew the placeholder as the editor's p::before. The editor rebuilds that paragraph
+ * (and its data-placeholder) all the time, so it is replaced from CSS instead.
  */
 export const placeholderCss = (text: string) => (text ? `${SEL.editor} p.is-editor-empty[data-placeholder]::before { content: ${cssString(text)} !important; }` : "");
 const CLICKABLE = "data-ccpp-greeting-click";
@@ -167,8 +167,17 @@ export default definePlugin({
             return settings.store.placeholder.trim() || fill(phrases()[0] ?? "");
         };
         let lastCss = "";
+        const placeholderSwaps = new TextSwaps();
         const paintPlaceholders = () => {
-            const css = placeholderCss(placeholderText());
+            const text = placeholderText();
+            // Current claude.ai draws the placeholder in a span beside the editor: swap its words.
+            placeholderSwaps.prune();
+            for (const el of document.querySelectorAll(SEL.composerPlaceholder)) {
+                const nodes = textNodes(el);
+                if (!text) for (const node of nodes) placeholderSwaps.restore(node);
+                else nodes.forEach((node, i) => placeholderSwaps.set(node, i ? "" : text));
+            }
+            const css = placeholderCss(text);
             if (css === lastCss) return;
             lastCss = css;
             setPlaceholderCss(css);
@@ -190,6 +199,7 @@ export default definePlugin({
             observer.disconnect();
             if (timer) clearTimeout(timer);
             swaps.restore();
+            placeholderSwaps.restore();
             for (const el of document.querySelectorAll(`[${CLICKABLE}]`)) el.removeAttribute(CLICKABLE);
         });
 

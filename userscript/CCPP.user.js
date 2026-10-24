@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.98
+// @version      20261013.0.3.99
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -1183,6 +1183,7 @@
     composer: '[data-cds="ChatComposer"]',
     composerCard: "[data-composer-card-holder]",
     editor: ':is([data-testid="chat-input"], [data-testid="code-prompt-input"])',
+    composerPlaceholder: "[data-composer-placeholder]",
     sendButton: ':is([data-testid="chat-input-send"], [data-testid="code-prompt-send"])',
     modelSelector: ':is([data-testid="model-selector-dropdown"], [data-testid="epitaxy-cds-model-selector"], [data-testid="environment-row-model"])',
     greeting: "[data-new-page-greeting-text]",
@@ -2775,7 +2776,7 @@ ${IMAGE_FIELD_CSS}`;
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.98";
+  var version = "0.3.99";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -7151,8 +7152,19 @@ Write it down while the idea is fresh` })
         return settings14.store.placeholder.trim() || fill(phrases()[0] ?? "");
       };
       let lastCss = "";
+      const placeholderSwaps = new TextSwaps;
       const paintPlaceholders = () => {
-        const css = placeholderCss(placeholderText());
+        const text = placeholderText();
+        placeholderSwaps.prune();
+        for (const el of document.querySelectorAll(SEL.composerPlaceholder)) {
+          const nodes = textNodes(el);
+          if (!text)
+            for (const node of nodes)
+              placeholderSwaps.restore(node);
+          else
+            nodes.forEach((node, i) => placeholderSwaps.set(node, i ? "" : text));
+        }
+        const css = placeholderCss(text);
         if (css === lastCss)
           return;
         lastCss = css;
@@ -7174,6 +7186,7 @@ Write it down while the idea is fresh` })
         if (timer)
           clearTimeout(timer);
         swaps.restore();
+        placeholderSwaps.restore();
         for (const el of document.querySelectorAll(`[${CLICKABLE}]`))
           el.removeAttribute(CLICKABLE);
       });
@@ -8316,7 +8329,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.98",
+      version: "0.3.99",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -8333,7 +8346,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.98";
+    win[FLAG] = "0.3.99";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -8350,7 +8363,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.98"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.99"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();
