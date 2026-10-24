@@ -8,14 +8,16 @@ import { t } from "@kernel/i18n";
 import { definePlugin } from "@kernel/plugins";
 import { definePluginSettings } from "@kernel/settings";
 import { persisted } from "@kernel/storage";
-import { SEL, watch } from "@api/dom";
+import { SEL } from "@api/dom";
 import { onRoute } from "@api/router";
+import { addStyle } from "@api/styles";
+import { textNodes, TextSwaps } from "@lib/identity";
 
 const settings = definePluginSettings({
     phrases: {
         type: "text",
         label: { zh: "问候语（每行一条）", en: "Greetings (one per line)" },
-        description: { zh: "可用 {name}、{time}。", en: "Supports {name} and {time}." },
+        description: { zh: "可用 {name}、{time}。留空保持官方问候语。", en: "Supports {name} and {time}. Empty keeps claude.ai's greeting." },
         rows: 5,
         default: t({ zh: "{time}，{name}\n今天想做点什么？\n灵感来了就写下来", en: "{time}, {name}\nWhat shall we work on today?\nWrite it down while the idea is fresh" }),
     },
@@ -39,7 +41,18 @@ const settings = definePluginSettings({
         ],
     },
     intervalSec: { type: "number", label: { zh: "定时间隔", en: "Timer interval" }, default: 30, min: 5, max: 600, step: 5, unit: "s", visible: v => v.rotate === "timer" },
-    placeholder: { type: "string", label: { zh: "输入框占位文字", en: "Input placeholder" }, description: { zh: "留空保持官方文字。", en: "Empty keeps claude.ai's text." }, default: "" },
+    input: {
+        type: "select",
+        label: { zh: "输入框占位文字", en: "Input placeholder" },
+        description: { zh: "替换成下面的文字，没填就用第一条问候语。", en: "Uses the text below, or the first greeting when it's empty." },
+        default: "project",
+        options: [
+            { value: "project", label: { zh: "只在项目里换", en: "Only in projects" } },
+            { value: "all", label: { zh: "到处都换", en: "Everywhere" } },
+            { value: "off", label: { zh: "不换", en: "Never" } },
+        ],
+    },
+    placeholder: { type: "string", label: { zh: "占位文字", en: "Placeholder text" }, description: { zh: "留空用第一条问候语。", en: "Empty uses the first greeting." }, default: "", visible: v => v.input !== "off" },
 });
 
 const position = persisted<number>("greeting-index", 0, (v): v is number => Number.isInteger(v));
@@ -60,67 +73,147 @@ export function fillPhrase(text: string, name: string, hour: number, zh: boolean
     return text.replaceAll("{name}", name).replaceAll("{time}", time);
 }
 
+/** Claude Code project pages and claude.ai project pages. */
+export const isProjectPage = (path: string) => /^\/(code\/)?project\//.test(path);
+
+/**
+ * The home greeting(s). Pages that drop claude.ai's text marker (some new-chat and Code layouts)
+ * still put the spark right before the words: the spark's row is the greeting, as long as it
+ * sits on an empty home page (a prompt box, no transcript) and isn't a link, button or the sidebar.
+ */
+export function findGreetings(root: ParentNode = document): HTMLElement[] {
+    const marked = [...root.querySelectorAll<HTMLElement>(SEL.greeting)];
+    if (marked.length) return marked;
+    const editor = document.querySelector(SEL.editor);
+    if (!editor || document.querySelector(`${SEL.transcript}, ${SEL.userMessage}, ${SEL.assistantMessage}`)) return [];
+    const found = new Set<HTMLElement>();
+    for (const spark of root.querySelectorAll<Element>(SEL.greetingSpark)) {
+        const holder = spark.closest<Element>("[data-new-page-greeting-spark]") ?? spark;
+        // The spark may sit in a wrapper of its own: climb to the first box that also holds words.
+        let row = holder.parentElement;
+        for (let up = 0; row && up < 3 && !greetingText(row).trim(); up++) row = row.parentElement;
+        if (!row || row.contains(editor) || row.closest(`a, button, [role="button"], ${SEL.sidebar}, ${SEL.composer}`)) continue;
+        const words = greetingText(row).trim();
+        if (!words || words.length > 200 || words === "Claude") continue;
+        found.add(row);
+    }
+    return [...found];
+}
+
+/** The greeting's own text nodes, leaving out the spark. */
+const greetingNodes = (el: Element) => textNodes(el).filter(node => !node.parentElement?.closest(`svg, [data-new-page-greeting-spark]`));
+const greetingText = (el: Element) => greetingNodes(el).map(node => node.data).join("");
+
 const displayName = () => document.querySelector(`${SEL.userMenuButton} [data-cds="Avatar"]`)?.getAttribute("aria-label")?.trim() || document.querySelector(`${SEL.userMenuName} span`)?.textContent?.trim() || "";
+
+const ORIG_PLACEHOLDER = "data-ccpp-orig-placeholder";
+const CLICKABLE = "data-ccpp-greeting-click";
 
 export default definePlugin({
     name: "CustomGreeting",
     title: { zh: "自定义问候语", en: "Custom greeting" },
-    description: { zh: "替换新对话首页的问候语，支持多条随机 / 依次轮换（打开时、点击或定时），也可改输入框占位文字。", en: "Replaces the new-chat greeting with your own lines, rotated on visit, click or a timer; can also change the input placeholder." },
+    description: { zh: "替换首页问候语（含新版首页），多条随机 / 依次轮换；项目里的输入框占位文字也换成你的。", en: "Your own home greeting (new layouts too), rotated on visit, click or a timer; project inputs get your placeholder." },
     category: "appearance",
     icon: "message",
     enabledByDefault: false,
-    dependencies: ["DomApi", "RouterApi"],
+    updatedAt: "2026-10-24",
+    dependencies: ["DomApi", "RouterApi", "StylesApi"],
     settings,
     start(scope) {
         const phrases = () => settings.store.phrases.split("\n").map(s => s.trim()).filter(Boolean);
-        let text = "";
+        const swaps = new TextSwaps();
+        addStyle(scope, `[${CLICKABLE}] { cursor: pointer; user-select: none; }`, "custom-greeting");
+        let template = "";
+        let shown = false;
+        const fill = (text: string) => fillPhrase(text, displayName(), new Date().getHours(), /[一-龥]/.test(text));
         const next = () => {
             const pick = pickPhrase(phrases(), settings.store.order, position.get());
             if (pick.index >= 0) position.set(pick.index);
-            text = fillPhrase(pick.text, displayName(), new Date().getHours(), /[一-龥]/.test(pick.text));
+            template = pick.text;
         };
+
+        const paintGreeting = () => {
+            const targets = findGreetings();
+            swaps.prune();
+            if (!targets.length) {
+                shown = false;
+                return;
+            }
+            // Each arrival on a page with a greeting is a visit.
+            if (!shown && (settings.store.rotate === "visit" || !template)) next();
+            shown = true;
+            const list = phrases();
+            const text = list.length ? fill(template || list[0]) : "";
+            const clickable = settings.store.rotate === "click" && list.length > 1;
+            for (const el of targets) {
+                const nodes = greetingNodes(el);
+                if (!text) for (const node of nodes) swaps.restore(node);
+                else nodes.forEach((node, i) => swaps.set(node, i ? "" : text));
+                if (clickable !== el.hasAttribute(CLICKABLE)) el.toggleAttribute(CLICKABLE, clickable);
+            }
+        };
+
+        const placeholderText = () => {
+            const mode = settings.store.input;
+            if (mode === "off" || (mode === "project" && !isProjectPage(location.pathname))) return "";
+            return settings.store.placeholder.trim() || fill(phrases()[0] ?? "");
+        };
+        let lastPlaceholder = "";
+        const paintPlaceholders = () => {
+            const text = placeholderText();
+            for (const p of document.querySelectorAll<HTMLElement>(`${SEL.editor} p[data-placeholder], [${ORIG_PLACEHOLDER}]`)) {
+                const current = p.dataset.placeholder ?? "";
+                // claude.ai wrote a new placeholder since our last change: that's the original now.
+                if (current !== lastPlaceholder || !p.hasAttribute(ORIG_PLACEHOLDER)) p.setAttribute(ORIG_PLACEHOLDER, current);
+                const want = text || p.getAttribute(ORIG_PLACEHOLDER)!;
+                if (current !== want) p.dataset.placeholder = want;
+                if (!text) p.removeAttribute(ORIG_PLACEHOLDER);
+            }
+            lastPlaceholder = text;
+        };
+
         const paint = () => {
-            for (const el of document.querySelectorAll<HTMLElement>(SEL.greeting)) {
-                if (text && el.textContent !== text) el.textContent = text;
-            }
-            const placeholder = settings.store.placeholder.trim();
-            if (placeholder) {
-                for (const p of document.querySelectorAll<HTMLElement>(`${SEL.editor} p[data-placeholder]`)) {
-                    if (p.dataset.placeholder !== placeholder) p.dataset.placeholder = placeholder;
-                }
-            }
+            paintGreeting();
+            paintPlaceholders();
         };
-        next();
-        onRoute(scope, route => {
-            if (route.kind === "new" && settings.store.rotate === "visit") next();
-            paint();
-        }, false);
-        watch(scope, SEL.greeting, el => {
-            paint();
-            // React writes the original text back on re-render; keep ours.
-            const observer = new MutationObserver(paint);
-            observer.observe(el, { childList: true, characterData: true, subtree: true });
-            const onClick = () => {
-                if (settings.store.rotate !== "click") return;
-                next();
-                paint();
-            };
-            el.style.cursor = settings.store.rotate === "click" ? "pointer" : "";
-            el.addEventListener("click", onClick);
-            return () => {
-                observer.disconnect();
-                el.removeEventListener("click", onClick);
-            };
+
+        // React writes the original text back on re-render; keep ours.
+        let timer: ReturnType<typeof setTimeout> | null = null;
+        const observer = new MutationObserver(() => (timer ??= setTimeout(() => {
+            timer = null;
+            if (scope.alive) paint();
+        }, 60)));
+        observer.observe(document.documentElement, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["data-placeholder", "aria-label"] });
+        scope.defer(() => {
+            observer.disconnect();
+            if (timer) clearTimeout(timer);
+            swaps.restore();
+            for (const el of document.querySelectorAll(`[${CLICKABLE}]`)) el.removeAttribute(CLICKABLE);
+            for (const p of document.querySelectorAll<HTMLElement>(`[${ORIG_PLACEHOLDER}]`)) {
+                if (p.dataset.placeholder === lastPlaceholder) p.dataset.placeholder = p.getAttribute(ORIG_PLACEHOLDER)!;
+                p.removeAttribute(ORIG_PLACEHOLDER);
+            }
         });
-        if (settings.store.placeholder.trim()) watch(scope, `${SEL.editor} p[data-placeholder]`, p => {
+
+        scope.listen(document, "click", event => {
+            if (settings.store.rotate !== "click" || phrases().length < 2) return;
+            const target = event.target instanceof Element ? event.target : null;
+            if (!target || !findGreetings().some(el => el.contains(target))) return;
+            // Selecting the greeting's text is not a request for a new one.
+            if (String(window.getSelection?.() ?? "").trim()) return;
+            next();
             paint();
-            const observer = new MutationObserver(paint);
-            observer.observe(p, { attributes: true, attributeFilter: ["data-placeholder"] });
-            return () => observer.disconnect();
         });
         if (settings.store.rotate === "timer") scope.interval(() => {
+            if (!shown) return;
             next();
             paint();
         }, settings.store.intervalSec * 1000);
+        // A new page is a new visit, even when the greeting stays mounted (New chat on the home page).
+        // The route changes before React swaps the page; the observer repaints once it has.
+        onRoute(scope, () => {
+            shown = false;
+        }, false);
+        paint();
     },
 });

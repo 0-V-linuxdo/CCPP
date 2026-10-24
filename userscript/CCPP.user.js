@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.96
+// @version      20261013.0.3.97
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -1186,6 +1186,7 @@
     sendButton: ':is([data-testid="chat-input-send"], [data-testid="code-prompt-send"])',
     modelSelector: ':is([data-testid="model-selector-dropdown"], [data-testid="epitaxy-cds-model-selector"], [data-testid="environment-row-model"])',
     greeting: "[data-new-page-greeting-text]",
+    greetingSpark: ':is([data-new-page-greeting-spark], svg[data-cds="Spark"])',
     menu: '[role="menu"]',
     menuItem: '[role="menuitem"]',
     jumpToLatest: '[data-testid="jump-to-latest"]'
@@ -2774,7 +2775,7 @@ ${IMAGE_FIELD_CSS}`;
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.96";
+  var version = "0.3.97";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -6936,12 +6937,77 @@ ${composer ? `[data-composer-card-holder], [data-cds="ChatComposer"] { max-width
     }
   });
 
+  // src/lib/identity.ts
+  var ORIG_LABEL = "data-ccpp-orig-label";
+  var known = "";
+  function realName() {
+    const avatar = document.querySelector(`${SEL.userMenuButton} ${SEL.avatar}`);
+    const label = (avatar?.getAttribute(ORIG_LABEL) ?? avatar?.getAttribute("aria-label") ?? "").trim();
+    if (label)
+      known = label;
+    return known;
+  }
+  var identityRoots = () => [...document.querySelectorAll(SEL.userMenuButton), ...document.querySelectorAll(SEL.accountMenu)];
+  function textNodes(root) {
+    const out = [];
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode();node; node = walker.nextNode())
+      out.push(node);
+    return out;
+  }
+
+  class TextSwaps {
+    swaps = new Map;
+    set(node, ours) {
+      if (node.data === ours)
+        return;
+      const prev = this.swaps.get(node);
+      const original = prev && node.data === prev.ours ? prev.original : node.data;
+      this.swaps.set(node, { original, ours });
+      node.data = ours;
+    }
+    original(node) {
+      const swap = this.swaps.get(node);
+      return swap && node.data === swap.ours ? swap.original : node.data;
+    }
+    restore(node) {
+      for (const [n, swap] of node ? [[node, this.swaps.get(node)]] : [...this.swaps]) {
+        if (!swap)
+          continue;
+        if (n.isConnected && n.data === swap.ours)
+          n.data = swap.original;
+        this.swaps.delete(n);
+      }
+    }
+    prune() {
+      for (const n of this.swaps.keys())
+        if (!n.isConnected)
+          this.swaps.delete(n);
+    }
+  }
+  function repaintOnChange(scope, paint) {
+    let timer = null;
+    const run = () => {
+      timer = null;
+      if (scope.alive)
+        paint();
+    };
+    const observer = new MutationObserver(() => timer ??= setTimeout(run, 60));
+    observer.observe(document.documentElement, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["aria-label"] });
+    scope.defer(() => {
+      observer.disconnect();
+      if (timer)
+        clearTimeout(timer);
+    });
+    paint();
+  }
+
   // src/plugins/customGreeting/index.ts
   var settings14 = definePluginSettings({
     phrases: {
       type: "text",
       label: { zh: "问候语（每行一条）", en: "Greetings (one per line)" },
-      description: { zh: "可用 {name}、{time}。", en: "Supports {name} and {time}." },
+      description: { zh: "可用 {name}、{time}。留空保持官方问候语。", en: "Supports {name} and {time}. Empty keeps claude.ai's greeting." },
       rows: 5,
       default: t({ zh: `{time}，{name}
 今天想做点什么？
@@ -6969,7 +7035,18 @@ Write it down while the idea is fresh` })
       ]
     },
     intervalSec: { type: "number", label: { zh: "定时间隔", en: "Timer interval" }, default: 30, min: 5, max: 600, step: 5, unit: "s", visible: (v) => v.rotate === "timer" },
-    placeholder: { type: "string", label: { zh: "输入框占位文字", en: "Input placeholder" }, description: { zh: "留空保持官方文字。", en: "Empty keeps claude.ai's text." }, default: "" }
+    input: {
+      type: "select",
+      label: { zh: "输入框占位文字", en: "Input placeholder" },
+      description: { zh: "替换成下面的文字，没填就用第一条问候语。", en: "Uses the text below, or the first greeting when it's empty." },
+      default: "project",
+      options: [
+        { value: "project", label: { zh: "只在项目里换", en: "Only in projects" } },
+        { value: "all", label: { zh: "到处都换", en: "Everywhere" } },
+        { value: "off", label: { zh: "不换", en: "Never" } }
+      ]
+    },
+    placeholder: { type: "string", label: { zh: "占位文字", en: "Placeholder text" }, description: { zh: "留空用第一条问候语。", en: "Empty uses the first greeting." }, default: "", visible: (v) => v.input !== "off" }
   });
   var position = persisted("greeting-index", 0, (v) => Number.isInteger(v));
   function pickPhrase(phrases, order, last, random = Math.random) {
@@ -6988,74 +7065,149 @@ Write it down while the idea is fresh` })
     const time = hour < 5 ? zh ? "夜深了" : "Good night" : hour < 12 ? zh ? "早上好" : "Good morning" : hour < 18 ? zh ? "下午好" : "Good afternoon" : zh ? "晚上好" : "Good evening";
     return text.replaceAll("{name}", name).replaceAll("{time}", time);
   }
+  var isProjectPage = (path) => /^\/(code\/)?project\//.test(path);
+  function findGreetings(root = document) {
+    const marked = [...root.querySelectorAll(SEL.greeting)];
+    if (marked.length)
+      return marked;
+    const editor = document.querySelector(SEL.editor);
+    if (!editor || document.querySelector(`${SEL.transcript}, ${SEL.userMessage}, ${SEL.assistantMessage}`))
+      return [];
+    const found = new Set;
+    for (const spark of root.querySelectorAll(SEL.greetingSpark)) {
+      const holder = spark.closest("[data-new-page-greeting-spark]") ?? spark;
+      let row = holder.parentElement;
+      for (let up = 0;row && up < 3 && !greetingText(row).trim(); up++)
+        row = row.parentElement;
+      if (!row || row.contains(editor) || row.closest(`a, button, [role="button"], ${SEL.sidebar}, ${SEL.composer}`))
+        continue;
+      const words = greetingText(row).trim();
+      if (!words || words.length > 200 || words === "Claude")
+        continue;
+      found.add(row);
+    }
+    return [...found];
+  }
+  var greetingNodes = (el) => textNodes(el).filter((node) => !node.parentElement?.closest(`svg, [data-new-page-greeting-spark]`));
+  var greetingText = (el) => greetingNodes(el).map((node) => node.data).join("");
   var displayName = () => document.querySelector(`${SEL.userMenuButton} [data-cds="Avatar"]`)?.getAttribute("aria-label")?.trim() || document.querySelector(`${SEL.userMenuName} span`)?.textContent?.trim() || "";
+  var ORIG_PLACEHOLDER = "data-ccpp-orig-placeholder";
+  var CLICKABLE = "data-ccpp-greeting-click";
   var customGreeting_default = definePlugin({
     name: "CustomGreeting",
     title: { zh: "自定义问候语", en: "Custom greeting" },
-    description: { zh: "替换新对话首页的问候语，支持多条随机 / 依次轮换（打开时、点击或定时），也可改输入框占位文字。", en: "Replaces the new-chat greeting with your own lines, rotated on visit, click or a timer; can also change the input placeholder." },
+    description: { zh: "替换首页问候语（含新版首页），多条随机 / 依次轮换；项目里的输入框占位文字也换成你的。", en: "Your own home greeting (new layouts too), rotated on visit, click or a timer; project inputs get your placeholder." },
     category: "appearance",
     icon: "message",
     enabledByDefault: false,
-    dependencies: ["DomApi", "RouterApi"],
+    updatedAt: "2026-10-24",
+    dependencies: ["DomApi", "RouterApi", "StylesApi"],
     settings: settings14,
     start(scope) {
       const phrases = () => settings14.store.phrases.split(`
 `).map((s) => s.trim()).filter(Boolean);
-      let text = "";
+      const swaps = new TextSwaps;
+      addStyle(scope, `[${CLICKABLE}] { cursor: pointer; user-select: none; }`, "custom-greeting");
+      let template = "";
+      let shown = false;
+      const fill = (text) => fillPhrase(text, displayName(), new Date().getHours(), /[一-龥]/.test(text));
       const next = () => {
         const pick = pickPhrase(phrases(), settings14.store.order, position.get());
         if (pick.index >= 0)
           position.set(pick.index);
-        text = fillPhrase(pick.text, displayName(), new Date().getHours(), /[一-龥]/.test(pick.text));
+        template = pick.text;
+      };
+      const paintGreeting = () => {
+        const targets = findGreetings();
+        swaps.prune();
+        if (!targets.length) {
+          shown = false;
+          return;
+        }
+        if (!shown && (settings14.store.rotate === "visit" || !template))
+          next();
+        shown = true;
+        const list = phrases();
+        const text = list.length ? fill(template || list[0]) : "";
+        const clickable = settings14.store.rotate === "click" && list.length > 1;
+        for (const el of targets) {
+          const nodes = greetingNodes(el);
+          if (!text)
+            for (const node of nodes)
+              swaps.restore(node);
+          else
+            nodes.forEach((node, i) => swaps.set(node, i ? "" : text));
+          if (clickable !== el.hasAttribute(CLICKABLE))
+            el.toggleAttribute(CLICKABLE, clickable);
+        }
+      };
+      const placeholderText = () => {
+        const mode = settings14.store.input;
+        if (mode === "off" || mode === "project" && !isProjectPage(location.pathname))
+          return "";
+        return settings14.store.placeholder.trim() || fill(phrases()[0] ?? "");
+      };
+      let lastPlaceholder = "";
+      const paintPlaceholders = () => {
+        const text = placeholderText();
+        for (const p of document.querySelectorAll(`${SEL.editor} p[data-placeholder], [${ORIG_PLACEHOLDER}]`)) {
+          const current = p.dataset.placeholder ?? "";
+          if (current !== lastPlaceholder || !p.hasAttribute(ORIG_PLACEHOLDER))
+            p.setAttribute(ORIG_PLACEHOLDER, current);
+          const want = text || p.getAttribute(ORIG_PLACEHOLDER);
+          if (current !== want)
+            p.dataset.placeholder = want;
+          if (!text)
+            p.removeAttribute(ORIG_PLACEHOLDER);
+        }
+        lastPlaceholder = text;
       };
       const paint = () => {
-        for (const el of document.querySelectorAll(SEL.greeting)) {
-          if (text && el.textContent !== text)
-            el.textContent = text;
-        }
-        const placeholder = settings14.store.placeholder.trim();
-        if (placeholder) {
-          for (const p of document.querySelectorAll(`${SEL.editor} p[data-placeholder]`)) {
-            if (p.dataset.placeholder !== placeholder)
-              p.dataset.placeholder = placeholder;
-          }
-        }
+        paintGreeting();
+        paintPlaceholders();
       };
-      next();
-      onRoute(scope, (route) => {
-        if (route.kind === "new" && settings14.store.rotate === "visit")
-          next();
+      let timer = null;
+      const observer = new MutationObserver(() => timer ??= setTimeout(() => {
+        timer = null;
+        if (scope.alive)
+          paint();
+      }, 60));
+      observer.observe(document.documentElement, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["data-placeholder", "aria-label"] });
+      scope.defer(() => {
+        observer.disconnect();
+        if (timer)
+          clearTimeout(timer);
+        swaps.restore();
+        for (const el of document.querySelectorAll(`[${CLICKABLE}]`))
+          el.removeAttribute(CLICKABLE);
+        for (const p of document.querySelectorAll(`[${ORIG_PLACEHOLDER}]`)) {
+          if (p.dataset.placeholder === lastPlaceholder)
+            p.dataset.placeholder = p.getAttribute(ORIG_PLACEHOLDER);
+          p.removeAttribute(ORIG_PLACEHOLDER);
+        }
+      });
+      scope.listen(document, "click", (event) => {
+        if (settings14.store.rotate !== "click" || phrases().length < 2)
+          return;
+        const target = event.target instanceof Element ? event.target : null;
+        if (!target || !findGreetings().some((el) => el.contains(target)))
+          return;
+        if (String(window.getSelection?.() ?? "").trim())
+          return;
+        next();
         paint();
-      }, false);
-      watch(scope, SEL.greeting, (el) => {
-        paint();
-        const observer = new MutationObserver(paint);
-        observer.observe(el, { childList: true, characterData: true, subtree: true });
-        const onClick = () => {
-          if (settings14.store.rotate !== "click")
+      });
+      if (settings14.store.rotate === "timer")
+        scope.interval(() => {
+          if (!shown)
             return;
           next();
           paint();
-        };
-        el.style.cursor = settings14.store.rotate === "click" ? "pointer" : "";
-        el.addEventListener("click", onClick);
-        return () => {
-          observer.disconnect();
-          el.removeEventListener("click", onClick);
-        };
-      });
-      if (settings14.store.placeholder.trim())
-        watch(scope, `${SEL.editor} p[data-placeholder]`, (p) => {
-          paint();
-          const observer = new MutationObserver(paint);
-          observer.observe(p, { attributes: true, attributeFilter: ["data-placeholder"] });
-          return () => observer.disconnect();
-        });
-      if (settings14.store.rotate === "timer")
-        scope.interval(() => {
-          next();
-          paint();
         }, settings14.store.intervalSec * 1000);
+      onRoute(scope, () => {
+        shown = false;
+      }, false);
+      paint();
     }
   });
 
@@ -7744,71 +7896,6 @@ ${RUNNING_PILL} {
     }
   });
 
-  // src/lib/identity.ts
-  var ORIG_LABEL = "data-ccpp-orig-label";
-  var known = "";
-  function realName() {
-    const avatar = document.querySelector(`${SEL.userMenuButton} ${SEL.avatar}`);
-    const label = (avatar?.getAttribute(ORIG_LABEL) ?? avatar?.getAttribute("aria-label") ?? "").trim();
-    if (label)
-      known = label;
-    return known;
-  }
-  var identityRoots = () => [...document.querySelectorAll(SEL.userMenuButton), ...document.querySelectorAll(SEL.accountMenu)];
-  function textNodes(root) {
-    const out = [];
-    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-    for (let node = walker.nextNode();node; node = walker.nextNode())
-      out.push(node);
-    return out;
-  }
-
-  class TextSwaps {
-    swaps = new Map;
-    set(node, ours) {
-      if (node.data === ours)
-        return;
-      const prev = this.swaps.get(node);
-      const original = prev && node.data === prev.ours ? prev.original : node.data;
-      this.swaps.set(node, { original, ours });
-      node.data = ours;
-    }
-    original(node) {
-      const swap = this.swaps.get(node);
-      return swap && node.data === swap.ours ? swap.original : node.data;
-    }
-    restore(node) {
-      for (const [n, swap] of node ? [[node, this.swaps.get(node)]] : [...this.swaps]) {
-        if (!swap)
-          continue;
-        if (n.isConnected && n.data === swap.ours)
-          n.data = swap.original;
-        this.swaps.delete(n);
-      }
-    }
-    prune() {
-      for (const n of this.swaps.keys())
-        if (!n.isConnected)
-          this.swaps.delete(n);
-    }
-  }
-  function repaintOnChange(scope, paint) {
-    let timer = null;
-    const run = () => {
-      timer = null;
-      if (scope.alive)
-        paint();
-    };
-    const observer = new MutationObserver(() => timer ??= setTimeout(run, 60));
-    observer.observe(document.documentElement, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["aria-label"] });
-    scope.defer(() => {
-      observer.disconnect();
-      if (timer)
-        clearTimeout(timer);
-    });
-    paint();
-  }
-
   // src/plugins/customIdentity/index.ts
   var settings25 = definePluginSettings({
     displayName: {
@@ -8231,7 +8318,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.96",
+      version: "0.3.97",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -8248,7 +8335,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.96";
+    win[FLAG] = "0.3.97";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -8265,7 +8352,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.96"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.97"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();

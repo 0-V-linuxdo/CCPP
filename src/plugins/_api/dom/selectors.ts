@@ -42,6 +42,8 @@ export const SEL = {
     /** Chat model picker, or the Claude Code one (home, sessions, project threads). */
     modelSelector: ':is([data-testid="model-selector-dropdown"], [data-testid="epitaxy-cds-model-selector"], [data-testid="environment-row-model"])',
     greeting: "[data-new-page-greeting-text]",
+    /** The Claude spark beside the home greeting; layouts without the text marker are found from it. */
+    greetingSpark: ':is([data-new-page-greeting-spark], svg[data-cds="Spark"])',
     menu: '[role="menu"]',
     menuItem: '[role="menuitem"]',
     jumpToLatest: '[data-testid="jump-to-latest"]',
