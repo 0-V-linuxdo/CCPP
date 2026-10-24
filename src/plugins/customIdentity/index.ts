@@ -29,7 +29,7 @@ const settings = definePluginSettings({
     avatarSize: {
         type: "number",
         label: { zh: "侧栏头像大小", en: "Sidebar avatar size" },
-        description: { zh: "侧栏展开时头像按钮里的头像直径，官方是 20px。收起成窄栏时保持官方大小。", en: "Diameter of the avatar on the sidebar's account button while the sidebar is expanded. claude.ai's own is 20px. A collapsed rail keeps the official size." },
+        description: { zh: "官方 20px", en: "Official: 20px" },
         default: 24,
         min: 16,
         max: 48,
@@ -76,8 +76,8 @@ const SIZED = "data-ccpp-avatar-size";
 export function sizeCss(px: number) {
     const button = `${SEL.userMenuButton}[${SIZED}]`;
     const size = `${px}px`;
-    return `${button} { height: auto !important; min-height: max(28px, var(--df-footer-btn-size, 32px), calc(${size} + 8px)) !important; }
-${button} ${SEL.avatar} { width: ${size} !important; height: ${size} !important; min-width: ${size} !important; min-height: ${size} !important; font-size: calc(${size} * .45) !important; }
+    // Negative block margins keep the avatar's layout height at the official 20px, so the footer bar doesn't grow.
+    return `${button} ${SEL.avatar} { width: ${size} !important; height: ${size} !important; min-width: ${size} !important; min-height: ${size} !important; margin-block: calc((20px - ${size}) / 2) !important; font-size: calc(${size} * .45) !important; }
 ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${size}) !important; flex-shrink: 0 !important; }`;
 }
 

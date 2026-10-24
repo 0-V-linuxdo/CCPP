@@ -7,6 +7,8 @@
 import { t } from "@kernel/i18n";
 import { coerce, getRaw, type Option, type PluginSettings, setRaw, type Value } from "@kernel/settings";
 import { h } from "@lib/dom";
+import { icon } from "@lib/icons";
+import { tipAttrs } from "@lib/tooltip";
 
 import { imageField } from "./imageField";
 import { confirmDialog } from "./layer";
@@ -38,9 +40,20 @@ export function renderOption(settings: PluginSettings, key: string, option: Opti
         case "number": {
             const output = h("output", { text: `${value}${option.unit ?? ""}` });
             const input = h("input", { type: "range", min: option.min, max: option.max, step: option.step ?? 1, value: String(value), "aria-label": t(option.label) });
-            input.addEventListener("input", () => (output.textContent = `${input.value}${option.unit ?? ""}`));
+            const label = `${t({ zh: "恢复默认", en: "Reset to default" })} (${option.default}${option.unit ?? ""})`;
+            const reset = h("button", { type: "button", class: "icon-btn", ...tipAttrs(label), "aria-label": label, disabled: value === option.default }, icon("refresh", 14));
+            input.addEventListener("input", () => {
+                output.textContent = `${input.value}${option.unit ?? ""}`;
+                reset.disabled = Number(input.value) === option.default;
+            });
             input.addEventListener("change", () => set(Number(input.value)));
-            return row(h("div", { class: "range" }, input, output));
+            reset.addEventListener("click", () => {
+                input.value = String(option.default);
+                output.textContent = `${option.default}${option.unit ?? ""}`;
+                reset.disabled = true;
+                set(option.default);
+            });
+            return row(h("div", { class: "range" }, input, output, reset));
         }
         case "select": {
             const select = h("select", { class: "input", "aria-label": t(option.label) }, ...option.options.map(o => h("option", { value: o.value, text: t(o.label), selected: o.value === value })));

@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
 import { getPlugin, registerPlugins, resetRegistry, setEnabled, startPhase } from "../src/kernel/plugins";
-import { coerce, setRaw } from "../src/kernel/settings";
+import { coerce, definePluginSettings, setRaw } from "../src/kernel/settings";
+import { renderOption } from "../src/plugins/_core/settings/options";
 import { PLUGINS } from "../src/plugins";
 import { cropRect, imageField } from "../src/plugins/_core/settings/imageField";
 import { avatarCss, cssUrl, initials, sizeCss, swapName } from "../src/plugins/customIdentity";
@@ -44,6 +45,9 @@ describe("identity helpers", () => {
         expect(cssUrl('https://x/a"b.png')).toBe('url("https://x/a\\22 b.png")');
         expect(avatarCss("", true)).toBe("");
         expect(sizeCss(32)).toContain("[data-ccpp-avatar-size] [data-cds=\"Avatar\"] { width: 32px !important; height: 32px !important;");
+        // The footer bar keeps its height: the avatar's extra size is taken back by negative margins.
+        expect(sizeCss(32)).toContain("margin-block: calc((20px - 32px) / 2)");
+        expect(sizeCss(32)).not.toContain("min-height: max(");
         expect(avatarCss("data:image/png;base64,AA", false)).not.toContain('[role="menu"]');
     });
 
@@ -65,6 +69,19 @@ describe("identity helpers", () => {
         clear.click();
         expect(saved).toBe("");
         field.remove();
+    });
+
+    test("number options have a reset-to-default button", () => {
+        const settings = definePluginSettings({ size: { type: "number", label: "Size", default: 24, min: 16, max: 48, unit: "px" } });
+        settings.bind("QaResetTest");
+        setRaw("QaResetTest", "size", 40);
+        const row = renderOption(settings, "size", settings.def.size, () => {})!;
+        const reset = row.querySelector<HTMLButtonElement>(".range .icon-btn")!;
+        expect(reset.disabled).toBe(false);
+        reset.click();
+        expect(settings.store.size).toBe(24);
+        expect(row.querySelector("output")!.textContent).toBe("24px");
+        expect(reset.disabled).toBe(true);
     });
 
     test("crop stays inside the picture", () => {

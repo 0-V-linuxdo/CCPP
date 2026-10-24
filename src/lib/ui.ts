@@ -43,6 +43,7 @@ export const BASE_CSS = `
 .icon-btn { display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: var(--radius); border: 0; background: transparent; color: var(--fg3); }
 .icon-btn:hover { background: var(--bg2); color: var(--fg); }
 .icon-btn.on { color: var(--fg); }
+.icon-btn:disabled { opacity: .35; pointer-events: none; }
 .input { height: var(--h); padding: 0 10px; border-radius: var(--radius); border: 0; box-shadow: inset 0 0 0 1px var(--field-ring); background: var(--field); color: var(--fg); font: inherit; outline: none; width: 100%; }
 .input::placeholder { color: var(--fg3); }
 .input:focus, textarea.input:focus { outline: none; box-shadow: var(--focus); }

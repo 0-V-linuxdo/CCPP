@@ -1659,6 +1659,7 @@
 .icon-btn { display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: var(--radius); border: 0; background: transparent; color: var(--fg3); }
 .icon-btn:hover { background: var(--bg2); color: var(--fg); }
 .icon-btn.on { color: var(--fg); }
+.icon-btn:disabled { opacity: .35; pointer-events: none; }
 .input { height: var(--h); padding: 0 10px; border-radius: var(--radius); border: 0; box-shadow: inset 0 0 0 1px var(--field-ring); background: var(--field); color: var(--fg); font: inherit; outline: none; width: 100%; }
 .input::placeholder { color: var(--fg3); }
 .input:focus, textarea.input:focus { outline: none; box-shadow: var(--focus); }
@@ -3390,9 +3391,20 @@ ${IMAGE_FIELD_CSS}`;
       case "number": {
         const output = h("output", { text: `${value}${option.unit ?? ""}` });
         const input = h("input", { type: "range", min: option.min, max: option.max, step: option.step ?? 1, value: String(value), "aria-label": t(option.label) });
-        input.addEventListener("input", () => output.textContent = `${input.value}${option.unit ?? ""}`);
+        const label = `${t({ zh: "恢复默认", en: "Reset to default" })} (${option.default}${option.unit ?? ""})`;
+        const reset = h("button", { type: "button", class: "icon-btn", ...tipAttrs(label), "aria-label": label, disabled: value === option.default }, icon("refresh", 14));
+        input.addEventListener("input", () => {
+          output.textContent = `${input.value}${option.unit ?? ""}`;
+          reset.disabled = Number(input.value) === option.default;
+        });
         input.addEventListener("change", () => set(Number(input.value)));
-        return row(h("div", { class: "range" }, input, output));
+        reset.addEventListener("click", () => {
+          input.value = String(option.default);
+          output.textContent = `${option.default}${option.unit ?? ""}`;
+          reset.disabled = true;
+          set(option.default);
+        });
+        return row(h("div", { class: "range" }, input, output, reset));
       }
       case "select": {
         const select = h("select", { class: "input", "aria-label": t(option.label) }, ...option.options.map((o) => h("option", { value: o.value, text: t(o.label), selected: o.value === value })));
@@ -7651,7 +7663,7 @@ ${RUNNING_PILL} {
     avatarSize: {
       type: "number",
       label: { zh: "侧栏头像大小", en: "Sidebar avatar size" },
-      description: { zh: "侧栏展开时头像按钮里的头像直径，官方是 20px。收起成窄栏时保持官方大小。", en: "Diameter of the avatar on the sidebar's account button while the sidebar is expanded. claude.ai's own is 20px. A collapsed rail keeps the official size." },
+      description: { zh: "官方 20px", en: "Official: 20px" },
       default: 24,
       min: 16,
       max: 48,
@@ -7693,8 +7705,7 @@ ${targets.map((t) => `${t} > *`).join(`,
   function sizeCss(px) {
     const button = `${SEL.userMenuButton}[${SIZED}]`;
     const size = `${px}px`;
-    return `${button} { height: auto !important; min-height: max(28px, var(--df-footer-btn-size, 32px), calc(${size} + 8px)) !important; }
-${button} ${SEL.avatar} { width: ${size} !important; height: ${size} !important; min-width: ${size} !important; min-height: ${size} !important; font-size: calc(${size} * .45) !important; }
+    return `${button} ${SEL.avatar} { width: ${size} !important; height: ${size} !important; min-width: ${size} !important; min-height: ${size} !important; margin-block: calc((20px - ${size}) / 2) !important; font-size: calc(${size} * .45) !important; }
 ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${size}) !important; flex-shrink: 0 !important; }`;
   }
   function swapName(text, real, name, whole) {
