@@ -14,6 +14,7 @@ Notes for AI agents working on CC++.
 - Updating the CC++ userscript in Helium is the agent's job, done through the Helium DevTools MCP.
   Never ask the user to click Install or Update in Violentmonkey.
 - After a release, tell whoever verifies in Helium the new version and what changed.
+- When a test sends messages on claude.ai, switch the model to Haiku first.
 - Helium's DevTools MCP is shared by every agent: the selected page can change between two calls.
   Open your own tab with `new_page`, re-select it right before each `evaluate_script`, check
   `location.href` inside the script, and close the tab when done.
