@@ -29,6 +29,9 @@ const settings = definePluginSettings({
     refreshSec: { type: "number", label: { zh: "刷新间隔", en: "Refresh every" }, default: 30, min: 10, max: 300, step: 5, unit: "s" },
 });
 
+/** How often the open project is read; the tab icon reads it this often too. */
+const OPEN_REFRESH_MS = 4000;
+
 const L = {
     running: { zh: "运行中", en: "Running" },
     waiting: { zh: "等你回复", en: "Waiting for you" },
@@ -67,6 +70,18 @@ export function projectKind(activity: ProjectActivity | undefined, showWaiting: 
     return own ?? threads;
 }
 
+/** A send to the project counts as running at once, until a read confirms it or the grace runs out. */
+export const SEND_GRACE_MS = 15_000;
+
+export function shownKind(activity: ProjectActivity | undefined, showWaiting: boolean, withOwn: boolean, sentUntil = 0, now = Date.now()): DotKind {
+    return now < sentUntil ? "clay" : projectKind(activity, showWaiting, withOwn);
+}
+
+/** The project a /code/project/… page shows, threads included. */
+export function openProjectOf(path: string) {
+    return /^\/code\/project\/(chan_[A-Za-z0-9]+)/.exec(path)?.[1] ?? null;
+}
+
 export function dotKind(activity: ProjectActivity | undefined, showWaiting: boolean): DotKind {
     if (!activity) return null;
     if (activity.working > 0) return "clay";
@@ -78,14 +93,14 @@ export default definePlugin({
     name: "ProjectStatus",
     title: { zh: "项目运行状态", en: "Project status dots" },
     description: {
-        zh: "在每个项目图标的右上角画状态圆点（含当前打开的项目）：有线程或 Code 会话在跑就呼吸（橙色），有线程等你回复是黄色；可隐藏 claude.ai 自己的行尾圆点。",
-        en: "A status dot on every project's icon corner, the open one included: breathing orange while anything runs, yellow when a thread waits for you. claude.ai's own row-end dot can be hidden.",
+        zh: "在每个项目图标的右上角画状态圆点（含当前打开的项目）：有线程或 Code 会话在跑就呼吸（橙色），有线程等你回复是黄色；当前项目发出消息就立刻亮起，并每几秒刷新。可隐藏 claude.ai 自己的行尾圆点。",
+        en: "A status dot on every project's icon corner, the open one included: breathing orange while anything runs, yellow when a thread waits for you. The open project lights up as soon as you send and refreshes every few seconds. claude.ai's own row-end dot can be hidden.",
     },
     category: "notifications",
     icon: "sparkles",
     enabledByDefault: true,
     updatedAt: "2026-10-24",
-    dependencies: ["ClaudeApi", "DomApi", "StylesApi", "RouterApi"],
+    dependencies: ["ClaudeApi", "ChatStateApi", "DomApi", "StylesApi", "RouterApi"],
     settings,
     start(scope) {
         addStyle(scope, CSS, "project-status");
@@ -94,6 +109,8 @@ export default definePlugin({
         // One project can be listed twice (the hidden Chat sidebar list and the visible Code one), so each id
         // keeps every group it appears in.
         const rows = new Map<string, Set<HTMLElement>>();
+        // Projects just sent to: running until a read shows it, so the dot doesn't wait for the next poll.
+        const sentUntil = new Map<string, number>();
         let busy = false;
 
         const paint = (id: string) => {
@@ -109,7 +126,7 @@ export default definePlugin({
             const holder = row.querySelector<HTMLElement>(ICON_HOLDER);
             const nativeCorner = holder?.querySelector(".status-dot:not([data-ccpp-corner] *), [aria-hidden] > .status-dot:not([data-ccpp-corner] *)");
             // The open project gets claude.ai's own dot at the row end too; ours goes on its icon like every other row.
-            const corner = holder && !nativeCorner ? projectKind(info, settings.store.showWaiting, settings.store.showCode) : null;
+            const corner = holder && !nativeCorner ? shownKind(info, settings.store.showWaiting, settings.store.showCode, sentUntil.get(id)) : null;
             place(row, "[data-ccpp-corner]", corner, "data-ccpp-corner", () => holder);
         };
 
@@ -130,30 +147,53 @@ export default definePlugin({
         // claude.ai limits project reads per account ("Too many project reads"), and its own pages share
         // that quota. So projects are read one after another, and a 429 pauses polling for a while.
         let pausedUntil = 0;
+        /** Reads one project; false once rate-limited. */
+        const read = async (id: string) => {
+            try {
+                const result = await getProjectActivity(id, scope.signal);
+                activity.set(result.channelId, result);
+                if (projectKind(result, false, settings.store.showCode) === "clay") sentUntil.delete(id);
+                paint(id);
+            } catch (error) {
+                if (error instanceof ApiError && error.status === 429) {
+                    pausedUntil = Date.now() + 60_000;
+                    logger.debug("Project reads rate-limited; pausing a minute.");
+                    return false;
+                }
+                logger.debug("Project activity failed:", error);
+            }
+            return true;
+        };
         const poll = async () => {
             if (busy || document.hidden || !rows.size || Date.now() < pausedUntil) return;
             busy = true;
             try {
                 for (const id of [...rows.keys()]) {
                     if (!scope.alive || document.hidden) return;
-                    try {
-                        const result = await getProjectActivity(id, scope.signal);
-                        activity.set(result.channelId, result);
-                        paint(id);
-                    } catch (error) {
-                        if (error instanceof ApiError && error.status === 429) {
-                            pausedUntil = Date.now() + 60_000;
-                            logger.debug("Project reads rate-limited; pausing a minute.");
-                            return;
-                        }
-                        logger.debug("Project activity failed:", error);
-                    }
+                    if (!(await read(id))) return;
                     await new Promise(resolve => setTimeout(resolve, 400));
                 }
             } finally {
                 busy = false;
             }
         };
+        // The open project follows its threads closely, like the tab icon (whose reads it shares); the rest keep
+        // the slower round.
+        const pollOpen = () => {
+            const id = openProjectOf(location.pathname);
+            if (id && rows.has(id) && !document.hidden && Date.now() >= pausedUntil) void read(id);
+        };
+        scope.interval(pollOpen, OPEN_REFRESH_MS);
+        scope.on("send:ok", ({ channelId }) => {
+            sentUntil.set(channelId, Date.now() + SEND_GRACE_MS);
+            paint(channelId);
+            for (const ms of [1500, 4000, 8000]) scope.timeout(() => rows.has(channelId) && Date.now() >= pausedUntil && void read(channelId), ms);
+            scope.timeout(() => paint(channelId), SEND_GRACE_MS + 50);
+        });
+        scope.on("send:failed", ({ channelId }) => {
+            sentUntil.delete(channelId);
+            paint(channelId);
+        });
 
         let pollSoon: ReturnType<typeof setTimeout> | undefined;
         watch(scope, PROJECT_ROW, group => {
@@ -177,7 +217,10 @@ export default definePlugin({
         });
         scope.defer(() => clearTimeout(pollSoon));
         scope.interval(poll, settings.store.refreshSec * 1000);
-        onRoute(scope, () => rows.forEach((_, id) => paint(id)), false);
+        onRoute(scope, () => {
+            rows.forEach((_, id) => paint(id));
+            pollOpen();
+        }, false);
         scope.listen(document, "visibilitychange", () => !document.hidden && poll());
     },
 });

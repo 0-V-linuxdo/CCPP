@@ -1,12 +1,12 @@
 import { describe, expect, test } from "bun:test";
 
-import { orgFromCookie, parseActivity, parseChannelSessions, parseConversation, parseSessionState, parseUsage } from "../src/plugins/_api/claude";
+import { getProjectActivity, getProjectPhases, orgFromCookie, parseActivity, parseChannelSessions, parseConversation, parseSessionState, parseUsage } from "../src/plugins/_api/claude";
 import { parseRoute } from "../src/plugins/_api/router";
 import { matches, parseCombo } from "../src/plugins/_api/hotkeys";
 import { titleFrom } from "../src/plugins/_api/chatState";
 import { recordVisit, renameVisit } from "../src/plugins/recentChats";
 import { level } from "../src/plugins/usageDisplay";
-import { cornerKind, dotKind, projectKind } from "../src/plugins/projectStatus";
+import { cornerKind, dotKind, openProjectOf, projectKind, SEND_GRACE_MS, shownKind } from "../src/plugins/projectStatus";
 import { remember } from "../src/plugins/inputHistory";
 import { parsePresets } from "../src/plugins/promptPresets";
 import { pickPhrase, fillPhrase } from "../src/plugins/customGreeting";
@@ -61,6 +61,14 @@ describe("claude.ai API parsing", () => {
         expect(dotKind({ channelId: "c", working: 0, blocked: 2 }, false)).toBeNull();
         expect(dotKind({ channelId: "c", working: 1, blocked: 0 }, true)).toBe("clay");
         expect(cornerKind({ channelId: "c", working: 0, blocked: 0, own: "working" }, true)).toBe("clay");
+        // A send lights the dot at once; once the grace is over, what was read decides again.
+        const idle = { channelId: "c", working: 0, blocked: 1, own: null };
+        expect(shownKind(idle, true, true, 1000 + SEND_GRACE_MS, 1000)).toBe("clay");
+        expect(shownKind(idle, true, true, 1000 + SEND_GRACE_MS, 1000 + SEND_GRACE_MS)).toBe("awaiting");
+        expect(shownKind(undefined, true, true)).toBeNull();
+        expect(openProjectOf("/code/project/chan_01AB")).toBe("chan_01AB");
+        expect(openProjectOf("/code/project/chan_01AB/settings")).toBe("chan_01AB");
+        expect(openProjectOf("/code/session_01")).toBeNull();
         expect(cornerKind({ channelId: "c", working: 3, blocked: 0, own: null }, true)).toBeNull();
     });
 });
@@ -438,4 +446,25 @@ describe("reindex", () => {
         expect(reindex(book, "c", new Map([["b", 95]]))).toBeNull();
         expect(reindex(book, "c", new Map([["a", 94]]))!.c.stars.map(s => [s.key, s.index])).toEqual([["a", 94], ["b", 95]]);
     });
+});
+
+test("the tab icon and the sidebar dot share one read of a project", async () => {
+    const original = window.fetch;
+    let timelines = 0;
+    window.fetch = (async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes("/timeline")) timelines++;
+        const body = url.includes("/timeline")
+            ? { data: [{ thread_status: "working", bound_sessions: [{ id: "cse_1", status: "active", status_bucket: "working" }] }] }
+            : url.includes("/v1/code/channels?") ? { data: [] } : {};
+        return new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
+    }) as typeof fetch;
+    try {
+        const [activity, phases] = await Promise.all([getProjectActivity("chan_SHARE1"), getProjectPhases("chan_SHARE1")]);
+        expect(timelines).toBe(1);
+        expect(activity.working).toBe(1);
+        expect(phases.get("cse_1")).toBe("working");
+    } finally {
+        window.fetch = original;
+    }
 });

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.101
+// @version      20261013.0.3.102
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -944,37 +944,53 @@
     }
     return phases;
   }
-  async function getProjectPhases(channelId, signal) {
+  var SNAPSHOT_TTL = 2000;
+  var snapshots = new Map;
+  function readProject(channelId, signal) {
     if (!CHANNEL_RE.test(channelId))
-      throw new Error("Bad project id");
-    const [timeline, sessions] = await Promise.all([
-      getCodeJson(`/v1/code/channels/${channelId}/timeline?limit=200&bound_only=true`, signal),
-      getChannelSessions(signal).catch(() => new Map)
-    ]);
-    const phases = threadPhasesFrom(timeline);
-    const own = sessions.get(channelId);
-    if (own) {
-      try {
-        phases.set(own, parseCodePhase(await getCodeJson(`/v1/code/sessions/${own}`, signal)));
-      } catch {}
+      return Promise.reject(new Error("Bad project id"));
+    const cached = snapshots.get(channelId);
+    let snapshot = cached && Date.now() - cached.at < SNAPSHOT_TTL ? cached.snapshot : null;
+    if (!snapshot) {
+      snapshot = (async () => {
+        const [timeline, sessions] = await Promise.all([
+          getCodeJson(`/v1/code/channels/${channelId}/timeline?limit=200&bound_only=true`),
+          getChannelSessions().catch(() => new Map)
+        ]);
+        const own = sessions.get(channelId) ?? null;
+        let ownSession = null;
+        if (own) {
+          try {
+            ownSession = await getCodeJson(`/v1/code/sessions/${own}`);
+          } catch {}
+        }
+        return { timeline, own, ownSession };
+      })();
+      const entry = { at: Date.now(), snapshot };
+      snapshots.set(channelId, entry);
+      snapshot.catch(() => snapshots.get(channelId) === entry && snapshots.delete(channelId));
     }
+    if (!signal)
+      return snapshot;
+    return new Promise((resolve, reject) => {
+      if (signal.aborted)
+        return reject(signal.reason);
+      const abort = () => reject(signal.reason);
+      signal.addEventListener("abort", abort, { once: true });
+      snapshot.then(resolve, reject).finally(() => signal.removeEventListener("abort", abort));
+    });
+  }
+  async function getProjectPhases(channelId, signal) {
+    const { timeline, own, ownSession } = await readProject(channelId, signal);
+    const phases = threadPhasesFrom(timeline);
+    if (own && ownSession)
+      phases.set(own, parseCodePhase(ownSession));
     return phases;
   }
   async function getProjectActivity(channelId, signal) {
-    if (!CHANNEL_RE.test(channelId))
-      throw new Error("Bad project id");
-    const [timeline, sessions] = await Promise.all([
-      getCodeJson(`/v1/code/channels/${channelId}/timeline?limit=200&bound_only=true`, signal),
-      getChannelSessions(signal).catch(() => new Map)
-    ]);
+    const { timeline, own, ownSession } = await readProject(channelId, signal);
     const activity = parseActivity(channelId, timeline);
-    const own = sessions.get(channelId);
-    activity.own = null;
-    if (own) {
-      try {
-        activity.own = parseSessionState(await getCodeJson(`/v1/code/sessions/${own}`, signal));
-      } catch {}
-    }
+    activity.own = own && ownSession ? parseSessionState(ownSession) : null;
     return activity;
   }
   var claude_default = definePlugin({
@@ -2814,7 +2830,7 @@ ${IMAGE_FIELD_CSS}`;
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.101";
+  var version = "0.3.102";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -5772,6 +5788,7 @@ ${x.css}`)].join(`
     },
     refreshSec: { type: "number", label: { zh: "刷新间隔", en: "Refresh every" }, default: 30, min: 10, max: 300, step: 5, unit: "s" }
   });
+  var OPEN_REFRESH_MS = 4000;
   var L13 = {
     running: { zh: "运行中", en: "Running" },
     waiting: { zh: "等你回复", en: "Waiting for you" }
@@ -5803,6 +5820,13 @@ ${x.css}`)].join(`
       return "clay";
     return own ?? threads;
   }
+  var SEND_GRACE_MS = 15000;
+  function shownKind(activity, showWaiting, withOwn, sentUntil = 0, now = Date.now()) {
+    return now < sentUntil ? "clay" : projectKind(activity, showWaiting, withOwn);
+  }
+  function openProjectOf(path) {
+    return /^\/code\/project\/(chan_[A-Za-z0-9]+)/.exec(path)?.[1] ?? null;
+  }
   function dotKind(activity, showWaiting) {
     if (!activity)
       return null;
@@ -5816,14 +5840,14 @@ ${x.css}`)].join(`
     name: "ProjectStatus",
     title: { zh: "项目运行状态", en: "Project status dots" },
     description: {
-      zh: "在每个项目图标的右上角画状态圆点（含当前打开的项目）：有线程或 Code 会话在跑就呼吸（橙色），有线程等你回复是黄色；可隐藏 claude.ai 自己的行尾圆点。",
-      en: "A status dot on every project's icon corner, the open one included: breathing orange while anything runs, yellow when a thread waits for you. claude.ai's own row-end dot can be hidden."
+      zh: "在每个项目图标的右上角画状态圆点（含当前打开的项目）：有线程或 Code 会话在跑就呼吸（橙色），有线程等你回复是黄色；当前项目发出消息就立刻亮起，并每几秒刷新。可隐藏 claude.ai 自己的行尾圆点。",
+      en: "A status dot on every project's icon corner, the open one included: breathing orange while anything runs, yellow when a thread waits for you. The open project lights up as soon as you send and refreshes every few seconds. claude.ai's own row-end dot can be hidden."
     },
     category: "notifications",
     icon: "sparkles",
     enabledByDefault: true,
     updatedAt: "2026-10-24",
-    dependencies: ["ClaudeApi", "DomApi", "StylesApi", "RouterApi"],
+    dependencies: ["ClaudeApi", "ChatStateApi", "DomApi", "StylesApi", "RouterApi"],
     settings: settings7,
     start(scope) {
       addStyle(scope, CSS7, "project-status");
@@ -5831,6 +5855,7 @@ ${x.css}`)].join(`
         addStyle(scope, `${PROJECT_ROW} ${ROW} > [data-row-decoration]:has(> [role="status"]) { display: none !important; }`, "project-status-native");
       const activity = new Map;
       const rows = new Map;
+      const sentUntil = new Map;
       let busy = false;
       const paint = (id) => {
         for (const group of rows.get(id) ?? [])
@@ -5844,7 +5869,7 @@ ${x.css}`)].join(`
         row.querySelector(":scope > [data-ccpp-status]")?.remove();
         const holder = row.querySelector(ICON_HOLDER);
         const nativeCorner = holder?.querySelector(".status-dot:not([data-ccpp-corner] *), [aria-hidden] > .status-dot:not([data-ccpp-corner] *)");
-        const corner = holder && !nativeCorner ? projectKind(info, settings7.store.showWaiting, settings7.store.showCode) : null;
+        const corner = holder && !nativeCorner ? shownKind(info, settings7.store.showWaiting, settings7.store.showCode, sentUntil.get(id)) : null;
         place(row, "[data-ccpp-corner]", corner, "data-ccpp-corner", () => holder);
       };
       const place = (row, selector, kind, attr, parent) => {
@@ -5863,6 +5888,23 @@ ${x.css}`)].join(`
         target.appendChild(h("span", { [attr]: kind, ...tipAttrs(label) }, h("span", { role: "status", "aria-label": label }, h("span", { class: "status-dot", "data-kind": kind }))));
       };
       let pausedUntil = 0;
+      const read = async (id) => {
+        try {
+          const result = await getProjectActivity(id, scope.signal);
+          activity.set(result.channelId, result);
+          if (projectKind(result, false, settings7.store.showCode) === "clay")
+            sentUntil.delete(id);
+          paint(id);
+        } catch (error) {
+          if (error instanceof ApiError && error.status === 429) {
+            pausedUntil = Date.now() + 60000;
+            logger10.debug("Project reads rate-limited; pausing a minute.");
+            return false;
+          }
+          logger10.debug("Project activity failed:", error);
+        }
+        return true;
+      };
       const poll = async () => {
         if (busy || document.hidden || !rows.size || Date.now() < pausedUntil)
           return;
@@ -5871,24 +5913,31 @@ ${x.css}`)].join(`
           for (const id of [...rows.keys()]) {
             if (!scope.alive || document.hidden)
               return;
-            try {
-              const result = await getProjectActivity(id, scope.signal);
-              activity.set(result.channelId, result);
-              paint(id);
-            } catch (error) {
-              if (error instanceof ApiError && error.status === 429) {
-                pausedUntil = Date.now() + 60000;
-                logger10.debug("Project reads rate-limited; pausing a minute.");
-                return;
-              }
-              logger10.debug("Project activity failed:", error);
-            }
+            if (!await read(id))
+              return;
             await new Promise((resolve) => setTimeout(resolve, 400));
           }
         } finally {
           busy = false;
         }
       };
+      const pollOpen = () => {
+        const id = openProjectOf(location.pathname);
+        if (id && rows.has(id) && !document.hidden && Date.now() >= pausedUntil)
+          read(id);
+      };
+      scope.interval(pollOpen, OPEN_REFRESH_MS);
+      scope.on("send:ok", ({ channelId }) => {
+        sentUntil.set(channelId, Date.now() + SEND_GRACE_MS);
+        paint(channelId);
+        for (const ms of [1500, 4000, 8000])
+          scope.timeout(() => rows.has(channelId) && Date.now() >= pausedUntil && void read(channelId), ms);
+        scope.timeout(() => paint(channelId), SEND_GRACE_MS + 50);
+      });
+      scope.on("send:failed", ({ channelId }) => {
+        sentUntil.delete(channelId);
+        paint(channelId);
+      });
       let pollSoon;
       watch(scope, PROJECT_ROW, (group) => {
         const id = group.dataset.groupList;
@@ -5912,7 +5961,10 @@ ${x.css}`)].join(`
       });
       scope.defer(() => clearTimeout(pollSoon));
       scope.interval(poll, settings7.store.refreshSec * 1000);
-      onRoute(scope, () => rows.forEach((_, id) => paint(id)), false);
+      onRoute(scope, () => {
+        rows.forEach((_, id) => paint(id));
+        pollOpen();
+      }, false);
       scope.listen(document, "visibilitychange", () => !document.hidden && poll());
     }
   });
@@ -8369,7 +8421,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.101",
+      version: "0.3.102",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -8386,7 +8438,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.101";
+    win[FLAG] = "0.3.102";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -8403,7 +8455,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.101"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.102"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();

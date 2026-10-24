@@ -336,37 +336,64 @@ export function threadPhasesFrom(raw: unknown): Map<string, CodePhase> {
     return phases;
 }
 
+/** A project's timeline and its own session, as read at one moment. */
+interface ProjectSnapshot {
+    timeline: unknown;
+    own: string | null;
+    ownSession: unknown;
+}
+
+/**
+ * Plugins polling the same project (the tab icon and the sidebar dot) share one read, so a faster poll on the open
+ * project doesn't double the requests. Each caller's own signal only stops its own wait.
+ */
+const SNAPSHOT_TTL = 2000;
+const snapshots = new Map<string, { at: number; snapshot: Promise<ProjectSnapshot> }>();
+
+function readProject(channelId: string, signal?: AbortSignal): Promise<ProjectSnapshot> {
+    if (!CHANNEL_RE.test(channelId)) return Promise.reject(new Error("Bad project id"));
+    const cached = snapshots.get(channelId);
+    let snapshot = cached && Date.now() - cached.at < SNAPSHOT_TTL ? cached.snapshot : null;
+    if (!snapshot) {
+        snapshot = (async () => {
+            const [timeline, sessions] = await Promise.all([
+                getCodeJson(`/v1/code/channels/${channelId}/timeline?limit=200&bound_only=true`),
+                getChannelSessions().catch(() => new Map<string, string>()),
+            ]);
+            const own = sessions.get(channelId) ?? null;
+            let ownSession: unknown = null;
+            if (own) {
+                try {
+                    ownSession = await getCodeJson(`/v1/code/sessions/${own}`);
+                } catch {}
+            }
+            return { timeline, own, ownSession };
+        })();
+        const entry = { at: Date.now(), snapshot };
+        snapshots.set(channelId, entry);
+        snapshot.catch(() => snapshots.get(channelId) === entry && snapshots.delete(channelId));
+    }
+    if (!signal) return snapshot;
+    return new Promise((resolve, reject) => {
+        if (signal.aborted) return reject(signal.reason);
+        const abort = () => reject(signal.reason);
+        signal.addEventListener("abort", abort, { once: true });
+        snapshot.then(resolve, reject).finally(() => signal.removeEventListener("abort", abort));
+    });
+}
+
 /** State of every Code session in a project: its threads and its own session (the project chat). */
 export async function getProjectPhases(channelId: string, signal?: AbortSignal) {
-    if (!CHANNEL_RE.test(channelId)) throw new Error("Bad project id");
-    const [timeline, sessions] = await Promise.all([
-        getCodeJson(`/v1/code/channels/${channelId}/timeline?limit=200&bound_only=true`, signal),
-        getChannelSessions(signal).catch(() => new Map<string, string>()),
-    ]);
+    const { timeline, own, ownSession } = await readProject(channelId, signal);
     const phases = threadPhasesFrom(timeline);
-    const own = sessions.get(channelId);
-    if (own) {
-        try {
-            phases.set(own, parseCodePhase(await getCodeJson(`/v1/code/sessions/${own}`, signal)));
-        } catch {}
-    }
+    if (own && ownSession) phases.set(own, parseCodePhase(ownSession));
     return phases;
 }
 
 export async function getProjectActivity(channelId: string, signal?: AbortSignal) {
-    if (!CHANNEL_RE.test(channelId)) throw new Error("Bad project id");
-    const [timeline, sessions] = await Promise.all([
-        getCodeJson(`/v1/code/channels/${channelId}/timeline?limit=200&bound_only=true`, signal),
-        getChannelSessions(signal).catch(() => new Map<string, string>()),
-    ]);
+    const { timeline, own, ownSession } = await readProject(channelId, signal);
     const activity = parseActivity(channelId, timeline);
-    const own = sessions.get(channelId);
-    activity.own = null;
-    if (own) {
-        try {
-            activity.own = parseSessionState(await getCodeJson(`/v1/code/sessions/${own}`, signal));
-        } catch {}
-    }
+    activity.own = own && ownSession ? parseSessionState(ownSession) : null;
     return activity;
 }
 
