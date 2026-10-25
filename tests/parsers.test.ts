@@ -553,6 +553,12 @@ describe("usage limit banner", () => {
             <div data-cds="ChatComposer"><div data-testid="chat-input" contenteditable="true"><p>approaching usage limit</p></div><button>Send</button></div>`;
         expect(findUsageBanners()).toEqual([]);
     });
+    test("leaves a Threads panel section holding a thread with a matching title alone", () => {
+        document.body.innerHTML = `<div data-home-section="active"><h3>Idle · 2</h3>
+            <a href="/code/project/chan_1?thread=a"><span>隐藏用量限制提示条</span><button aria-label="More">…</button></a>
+            <div role="button"><span>Fix session usage limit check</span></div></div>${composer}`;
+        expect(findUsageBanners()).toEqual([]);
+    });
 });
 
 test("a slow project read is joined instead of sent again", async () => {

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.115
+// @version      20261013.0.3.116
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -2858,7 +2858,7 @@ ${IMAGE_FIELD_CSS}`;
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.115";
+  var version = "0.3.116";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -8032,7 +8032,7 @@ ${m.text.trim()}`).join(`
   var LIMIT_RE = /\b(usage|session|weekly|daily|message|5-hour) limits?\b|\bout of (free |extra )?(messages|usage)\b|用量(上限|限制|已用完|已耗尽)|使用(上限|限制)/i;
   var APPROACHING_RE = /\bapproaching\b|接近|即将/i;
   var MAX_TEXT = 240;
-  var SKIP2 = `${SEL.transcriptRow}, ${SEL.transcript}, ${SEL.editor}, ${SEL.sidebar}, nav, [role="menu"], [role="dialog"], [contenteditable="true"], textarea, [data-ccpp]`;
+  var SKIP2 = `${SEL.transcriptRow}, ${SEL.transcript}, ${SEL.editor}, ${SEL.sidebar}, nav, [role="menu"], [role="dialog"], [contenteditable="true"], textarea, [data-ccpp], [data-home-section], [data-home-group], [data-home-heading], ul, ol, a[href], button, [role="button"], [role="list"], [role="listitem"], [role="option"]`;
   var MARK = "data-ccpp-usage-banner";
   function barOf2(text) {
     let bar = null;
@@ -8540,7 +8540,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.115",
+      version: "0.3.116",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -8557,7 +8557,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.115";
+    win[FLAG] = "0.3.116";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -8574,7 +8574,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.115"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.116"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();

@@ -19,8 +19,12 @@ const LIMIT_RE = /\b(usage|session|weekly|daily|message|5-hour) limits?\b|\bout 
 const APPROACHING_RE = /\bapproaching\b|接近|即将/i;
 /** The bar is one line of text plus its buttons; anything longer is page content. */
 const MAX_TEXT = 240;
-/** Where the bar never is: messages, the input itself, CC++'s own UI and claude.ai's menus and dialogs. */
-const SKIP = `${SEL.transcriptRow}, ${SEL.transcript}, ${SEL.editor}, ${SEL.sidebar}, nav, [role="menu"], [role="dialog"], [contenteditable="true"], textarea, [data-ccpp]`;
+/**
+ * Where the bar never is: messages, the input itself, CC++'s own UI, claude.ai's menus and dialogs, and lists
+ * such as a project's Threads panel. Text inside a link or button is a title (a thread called "Hide usage
+ * limit banner"), never the bar's own line.
+ */
+const SKIP = `${SEL.transcriptRow}, ${SEL.transcript}, ${SEL.editor}, ${SEL.sidebar}, nav, [role="menu"], [role="dialog"], [contenteditable="true"], textarea, [data-ccpp], [data-home-section], [data-home-group], [data-home-heading], ul, ol, a[href], button, [role="button"], [role="list"], [role="listitem"], [role="option"]`;
 const MARK = "data-ccpp-usage-banner";
 
 export type BannerKind = "approaching" | "exhausted";
