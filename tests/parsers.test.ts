@@ -218,6 +218,10 @@ describe("chat favicon", () => {
             { thread_status: "resolved", has_unread: true, bound_sessions: [{ id: "cse_f", status: "active", status_bucket: "failed" }] },
         ] };
         expect([...threadPhasesFrom(live)]).toEqual([["cse_a", "blocked"], ["cse_b", "working"], ["cse_c", "unread"], ["cse_d", "idle"], ["cse_e", "idle"]]);
+        // The thread open on screen counts as read at once.
+        const opened = { data: [{ id: "cmsg_R", thread_status: "idle", has_unread: true, bound_sessions: [{ id: "cse_r", status: "active", status_bucket: "review_ready" }] }] };
+        expect(threadPhasesFrom(opened, "cmsg_R").get("cse_r")).toBe("idle");
+        expect(threadPhasesFrom(opened, "cmsg_X").get("cse_r")).toBe("unread");
     });
     test("project pages follow claude.ai's order: waiting, error, unread, running", () => {
         const quiet = { streaming: false, errored: false, finished: false, draft: false };
@@ -377,7 +381,10 @@ describe("outlineFromApi estimates", () => {
 describe("projectKind", () => {
     const a = (o: object) => ({ channelId: "chan_x", working: 0, blocked: 0, own: null, ...o }) as any;
     test("running beats waiting, own session counts when enabled", () => {
-        expect(projectKind(a({ blocked: 1, own: "working" }), true, true)).toBe("clay");
+        // Waiting on you comes first, as in claude.ai's own sidebar.
+        expect(projectKind(a({ blocked: 1, own: "working" }), true, true)).toBe("awaiting");
+        expect(projectKind(a({ working: 1, own: "blocked" }), true, true)).toBe("awaiting");
+        expect(projectKind(a({ blocked: 1, own: "working" }), false, true)).toBe("clay");
         expect(projectKind(a({ own: "working" }), true, false)).toBe(null);
         expect(projectKind(a({ blocked: 2 }), true, true)).toBe("awaiting");
         expect(projectKind(a({ blocked: 2 }), false, true)).toBe(null);

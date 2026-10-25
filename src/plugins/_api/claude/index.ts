@@ -338,9 +338,10 @@ export function parseCodePhase(raw: unknown): CodePhase {
 
 /**
  * Every thread session of a project, by id, from the project timeline; resolved threads left out. The thread's own
- * status ("needs_input", "working") counts too, and a finished thread with unread replies is "unread".
+ * status ("needs_input", "working") counts too, and a finished thread with unread replies is "unread" unless it is
+ * `readThread`, the one open on screen.
  */
-export function threadPhasesFrom(raw: unknown): Map<string, CodePhase> {
+export function threadPhasesFrom(raw: unknown, readThread: string | null = null): Map<string, CodePhase> {
     const phases = new Map<string, CodePhase>();
     const data = raw && typeof raw === "object" && Array.isArray((raw as { data?: unknown }).data) ? (raw as { data: any[] }).data : [];
     for (const message of data) {
@@ -352,7 +353,8 @@ export function threadPhasesFrom(raw: unknown): Map<string, CodePhase> {
             if (phase === "idle" && !archived) {
                 if (NEEDS_INPUT.has(message.thread_status)) phase = "blocked";
                 else if (message.thread_status === "working") phase = "working";
-                else if (message.has_unread === true) phase = "unread";
+                // The thread open on screen is being read; claude.ai clears its flag some seconds later.
+                else if (message.has_unread === true && message.id !== readThread) phase = "unread";
             }
             phases.set(session.id, phase);
         }
@@ -407,9 +409,9 @@ function readProject(channelId: string, signal?: AbortSignal): Promise<ProjectSn
 }
 
 /** State of every Code session in a project: its threads and its own session (the project chat). */
-export async function getProjectPhases(channelId: string, signal?: AbortSignal) {
+export async function getProjectPhases(channelId: string, signal?: AbortSignal, readThread: string | null = null) {
     const { timeline, own, ownSession } = await readProject(channelId, signal);
-    const phases = threadPhasesFrom(timeline);
+    const phases = threadPhasesFrom(timeline, readThread);
     if (own && ownSession) phases.set(own, parseCodePhase(ownSession));
     return phases;
 }

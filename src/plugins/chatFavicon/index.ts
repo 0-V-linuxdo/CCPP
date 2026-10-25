@@ -331,7 +331,7 @@ export default definePlugin({
             codeBusy = true;
             try {
                 const channel = page.channel;
-                const phases = await getProjectPhases(channel, scope.signal);
+                const phases = await getProjectPhases(channel, scope.signal, page.thread);
                 if (!scope.alive || page.channel !== codeProjectOf(location.pathname, location.search)?.channel) return;
                 codeChannel = channel;
                 // Failed and unread show for as long as claude.ai still lists them that way, not just when they change.

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.110
+// @version      20261013.0.3.111
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -941,7 +941,7 @@
     const root = raw && typeof raw === "object" ? raw : {};
     return phaseOf(root.response_shape && typeof root.response_shape === "object" ? root.response_shape : root);
   }
-  function threadPhasesFrom(raw) {
+  function threadPhasesFrom(raw, readThread = null) {
     const phases = new Map;
     const data = raw && typeof raw === "object" && Array.isArray(raw.data) ? raw.data : [];
     for (const message of data) {
@@ -957,7 +957,7 @@
             phase = "blocked";
           else if (message.thread_status === "working")
             phase = "working";
-          else if (message.has_unread === true)
+          else if (message.has_unread === true && message.id !== readThread)
             phase = "unread";
         }
         phases.set(session.id, phase);
@@ -1001,9 +1001,9 @@
       snapshot.then(resolve, reject).finally(() => signal.removeEventListener("abort", abort));
     });
   }
-  async function getProjectPhases(channelId, signal) {
+  async function getProjectPhases(channelId, signal, readThread = null) {
     const { timeline, own, ownSession } = await readProject(channelId, signal);
-    const phases = threadPhasesFrom(timeline);
+    const phases = threadPhasesFrom(timeline, readThread);
     if (own && ownSession)
       phases.set(own, parseCodePhase(ownSession));
     return phases;
@@ -2850,7 +2850,7 @@ ${IMAGE_FIELD_CSS}`;
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.110";
+  var version = "0.3.111";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -5836,9 +5836,9 @@ ${x.css}`)].join(`
       return null;
     const own = withOwn ? cornerKind(activity, showWaiting) : null;
     const threads = dotKind(activity, showWaiting);
-    if (own === "clay" || threads === "clay")
-      return "clay";
-    return own ?? threads;
+    if (showWaiting && (own === "awaiting" || activity.blocked > 0))
+      return "awaiting";
+    return own === "clay" || threads === "clay" ? "clay" : null;
   }
   var SEND_GRACE_MS = 15000;
   function shownKind(activity, showWaiting, withOwn, sentUntil = 0, now = Date.now()) {
@@ -6918,7 +6918,7 @@ ${t(L16.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
         codeBusy = true;
         try {
           const channel = page.channel;
-          const phases = await getProjectPhases(channel, scope.signal);
+          const phases = await getProjectPhases(channel, scope.signal, page.thread);
           if (!scope.alive || page.channel !== codeProjectOf(location.pathname, location.search)?.channel)
             return;
           codeChannel = channel;
@@ -8507,7 +8507,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.110",
+      version: "0.3.111",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -8524,7 +8524,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.110";
+    win[FLAG] = "0.3.111";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -8541,7 +8541,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.110"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.111"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();

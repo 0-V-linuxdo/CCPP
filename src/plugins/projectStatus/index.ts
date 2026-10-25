@@ -61,13 +61,13 @@ export function cornerKind(activity: ProjectActivity | undefined, showWaiting: b
     return null;
 }
 
-/** One dot per project, on its icon corner: running if anything runs, else waiting if anything waits. */
+/** One dot per project, on its icon corner, in claude.ai's own order: waiting on you first, then running. */
 export function projectKind(activity: ProjectActivity | undefined, showWaiting: boolean, withOwn: boolean): DotKind {
     if (!activity) return null;
     const own = withOwn ? cornerKind(activity, showWaiting) : null;
     const threads = dotKind(activity, showWaiting);
-    if (own === "clay" || threads === "clay") return "clay";
-    return own ?? threads;
+    if (showWaiting && (own === "awaiting" || activity.blocked > 0)) return "awaiting";
+    return own === "clay" || threads === "clay" ? "clay" : null;
 }
 
 /** A send to the project counts as running at once, until a read confirms it or the grace runs out. */
