@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.109
+// @version      20261013.0.3.110
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -919,18 +919,23 @@
     map.catch(() => channelSessions === entry && (channelSessions = null));
     return map;
   }
+  var NEEDS_INPUT = new Set(["blocked", "need_input", "needs_input"]);
   function phaseOf(session) {
     if (!session || session.status === "archived" || session.status === "deleted")
       return "idle";
     const bucket = normalizeBucket(session.status_bucket);
-    if (bucket === "failed")
+    const category = session.post_turn_summary?.status_category;
+    const dead = session.session_status === "idle" && session.worker_status === "running" && session.connection_status === "disconnected" && !category;
+    if (bucket === "failed" || category === "failed" || dead)
       return "failed";
+    if (bucket === "blocked" || NEEDS_INPUT.has(category))
+      return "blocked";
     if (session.session_status !== undefined || session.worker_status !== undefined) {
       const state = parseSessionState(session);
       if (state)
         return state;
     }
-    return bucket === "working" ? "working" : bucket === "blocked" ? "blocked" : "idle";
+    return bucket === "working" ? "working" : "idle";
   }
   function parseCodePhase(raw) {
     const root = raw && typeof raw === "object" ? raw : {};
@@ -938,9 +943,25 @@
   }
   function threadPhasesFrom(raw) {
     const phases = new Map;
-    for (const session of threadSessions(raw)) {
-      if (typeof session?.id === "string" && SESSION_RE.test(session.id))
-        phases.set(session.id, phaseOf(session));
+    const data = raw && typeof raw === "object" && Array.isArray(raw.data) ? raw.data : [];
+    for (const message of data) {
+      if (message?.thread_status === "resolved")
+        continue;
+      for (const session of Array.isArray(message?.bound_sessions) ? message.bound_sessions : []) {
+        if (typeof session?.id !== "string" || !SESSION_RE.test(session.id))
+          continue;
+        let phase = phaseOf(session);
+        const archived = session.status === "archived" || session.status === "deleted";
+        if (phase === "idle" && !archived) {
+          if (NEEDS_INPUT.has(message.thread_status))
+            phase = "blocked";
+          else if (message.thread_status === "working")
+            phase = "working";
+          else if (message.has_unread === true)
+            phase = "unread";
+        }
+        phases.set(session.id, phase);
+      }
     }
     return phases;
   }
@@ -2829,7 +2850,7 @@ ${IMAGE_FIELD_CSS}`;
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.109";
+  var version = "0.3.110";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -6743,6 +6764,23 @@ ${t(L16.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
       return "done";
     return "idle";
   }
+  function projectFacts(phases) {
+    const all = new Set(phases);
+    return { waiting: all.has("blocked"), failed: all.has("failed"), unread: all.has("unread"), working: all.has("working") };
+  }
+  function computeProjectState(facts, project) {
+    if (project.waiting || facts.draft)
+      return "ready";
+    if (project.failed || facts.errored)
+      return "error";
+    if (project.unread)
+      return "done";
+    if (facts.streaming)
+      return "streaming";
+    if (facts.finished)
+      return "done";
+    return "idle";
+  }
   var ICON_ID = "ccpp-favicon";
   var ERROR_EVENT = /^event:\s*error\s*$|"type"\s*:\s*"error"/m;
   var STOP_EVENT = /^event:\s*message_stop\s*$|"type"\s*:\s*"message_stop"/m;
@@ -6759,8 +6797,8 @@ ${t(L16.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
     name: "ChatFavicon",
     title: { zh: "标签页图标状态", en: "Chat state favicon" },
     description: {
-      zh: "标签页图标随对话状态变化：回复中、已完成、草稿待发送、出错（含消息发送失败），6 种样式可选（含与侧栏项目圆点一致的「项目角标」）。Claude Code 项目页跟随项目主对话和所有线程。",
-      en: "The tab icon follows the chat: replying, done, draft ready, error (including a message that couldn't be sent). Six styles, one matching the sidebar project dot. On Claude Code project pages it follows the project chat and all its threads."
+      zh: "标签页图标随对话状态变化：回复中、已完成、草稿待发送、出错（含消息发送失败），6 种样式可选（含与侧栏项目圆点一致的「项目角标」）。Claude Code 项目页跟随项目主对话和所有线程，按 claude.ai 自己的顺序：等你回复、失败、有未读结果、运行中。",
+      en: "The tab icon follows the chat: replying, done, draft ready, error (including a message that couldn't be sent). Six styles, one matching the sidebar project dot. On Claude Code project pages it follows the project chat and all its threads, in claude.ai's own order: waiting on you, failed, unread results, running."
     },
     category: "notifications",
     icon: "tab",
@@ -6837,6 +6875,8 @@ ${t(L16.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
       let endedAt = 0;
       let codeWorking = false;
       let codeWaiting = false;
+      let codeFailed = false;
+      let codeUnread = false;
       const live = () => codeWorking || inflight > 0 || Date.now() < pendingUntil || chatPhase() === "streaming" && Date.now() - endedAt > 1e4;
       const update = () => {
         const now = live();
@@ -6846,7 +6886,8 @@ ${t(L16.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
         } else if (!now && streaming)
           finished = true;
         streaming = now;
-        const next = computeState({ streaming, errored, finished, draft: codeWaiting || draft() });
+        const facts = { streaming, errored, finished, draft: draft() };
+        const next = codeChannel && codeProjectOf(location.pathname, location.search)?.channel === codeChannel ? computeProjectState(facts, { waiting: codeWaiting, failed: codeFailed, unread: codeUnread, working: codeWorking }) : computeState(facts);
         if (next === state)
           return;
         state = next;
@@ -6860,16 +6901,14 @@ ${t(L16.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
         update();
       });
       let codeChannel = "";
-      let codePhases = new Map;
       let codeBusy = false;
       let codePausedUntil = 0;
       const pollCode = async () => {
         const page = codeProjectOf(location.pathname, location.search);
         if (!page) {
           codeChannel = "";
-          codePhases = new Map;
-          if (codeWorking || codeWaiting) {
-            codeWorking = codeWaiting = false;
+          if (codeWorking || codeWaiting || codeFailed || codeUnread) {
+            codeWorking = codeWaiting = codeFailed = codeUnread = false;
             update();
           }
           return;
@@ -6882,14 +6921,8 @@ ${t(L16.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
           const phases = await getProjectPhases(channel, scope.signal);
           if (!scope.alive || page.channel !== codeProjectOf(location.pathname, location.search)?.channel)
             return;
-          const previous = channel === codeChannel ? codePhases : null;
           codeChannel = channel;
-          codePhases = phases;
-          const all = [...phases.values()];
-          codeWorking = all.includes("working");
-          codeWaiting = all.includes("blocked");
-          if (previous && [...phases].some(([id, phase]) => phase === "failed" && previous.get(id) !== "failed"))
-            errored = true;
+          ({ working: codeWorking, waiting: codeWaiting, failed: codeFailed, unread: codeUnread } = projectFacts(phases.values()));
           update();
         } catch (error) {
           if (error instanceof ApiError && error.status === 429)
@@ -6915,7 +6948,7 @@ ${t(L16.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
           finished = false;
           errored = false;
           if (code) {
-            codeWorking = codeWaiting = false;
+            codeWorking = codeWaiting = codeFailed = codeUnread = false;
             streaming = false;
           }
         }
@@ -8474,7 +8507,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.109",
+      version: "0.3.110",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -8491,7 +8524,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.109";
+    win[FLAG] = "0.3.110";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -8508,7 +8541,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.109"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.110"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();

@@ -15,7 +15,7 @@ import { splitLinks } from "../src/plugins/betterLinks";
 import { isTelemetry } from "../src/plugins/noTelemetry";
 import { chatKeyFor, reindex, toggleStar } from "../src/plugins/messageStars/store";
 import { starSpot } from "../src/plugins/messageStars/index";
-import { breathAt, codeProjectOf, computeState, faviconFor, parseMark } from "../src/plugins/chatFavicon";
+import { breathAt, codeProjectOf, computeProjectState, computeState, faviconFor, projectFacts, parseMark } from "../src/plugins/chatFavicon";
 import { channelSendOf } from "../src/plugins/_api/chatState";
 import { alignWithApi, outlineFromApi } from "../src/plugins/chatNavigator";
 import { parseChannelMessages, parseCodePhase, threadPhasesFrom } from "../src/plugins/_api/claude";
@@ -204,6 +204,31 @@ describe("chat favicon", () => {
         expect([...threadPhasesFrom(timeline)]).toEqual([["cse_1", "idle"], ["cse_2", "working"], ["cse_3", "blocked"], ["cse_4", "idle"]]);
         const withResolved = { data: [...timeline.data, { id: "cmsg_D", thread_status: "resolved", bound_sessions: [{ id: "cse_5", status: "active", status_bucket: "blocked" }] }] };
         expect(threadPhasesFrom(withResolved).has("cse_5")).toBe(false);
+        // Every state claude.ai lists, as seen live.
+        expect(parseCodePhase({ response_shape: { status: "active", status_bucket: "review_ready", worker_status: "idle", post_turn_summary: { status_category: "review_ready" } } })).toBe("idle");
+        expect(parseCodePhase({ response_shape: { status: "active", status_bucket: "completed", worker_status: "idle", post_turn_summary: { status_category: "failed" } } })).toBe("failed");
+        expect(parseCodePhase({ response_shape: { status: "active", session_status: "idle", worker_status: "running", connection_status: "disconnected" } })).toBe("failed");
+        expect(parseCodePhase({ response_shape: { status: "active", status_bucket: "completed", worker_status: "idle", post_turn_summary: { status_category: "need_input" } } })).toBe("blocked");
+        const live = { data: [
+            { thread_status: "needs_input", bound_sessions: [{ id: "cse_a", status: "active", status_bucket: "completed" }] },
+            { thread_status: "working", bound_sessions: [{ id: "cse_b", status: "active", status_bucket: "completed" }] },
+            { thread_status: "idle", has_unread: true, bound_sessions: [{ id: "cse_c", status: "active", status_bucket: "review_ready" }] },
+            { thread_status: "idle", has_unread: false, bound_sessions: [{ id: "cse_d", status: "active", status_bucket: "completed" }] },
+            { thread_status: "idle", has_unread: true, bound_sessions: [{ id: "cse_e", status: "archived", status_bucket: "completed" }] },
+            { thread_status: "resolved", has_unread: true, bound_sessions: [{ id: "cse_f", status: "active", status_bucket: "failed" }] },
+        ] };
+        expect([...threadPhasesFrom(live)]).toEqual([["cse_a", "blocked"], ["cse_b", "working"], ["cse_c", "unread"], ["cse_d", "idle"], ["cse_e", "idle"]]);
+    });
+    test("project pages follow claude.ai's order: waiting, error, unread, running", () => {
+        const quiet = { streaming: false, errored: false, finished: false, draft: false };
+        const facts = (...phases: Parameters<typeof projectFacts>[0] extends Iterable<infer P> ? P[] : never) => projectFacts(phases);
+        expect(computeProjectState(quiet, facts())).toBe("idle");
+        expect(computeProjectState({ ...quiet, streaming: true }, facts("working"))).toBe("streaming");
+        expect(computeProjectState({ ...quiet, streaming: true }, facts("working", "unread"))).toBe("done");
+        expect(computeProjectState({ ...quiet, streaming: true }, facts("working", "unread", "failed"))).toBe("error");
+        expect(computeProjectState({ ...quiet, streaming: true }, facts("failed", "blocked"))).toBe("ready");
+        expect(computeProjectState({ ...quiet, draft: true }, facts("failed"))).toBe("ready");
+        expect(computeProjectState({ ...quiet, finished: true }, facts("idle"))).toBe("done");
     });
     test("five styles, emoji mode keeps the official icon when idle", () => {
         expect(faviconFor("hole", "idle", "https://claude.ai/favicon.ico")).toBe("https://claude.ai/favicon.ico");

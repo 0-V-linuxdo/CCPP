@@ -157,6 +157,32 @@ export function computeState(facts: ChatFacts): FaviconState {
     return "idle";
 }
 
+/** What a Claude Code project's sessions add up to (`CodePhase`s of its threads and its own session). */
+export interface ProjectFacts {
+    waiting: boolean;
+    failed: boolean;
+    unread: boolean;
+    working: boolean;
+}
+
+export function projectFacts(phases: Iterable<CodePhase>): ProjectFacts {
+    const all = new Set(phases);
+    return { waiting: all.has("blocked"), failed: all.has("failed"), unread: all.has("unread"), working: all.has("working") };
+}
+
+/**
+ * On a project page, in claude.ai's own order for a project: waiting on you (or a draft), then an error, then
+ * replies you haven't read, then running, then a reply that just finished here.
+ */
+export function computeProjectState(facts: ChatFacts, project: ProjectFacts): FaviconState {
+    if (project.waiting || facts.draft) return "ready";
+    if (project.failed || facts.errored) return "error";
+    if (project.unread) return "done";
+    if (facts.streaming) return "streaming";
+    if (facts.finished) return "done";
+    return "idle";
+}
+
 const ICON_ID = "ccpp-favicon";
 const ERROR_EVENT = /^event:\s*error\s*$|"type"\s*:\s*"error"/m;
 const STOP_EVENT = /^event:\s*message_stop\s*$|"type"\s*:\s*"message_stop"/m;
@@ -175,8 +201,8 @@ export default definePlugin({
     name: "ChatFavicon",
     title: { zh: "标签页图标状态", en: "Chat state favicon" },
     description: {
-        zh: "标签页图标随对话状态变化：回复中、已完成、草稿待发送、出错（含消息发送失败），6 种样式可选（含与侧栏项目圆点一致的「项目角标」）。Claude Code 项目页跟随项目主对话和所有线程。",
-        en: "The tab icon follows the chat: replying, done, draft ready, error (including a message that couldn't be sent). Six styles, one matching the sidebar project dot. On Claude Code project pages it follows the project chat and all its threads.",
+        zh: "标签页图标随对话状态变化：回复中、已完成、草稿待发送、出错（含消息发送失败），6 种样式可选（含与侧栏项目圆点一致的「项目角标」）。Claude Code 项目页跟随项目主对话和所有线程，按 claude.ai 自己的顺序：等你回复、失败、有未读结果、运行中。",
+        en: "The tab icon follows the chat: replying, done, draft ready, error (including a message that couldn't be sent). Six styles, one matching the sidebar project dot. On Claude Code project pages it follows the project chat and all its threads, in claude.ai's own order: waiting on you, failed, unread results, running.",
     },
     category: "notifications",
     icon: "tab",
@@ -258,8 +284,10 @@ export default definePlugin({
         let endedAt = 0;
         // On a Claude Code project page the replies run in Code sessions: the project's own and the open thread's.
         let codeWorking = false;
-        // A thread (or the project chat) waits on you: shown like a draft waiting to be sent.
+        // The open project's sessions: one waits on you, failed, or finished with replies you haven't read.
         let codeWaiting = false;
+        let codeFailed = false;
+        let codeUnread = false;
         const live = () => codeWorking || inflight > 0 || Date.now() < pendingUntil || (chatPhase() === "streaming" && Date.now() - endedAt > 10_000);
         const update = () => {
             const now = live();
@@ -268,7 +296,10 @@ export default definePlugin({
                 finished = false;
             } else if (!now && streaming) finished = true;
             streaming = now;
-            const next = computeState({ streaming, errored, finished, draft: codeWaiting || draft() });
+            const facts = { streaming, errored, finished, draft: draft() };
+            const next = codeChannel && codeProjectOf(location.pathname, location.search)?.channel === codeChannel
+                ? computeProjectState(facts, { waiting: codeWaiting, failed: codeFailed, unread: codeUnread, working: codeWorking })
+                : computeState(facts);
             if (next === state) return;
             state = next;
             paint();
@@ -284,16 +315,14 @@ export default definePlugin({
         });
         // Every Code session of the open project, so a thread finishing or waiting shows from any page of it.
         let codeChannel = "";
-        let codePhases = new Map<string, CodePhase>();
         let codeBusy = false;
         let codePausedUntil = 0;
         const pollCode = async () => {
             const page = codeProjectOf(location.pathname, location.search);
             if (!page) {
                 codeChannel = "";
-                codePhases = new Map();
-                if (codeWorking || codeWaiting) {
-                    codeWorking = codeWaiting = false;
+                if (codeWorking || codeWaiting || codeFailed || codeUnread) {
+                    codeWorking = codeWaiting = codeFailed = codeUnread = false;
                     update();
                 }
                 return;
@@ -304,14 +333,9 @@ export default definePlugin({
                 const channel = page.channel;
                 const phases = await getProjectPhases(channel, scope.signal);
                 if (!scope.alive || page.channel !== codeProjectOf(location.pathname, location.search)?.channel) return;
-                const previous = channel === codeChannel ? codePhases : null;
                 codeChannel = channel;
-                codePhases = phases;
-                const all = [...phases.values()];
-                codeWorking = all.includes("working");
-                codeWaiting = all.includes("blocked");
-                // A session that newly failed turns the icon red; the next reply clears it.
-                if (previous && [...phases].some(([id, phase]) => phase === "failed" && previous.get(id) !== "failed")) errored = true;
+                // Failed and unread show for as long as claude.ai still lists them that way, not just when they change.
+                ({ working: codeWorking, waiting: codeWaiting, failed: codeFailed, unread: codeUnread } = projectFacts(phases.values()));
                 update();
             } catch (error) {
                 if (error instanceof ApiError && error.status === 429) codePausedUntil = Date.now() + 60_000;
@@ -340,7 +364,7 @@ export default definePlugin({
                 errored = false;
                 // A Code session keeps running on its own page; the new page's sessions decide from here.
                 if (code) {
-                    codeWorking = codeWaiting = false;
+                    codeWorking = codeWaiting = codeFailed = codeUnread = false;
                     streaming = false;
                 }
             }

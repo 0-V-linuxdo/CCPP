@@ -308,18 +308,27 @@ function getChannelSessions(signal?: AbortSignal) {
     return map;
 }
 
-/** What the tab icon needs from one Code session: working, waiting on you, failed, or nothing to show. */
-export type CodePhase = "working" | "blocked" | "failed" | "idle";
+/**
+ * What the tab icon needs from one Code session, judged like claude.ai's own lists: waiting on you, failed,
+ * finished with replies you haven't read, working, or nothing to show.
+ */
+export type CodePhase = "working" | "blocked" | "failed" | "unread" | "idle";
+
+const NEEDS_INPUT = new Set(["blocked", "need_input", "needs_input"]);
 
 function phaseOf(session: any): CodePhase {
     if (!session || session.status === "archived" || session.status === "deleted") return "idle";
     const bucket = normalizeBucket(session.status_bucket);
-    if (bucket === "failed") return "failed";
+    const category = session.post_turn_summary?.status_category;
+    // A worker still "running" on an idle, disconnected session (with no turn summary) has died: claude.ai shows it failed.
+    const dead = session.session_status === "idle" && session.worker_status === "running" && session.connection_status === "disconnected" && !category;
+    if (bucket === "failed" || category === "failed" || dead) return "failed";
+    if (bucket === "blocked" || NEEDS_INPUT.has(category)) return "blocked";
     if (session.session_status !== undefined || session.worker_status !== undefined) {
         const state = parseSessionState(session);
         if (state) return state;
     }
-    return bucket === "working" ? "working" : bucket === "blocked" ? "blocked" : "idle";
+    return bucket === "working" ? "working" : "idle";
 }
 
 export function parseCodePhase(raw: unknown): CodePhase {
@@ -327,11 +336,26 @@ export function parseCodePhase(raw: unknown): CodePhase {
     return phaseOf(root.response_shape && typeof root.response_shape === "object" ? root.response_shape : root);
 }
 
-/** Every thread session of a project, by id, from the project timeline; resolved threads left out. */
+/**
+ * Every thread session of a project, by id, from the project timeline; resolved threads left out. The thread's own
+ * status ("needs_input", "working") counts too, and a finished thread with unread replies is "unread".
+ */
 export function threadPhasesFrom(raw: unknown): Map<string, CodePhase> {
     const phases = new Map<string, CodePhase>();
-    for (const session of threadSessions(raw)) {
-        if (typeof session?.id === "string" && SESSION_RE.test(session.id)) phases.set(session.id, phaseOf(session));
+    const data = raw && typeof raw === "object" && Array.isArray((raw as { data?: unknown }).data) ? (raw as { data: any[] }).data : [];
+    for (const message of data) {
+        if (message?.thread_status === "resolved") continue;
+        for (const session of Array.isArray(message?.bound_sessions) ? message.bound_sessions : []) {
+            if (typeof session?.id !== "string" || !SESSION_RE.test(session.id)) continue;
+            let phase = phaseOf(session);
+            const archived = session.status === "archived" || session.status === "deleted";
+            if (phase === "idle" && !archived) {
+                if (NEEDS_INPUT.has(message.thread_status)) phase = "blocked";
+                else if (message.thread_status === "working") phase = "working";
+                else if (message.has_unread === true) phase = "unread";
+            }
+            phases.set(session.id, phase);
+        }
     }
     return phases;
 }
