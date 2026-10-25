@@ -568,3 +568,31 @@ test("a slow project read is joined instead of sent again", async () => {
         Date.now = realNow;
     }
 });
+
+test("the project's own session remembered from last time is read without waiting for the projects list", async () => {
+    const original = window.fetch;
+    let sessionAsked = false;
+    let finish!: () => void;
+    const gate = new Promise<void>(resolve => (finish = resolve));
+    const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
+    localStorage.setItem("ccpp:projectSessions", JSON.stringify({ chan_EARLY1: "cse_EARLY1" }));
+    window.fetch = (async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes("/v1/code/sessions/cse_EARLY1")) {
+            sessionAsked = true;
+            return json({ response_shape: { status: "active", status_bucket: "working", worker_status: "running" } });
+        }
+        await gate;
+        return json({ data: [] });
+    }) as typeof fetch;
+    try {
+        const read = getProjectPhases("chan_EARLY1");
+        await new Promise(resolve => setTimeout(resolve, 20));
+        expect(sessionAsked).toBe(true);
+        finish();
+        await read;
+    } finally {
+        window.fetch = original;
+        localStorage.removeItem("ccpp:projectSessions");
+    }
+});

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.112
+// @version      20261013.0.3.113
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -900,6 +900,11 @@
   }
   var channelSessions = null;
   var CHANNEL_LIST_TTL = 5 * 60000;
+  var SESSIONS_KEY = "projectSessions";
+  var rememberedSessions = () => {
+    const value = readJson(SESSIONS_KEY, {});
+    return value && typeof value === "object" ? value : {};
+  };
   function parseChannelSessions(raw) {
     const map = new Map;
     const data = raw && typeof raw === "object" && Array.isArray(raw.data) ? raw.data : [];
@@ -913,7 +918,11 @@
   function getChannelSessions(signal) {
     if (channelSessions && Date.now() - channelSessions.at < CHANNEL_LIST_TTL)
       return channelSessions.map;
-    const map = getCodeJson("/v1/code/channels?scope=joined&include_archived=false&limit=200", signal).then(parseChannelSessions);
+    const map = getCodeJson("/v1/code/channels?scope=joined&include_archived=false&limit=200", signal).then((raw) => {
+      const sessions = parseChannelSessions(raw);
+      writeJson(SESSIONS_KEY, Object.fromEntries(sessions));
+      return sessions;
+    });
     const entry = { at: Date.now(), map };
     channelSessions = entry;
     map.catch(() => channelSessions === entry && (channelSessions = null));
@@ -973,9 +982,12 @@
     const cached = snapshots.get(channelId);
     let snapshot = cached && Date.now() - cached.at < SNAPSHOT_TTL ? cached.snapshot : null;
     if (!snapshot) {
+      const readOwn = (id) => getCodeJson(`/v1/code/sessions/${id}`).catch(() => null);
+      const remembered = rememberedSessions()[channelId];
+      const early = remembered && SESSION_RE.test(remembered) ? readOwn(remembered) : null;
       const ownRead = getChannelSessions().catch(() => new Map).then(async (sessions) => {
         const own = sessions.get(channelId) ?? null;
-        const ownSession = own ? await getCodeJson(`/v1/code/sessions/${own}`).catch(() => null) : null;
+        const ownSession = own ? await (own === remembered && early ? early : readOwn(own)) : null;
         return { own, ownSession };
       });
       snapshot = Promise.all([getCodeJson(`/v1/code/channels/${channelId}/timeline?limit=200&bound_only=true`), ownRead]).then(([timeline, own]) => ({ timeline, ...own }));
@@ -2842,7 +2854,7 @@ ${IMAGE_FIELD_CSS}`;
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.112";
+  var version = "0.3.113";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -8499,7 +8511,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.112",
+      version: "0.3.113",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -8516,7 +8528,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.112";
+    win[FLAG] = "0.3.113";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -8533,7 +8545,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.112"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.113"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();

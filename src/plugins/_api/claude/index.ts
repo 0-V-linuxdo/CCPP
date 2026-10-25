@@ -5,6 +5,7 @@
  */
 
 import { definePlugin } from "@kernel/plugins";
+import { readJson, writeJson } from "@kernel/storage";
 import { pageWindow } from "@lib/page";
 
 /**
@@ -288,6 +289,13 @@ export function parseSessionState(raw: unknown): "working" | "blocked" | null {
 let channelSessions: { at: number; map: Promise<Map<string, string>> } | null = null;
 const CHANNEL_LIST_TTL = 5 * 60_000;
 
+/** Project id → its own session id from the last projects list, so a fresh page needn't wait for the list. */
+const SESSIONS_KEY = "projectSessions";
+const rememberedSessions = () => {
+    const value = readJson<unknown>(SESSIONS_KEY, {});
+    return value && typeof value === "object" ? (value as Record<string, string>) : {};
+};
+
 export function parseChannelSessions(raw: unknown): Map<string, string> {
     const map = new Map<string, string>();
     const data = raw && typeof raw === "object" && Array.isArray((raw as { data?: unknown }).data) ? (raw as { data: any[] }).data : [];
@@ -301,7 +309,11 @@ export function parseChannelSessions(raw: unknown): Map<string, string> {
 /** One shared request: concurrent callers wait on the same promise instead of each fetching the list. */
 function getChannelSessions(signal?: AbortSignal) {
     if (channelSessions && Date.now() - channelSessions.at < CHANNEL_LIST_TTL) return channelSessions.map;
-    const map = getCodeJson("/v1/code/channels?scope=joined&include_archived=false&limit=200", signal).then(parseChannelSessions);
+    const map = getCodeJson("/v1/code/channels?scope=joined&include_archived=false&limit=200", signal).then(raw => {
+        const sessions = parseChannelSessions(raw);
+        writeJson(SESSIONS_KEY, Object.fromEntries(sessions));
+        return sessions;
+    });
     const entry = { at: Date.now(), map };
     channelSessions = entry;
     map.catch(() => channelSessions === entry && (channelSessions = null));
@@ -383,12 +395,16 @@ function readProject(channelId: string, signal?: AbortSignal): Promise<ProjectSn
     // `at` stays Infinity while the read is in flight.
     let snapshot = cached && Date.now() - cached.at < SNAPSHOT_TTL ? cached.snapshot : null;
     if (!snapshot) {
-        // The timeline and the project's own session are read side by side, not one after the other.
+        // The timeline and the project's own session are read side by side. The own session's id comes from the
+        // projects list, itself a slow read on a fresh page, so the id remembered from last time goes out at once.
+        const readOwn = (id: string) => getCodeJson(`/v1/code/sessions/${id}`).catch(() => null) as Promise<unknown>;
+        const remembered = rememberedSessions()[channelId];
+        const early = remembered && SESSION_RE.test(remembered) ? readOwn(remembered) : null;
         const ownRead = getChannelSessions()
             .catch(() => new Map<string, string>())
             .then(async sessions => {
                 const own = sessions.get(channelId) ?? null;
-                const ownSession: unknown = own ? await getCodeJson(`/v1/code/sessions/${own}`).catch(() => null) : null;
+                const ownSession = own ? await (own === remembered && early ? early : readOwn(own)) : null;
                 return { own, ownSession };
             });
         snapshot = Promise.all([getCodeJson(`/v1/code/channels/${channelId}/timeline?limit=200&bound_only=true`), ownRead]).then(([timeline, own]) => ({ timeline, ...own }));
