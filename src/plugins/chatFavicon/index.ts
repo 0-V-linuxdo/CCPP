@@ -40,8 +40,10 @@ const COLOR: Record<Exclude<FaviconState, "idle">, string> = {
 };
 const CLAY = "#D97757";
 /** The "project" style uses the sidebar project dot's colours (ProjectStatus): running clay, waiting amber. */
-/** The mark under the "project" dot: a mid grey that reads on light and dark tab strips. */
-const PROJECT_MARK = "#8B8B8B";
+/** The "project" dot breathes over 3s like the sidebar's, drawn in this many steps each way. */
+const BREATH_MS = 3000;
+const BREATH_STEPS = 12;
+const BREATH_FRAME_MS = 80;
 const PROJECT_COLOR: Partial<Record<Exclude<FaviconState, "idle">, string>> = { streaming: CLAY, ready: "#C98A12" };
 const EMOJI: Record<Exclude<FaviconState, "idle">, string> = { streaming: "🔄", done: "✔️", ready: "👍", error: "🚫" };
 
@@ -96,19 +98,34 @@ function glyph(state: Exclude<FaviconState, "idle">) {
  * The favicon for a state in a style, drawn over claude.ai's own mark. `official` is claude.ai's icon URL,
  * which idle shows as-is.
  */
+/** One point of the "project" dot's breath, like the sidebar's 3s ease-in-out: 0 small and faint, 1 full. */
+export function breathAt(ms: number, steps = BREATH_STEPS) {
+    const t = (1 - Math.cos(((ms % BREATH_MS) / BREATH_MS) * 2 * Math.PI)) / 2;
+    return Math.round(t * steps) / steps;
+}
+
+const projectIcons = new Map<string, string>();
+
 export function faviconFor(style: FaviconStyle, state: FaviconState, official: string, mark: Mark | null = null, breath = 1) {
     if (state === "idle") return official;
     const color = COLOR[state];
     if (style === "project") {
-        // A dot on the mark's top-right corner, like the sidebar's; a running one breathes between two frames.
+        // A dot on the mark's top-right corner, like the sidebar's; a running one breathes (scale .86–1, opacity
+        // .75–1). The mark keeps its own colours; a clear gap cut around the dot keeps a clay dot apart from the
+        // clay mark at 16px.
         const m = mark ?? fallbackMark();
-        const running = state === "streaming";
-        const r = running ? (breath ? 12 : 10.3) : 12;
-        const opacity = running && !breath ? ' opacity=".75"' : "";
-        // The mark goes grey like the sidebar's line icons, with a clear gap cut around the dot, so the dot still
-        // reads at 16px instead of melting into the clay mark.
-        const knockout = `<mask id="k"><rect width="64" height="64" fill="#fff"/><circle cx="52" cy="12" r="16" fill="#000"/></mask>`;
-        return svgUrl(`${knockout}<g mask="url(#k)">${place(m, recolor(m.inner, PROJECT_MARK))}</g><circle cx="52" cy="12" r="${r}" fill="${PROJECT_COLOR[state] ?? color}"${opacity}/>`);
+        const t = state === "streaming" ? breath : 1;
+        const key = `${state}|${t}|${m.viewBox}|${m.inner.length}`;
+        let url = projectIcons.get(key);
+        if (!url) {
+            const r = (13 * (0.86 + 0.14 * t)).toFixed(2);
+            const opacity = t < 1 ? ` opacity="${(0.75 + 0.25 * t).toFixed(3)}"` : "";
+            const knockout = `<mask id="k"><rect width="64" height="64" fill="#fff"/><circle cx="50.5" cy="13.5" r="19" fill="#000"/></mask>`;
+            url = svgUrl(`${knockout}<g mask="url(#k)">${place(m, m.inner)}</g><circle cx="50.5" cy="13.5" r="${r}" fill="${PROJECT_COLOR[state] ?? color}"${opacity}/>`);
+            if (projectIcons.size > 4 * (BREATH_STEPS + 1)) projectIcons.clear();
+            projectIcons.set(key, url);
+        }
+        return url;
     }
     if (style === "emoji") return svgUrl(`<text x="32" y="54" font-size="54" text-anchor="middle">${EMOJI[state]}</text>`);
     const m = mark ?? fallbackMark();
@@ -202,7 +219,8 @@ export default definePlugin({
             return !!text && text !== sent && Date.now() - sentAt > 1500;
         };
         let state: FaviconState = "idle";
-        // The "project" style's running dot breathes like the sidebar's: two frames, swapped every 1.5s.
+        // The "project" style's running dot breathes like the sidebar's (background tabs get fewer frames: browsers
+        // slow their timers).
         let breath = 1;
         const link = document.createElement("link");
         link.id = ICON_ID;
@@ -399,11 +417,13 @@ export default definePlugin({
         });
         // claude.ai (or another script) may put its icon back or drop ours; take the slot again.
         if (document.head) scope.observe(document.head, { childList: true }, () => onChatSurface() && (!link.isConnected || [...document.head.querySelectorAll("link")].some(isIconLink)) && paint());
+        const reduced = matchMedia("(prefers-reduced-motion: reduce)");
         scope.interval(() => {
-            if (settings.store.style !== "project" || state !== "streaming" || matchMedia("(prefers-reduced-motion: reduce)").matches) return (breath = 1);
-            breath = breath ? 0 : 1;
+            const next = settings.store.style !== "project" || state !== "streaming" || reduced.matches ? 1 : breathAt(Date.now());
+            if (next === breath) return;
+            breath = next;
             paint();
-        }, 1500);
+        }, BREATH_FRAME_MS);
         scope.defer(release);
         paint();
     },

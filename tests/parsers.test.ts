@@ -15,7 +15,7 @@ import { splitLinks } from "../src/plugins/betterLinks";
 import { isTelemetry } from "../src/plugins/noTelemetry";
 import { chatKeyFor, reindex, toggleStar } from "../src/plugins/messageStars/store";
 import { starSpot } from "../src/plugins/messageStars/index";
-import { codeProjectOf, computeState, faviconFor, parseMark } from "../src/plugins/chatFavicon";
+import { breathAt, codeProjectOf, computeState, faviconFor, parseMark } from "../src/plugins/chatFavicon";
 import { channelSendOf } from "../src/plugins/_api/chatState";
 import { alignWithApi, outlineFromApi } from "../src/plugins/chatNavigator";
 import { parseChannelMessages, parseCodePhase, threadPhasesFrom } from "../src/plugins/_api/claude";
@@ -218,13 +218,17 @@ describe("chat favicon", () => {
         expect(tinted).toContain('fill="#EF4444"');
         expect(tinted).not.toContain("#D97757");
         expect(decodeURIComponent(faviconFor("dot", "done", "x", mark))).toContain('fill="#D97757"');
-        // The project style: the sidebar dot's colours on the top-right corner, the running one breathing.
+        // The project style: the sidebar dot's colours on the top-right corner, a gap round it, the mark untouched.
         const running = decodeURIComponent(faviconFor("project", "streaming", "x", mark));
-        expect(running).toContain('cx="52" cy="12" r="12" fill="#D97757"');
-        // The mark turns grey with a gap around the dot, so the dot stands out at tab size.
-        expect(running).toContain('fill="#8B8B8B"');
+        expect(running).toContain('cx="50.5" cy="13.5" r="13.00" fill="#D97757"/>');
         expect(running).toContain('mask="url(#k)"');
-        expect(decodeURIComponent(faviconFor("project", "streaming", "x", mark, 0))).toContain('r="10.3" fill="#D97757" opacity=".75"');
+        expect(running).toContain('fill="#D97757"/></svg></g>');
+        expect(decodeURIComponent(faviconFor("project", "streaming", "x", mark, 0))).toContain('r="11.18" fill="#D97757" opacity="0.750"');
+        // The breath eases in and out over 3s, in even steps.
+        expect(breathAt(0)).toBe(0);
+        expect(breathAt(1500)).toBe(1);
+        expect(breathAt(750)).toBe(0.5);
+        expect(breathAt(4500)).toBe(1);
         expect(decodeURIComponent(faviconFor("project", "ready", "x", mark))).toContain('fill="#C98A12"');
         expect(decodeURIComponent(faviconFor("project", "error", "x", mark))).toContain('fill="#EF4444"');
         // Colours set through a style block or inline style are tinted too.
