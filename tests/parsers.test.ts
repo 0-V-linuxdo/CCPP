@@ -221,6 +221,9 @@ describe("chat favicon", () => {
         // The project style: the sidebar dot's colours on the top-right corner, the running one breathing.
         const running = decodeURIComponent(faviconFor("project", "streaming", "x", mark));
         expect(running).toContain('cx="52" cy="12" r="12" fill="#D97757"');
+        // The mark turns grey with a gap around the dot, so the dot stands out at tab size.
+        expect(running).toContain('fill="#8B8B8B"');
+        expect(running).toContain('mask="url(#k)"');
         expect(decodeURIComponent(faviconFor("project", "streaming", "x", mark, 0))).toContain('r="10.3" fill="#D97757" opacity=".75"');
         expect(decodeURIComponent(faviconFor("project", "ready", "x", mark))).toContain('fill="#C98A12"');
         expect(decodeURIComponent(faviconFor("project", "error", "x", mark))).toContain('fill="#EF4444"');

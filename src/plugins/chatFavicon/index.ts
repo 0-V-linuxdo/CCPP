@@ -40,6 +40,8 @@ const COLOR: Record<Exclude<FaviconState, "idle">, string> = {
 };
 const CLAY = "#D97757";
 /** The "project" style uses the sidebar project dot's colours (ProjectStatus): running clay, waiting amber. */
+/** The mark under the "project" dot: a mid grey that reads on light and dark tab strips. */
+const PROJECT_MARK = "#8B8B8B";
 const PROJECT_COLOR: Partial<Record<Exclude<FaviconState, "idle">, string>> = { streaming: CLAY, ready: "#C98A12" };
 const EMOJI: Record<Exclude<FaviconState, "idle">, string> = { streaming: "🔄", done: "✔️", ready: "👍", error: "🚫" };
 
@@ -103,7 +105,10 @@ export function faviconFor(style: FaviconStyle, state: FaviconState, official: s
         const running = state === "streaming";
         const r = running ? (breath ? 12 : 10.3) : 12;
         const opacity = running && !breath ? ' opacity=".75"' : "";
-        return svgUrl(place(m, m.inner) + `<circle cx="52" cy="12" r="${r}" fill="${PROJECT_COLOR[state] ?? color}"${opacity}/>`);
+        // The mark goes grey like the sidebar's line icons, with a clear gap cut around the dot, so the dot still
+        // reads at 16px instead of melting into the clay mark.
+        const knockout = `<mask id="k"><rect width="64" height="64" fill="#fff"/><circle cx="52" cy="12" r="16" fill="#000"/></mask>`;
+        return svgUrl(`${knockout}<g mask="url(#k)">${place(m, recolor(m.inner, PROJECT_MARK))}</g><circle cx="52" cy="12" r="${r}" fill="${PROJECT_COLOR[state] ?? color}"${opacity}/>`);
     }
     if (style === "emoji") return svgUrl(`<text x="32" y="54" font-size="54" text-anchor="middle">${EMOJI[state]}</text>`);
     const m = mark ?? fallbackMark();

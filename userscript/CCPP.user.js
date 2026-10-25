@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.105
+// @version      20261013.0.3.106
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -2829,7 +2829,7 @@ ${IMAGE_FIELD_CSS}`;
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.105";
+  var version = "0.3.106";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -6656,6 +6656,7 @@ ${t(L16.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
     error: "#EF4444"
   };
   var CLAY = "#D97757";
+  var PROJECT_MARK = "#8B8B8B";
   var PROJECT_COLOR = { streaming: CLAY, ready: "#C98A12" };
   var EMOJI = { streaming: "\uD83D\uDD04", done: "✔️", ready: "\uD83D\uDC4D", error: "\uD83D\uDEAB" };
   function fallbackMark() {
@@ -6704,7 +6705,8 @@ ${t(L16.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
       const running = state === "streaming";
       const r = running ? breath ? 12 : 10.3 : 12;
       const opacity = running && !breath ? ' opacity=".75"' : "";
-      return svgUrl(place3(m, m.inner) + `<circle cx="52" cy="12" r="${r}" fill="${PROJECT_COLOR[state] ?? color}"${opacity}/>`);
+      const knockout = `<mask id="k"><rect width="64" height="64" fill="#fff"/><circle cx="52" cy="12" r="16" fill="#000"/></mask>`;
+      return svgUrl(`${knockout}<g mask="url(#k)">${place3(m, recolor(m.inner, PROJECT_MARK))}</g><circle cx="52" cy="12" r="${r}" fill="${PROJECT_COLOR[state] ?? color}"${opacity}/>`);
     }
     if (style === "emoji")
       return svgUrl(`<text x="32" y="54" font-size="54" text-anchor="middle">${EMOJI[state]}</text>`);
@@ -8390,7 +8392,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.105",
+      version: "0.3.106",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -8407,7 +8409,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.105";
+    win[FLAG] = "0.3.106";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -8424,7 +8426,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.105"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.106"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();
