@@ -207,7 +207,7 @@ describe("chat favicon", () => {
     });
     test("five styles, emoji mode keeps the official icon when idle", () => {
         expect(faviconFor("hole", "idle", "https://claude.ai/favicon.ico")).toBe("https://claude.ai/favicon.ico");
-        for (const style of ["emoji", "badge", "dot", "hole", "bg"] as const) {
+        for (const style of ["emoji", "badge", "dot", "hole", "bg", "project"] as const) {
             const icons = (["streaming", "done", "ready", "error"] as const).map(state => faviconFor(style, state, "x"));
             expect(new Set(icons).size).toBe(4);
             expect(icons.every(href => href.startsWith("data:image/svg+xml"))).toBe(true);
@@ -218,6 +218,12 @@ describe("chat favicon", () => {
         expect(tinted).toContain('fill="#EF4444"');
         expect(tinted).not.toContain("#D97757");
         expect(decodeURIComponent(faviconFor("dot", "done", "x", mark))).toContain('fill="#D97757"');
+        // The project style: the sidebar dot's colours on the top-right corner, the running one breathing.
+        const running = decodeURIComponent(faviconFor("project", "streaming", "x", mark));
+        expect(running).toContain('cx="52" cy="12" r="12" fill="#D97757"');
+        expect(decodeURIComponent(faviconFor("project", "streaming", "x", mark, 0))).toContain('r="10.3" fill="#D97757" opacity=".75"');
+        expect(decodeURIComponent(faviconFor("project", "ready", "x", mark))).toContain('fill="#C98A12"');
+        expect(decodeURIComponent(faviconFor("project", "error", "x", mark))).toContain('fill="#EF4444"');
         // Colours set through a style block or inline style are tinted too.
         const styled = parseMark('<svg viewBox="0 0 10 10"><style>.a{fill:#D97757}.b{fill:#8f8d89}</style><path class="a" d="M0 0h5"/><path style="fill:#8f8d89" d="M5 5h5"/></svg>')!;
         const blue = decodeURIComponent(faviconFor("hole", "streaming", "x", styled));

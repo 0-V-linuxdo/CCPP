@@ -14,7 +14,7 @@ import { onRequestError, onResponse, sameOrigin } from "@api/network";
 import { currentRoute } from "@api/router";
 
 export type FaviconState = "idle" | "streaming" | "done" | "ready" | "error";
-export type FaviconStyle = "emoji" | "badge" | "dot" | "hole" | "bg";
+export type FaviconStyle = "emoji" | "badge" | "dot" | "hole" | "bg" | "project";
 
 const settings = definePluginSettings({
     style: {
@@ -27,6 +27,7 @@ const settings = definePluginSettings({
             { value: "dot", label: { zh: "彩色圆点", en: "Colour dot" } },
             { value: "hole", label: { zh: "图标变色", en: "Mark tint" } },
             { value: "bg", label: { zh: "背景变色", en: "Background tint" } },
+            { value: "project", label: { zh: "项目角标（同侧栏）", en: "Project corner dot (as in the sidebar)" } },
         ],
     },
 });
@@ -38,6 +39,8 @@ const COLOR: Record<Exclude<FaviconState, "idle">, string> = {
     error: "#EF4444",
 };
 const CLAY = "#D97757";
+/** The "project" style uses the sidebar project dot's colours (ProjectStatus): running clay, waiting amber. */
+const PROJECT_COLOR: Partial<Record<Exclude<FaviconState, "idle">, string>> = { streaming: CLAY, ready: "#C98A12" };
 const EMOJI: Record<Exclude<FaviconState, "idle">, string> = { streaming: "🔄", done: "✔️", ready: "👍", error: "🚫" };
 
 /** claude.ai's own mark (from its SVG favicon): viewBox and inner markup. */
@@ -91,9 +94,17 @@ function glyph(state: Exclude<FaviconState, "idle">) {
  * The favicon for a state in a style, drawn over claude.ai's own mark. `official` is claude.ai's icon URL,
  * which idle shows as-is.
  */
-export function faviconFor(style: FaviconStyle, state: FaviconState, official: string, mark: Mark | null = null) {
+export function faviconFor(style: FaviconStyle, state: FaviconState, official: string, mark: Mark | null = null, breath = 1) {
     if (state === "idle") return official;
     const color = COLOR[state];
+    if (style === "project") {
+        // A dot on the mark's top-right corner, like the sidebar's; a running one breathes between two frames.
+        const m = mark ?? fallbackMark();
+        const running = state === "streaming";
+        const r = running ? (breath ? 12 : 10.3) : 12;
+        const opacity = running && !breath ? ' opacity=".75"' : "";
+        return svgUrl(place(m, m.inner) + `<circle cx="52" cy="12" r="${r}" fill="${PROJECT_COLOR[state] ?? color}"${opacity}/>`);
+    }
     if (style === "emoji") return svgUrl(`<text x="32" y="54" font-size="54" text-anchor="middle">${EMOJI[state]}</text>`);
     const m = mark ?? fallbackMark();
     if (style === "hole") return svgUrl(place(m, recolor(m.inner, color)));
@@ -143,8 +154,8 @@ export default definePlugin({
     name: "ChatFavicon",
     title: { zh: "标签页图标状态", en: "Chat state favicon" },
     description: {
-        zh: "标签页图标随对话状态变化：回复中、已完成、草稿待发送、出错（含消息发送失败），5 种样式可选。Claude Code 项目页跟随项目主对话和所有线程。",
-        en: "The tab icon follows the chat: replying, done, draft ready, error (including a message that couldn't be sent). Five styles. On Claude Code project pages it follows the project chat and all its threads.",
+        zh: "标签页图标随对话状态变化：回复中、已完成、草稿待发送、出错（含消息发送失败），6 种样式可选（含与侧栏项目圆点一致的「项目角标」）。Claude Code 项目页跟随项目主对话和所有线程。",
+        en: "The tab icon follows the chat: replying, done, draft ready, error (including a message that couldn't be sent). Six styles, one matching the sidebar project dot. On Claude Code project pages it follows the project chat and all its threads.",
     },
     category: "notifications",
     icon: "tab",
@@ -186,6 +197,8 @@ export default definePlugin({
             return !!text && text !== sent && Date.now() - sentAt > 1500;
         };
         let state: FaviconState = "idle";
+        // The "project" style's running dot breathes like the sidebar's: two frames, swapped every 1.5s.
+        let breath = 1;
         const link = document.createElement("link");
         link.id = ICON_ID;
         link.rel = "icon";
@@ -212,7 +225,7 @@ export default definePlugin({
             if (!onChatSurface()) return release();
             claim();
             loadMark(official);
-            const href = faviconFor(settings.store.style as FaviconStyle, state, official, mark);
+            const href = faviconFor(settings.store.style as FaviconStyle, state, official, mark, breath);
             if (link.getAttribute("href") !== href) link.setAttribute("href", href);
         };
         // Replying = a completion request in flight, a send not yet answered, or claude.ai's own streaming
@@ -376,11 +389,16 @@ export default definePlugin({
         });
         // claude.ai sets the href of every icon link while it replies, ours included; put ours back.
         scope.observe(link, { attributes: true, attributeFilter: ["href"] }, () => {
-            const want = faviconFor(settings.store.style as FaviconStyle, state, official, mark);
+            const want = faviconFor(settings.store.style as FaviconStyle, state, official, mark, breath);
             if (onChatSurface() && link.getAttribute("href") !== want) link.setAttribute("href", want);
         });
         // claude.ai (or another script) may put its icon back or drop ours; take the slot again.
         if (document.head) scope.observe(document.head, { childList: true }, () => onChatSurface() && (!link.isConnected || [...document.head.querySelectorAll("link")].some(isIconLink)) && paint());
+        scope.interval(() => {
+            if (settings.store.style !== "project" || state !== "streaming" || matchMedia("(prefers-reduced-motion: reduce)").matches) return (breath = 1);
+            breath = breath ? 0 : 1;
+            paint();
+        }, 1500);
         scope.defer(release);
         paint();
     },

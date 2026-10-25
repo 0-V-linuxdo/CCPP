@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.104
+// @version      20261013.0.3.105
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -2829,7 +2829,7 @@ ${IMAGE_FIELD_CSS}`;
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.104";
+  var version = "0.3.105";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -6644,7 +6644,8 @@ ${t(L16.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
         { value: "badge", label: { zh: "角标 + 符号", en: "Badge + glyph" } },
         { value: "dot", label: { zh: "彩色圆点", en: "Colour dot" } },
         { value: "hole", label: { zh: "图标变色", en: "Mark tint" } },
-        { value: "bg", label: { zh: "背景变色", en: "Background tint" } }
+        { value: "bg", label: { zh: "背景变色", en: "Background tint" } },
+        { value: "project", label: { zh: "项目角标（同侧栏）", en: "Project corner dot (as in the sidebar)" } }
       ]
     }
   });
@@ -6655,6 +6656,7 @@ ${t(L16.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
     error: "#EF4444"
   };
   var CLAY = "#D97757";
+  var PROJECT_COLOR = { streaming: CLAY, ready: "#C98A12" };
   var EMOJI = { streaming: "\uD83D\uDD04", done: "✔️", ready: "\uD83D\uDC4D", error: "\uD83D\uDEAB" };
   function fallbackMark() {
     const spokes = [];
@@ -6693,10 +6695,17 @@ ${t(L16.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
       return `<path d="M51.5 56.5v-9.6M46.8 51.2l4.7-4.8 4.7 4.8" ${s}/>`;
     return `<path d="M47.3 47.3l8.4 8.4M55.7 47.3l-8.4 8.4" ${s}/>`;
   }
-  function faviconFor(style, state, official, mark = null) {
+  function faviconFor(style, state, official, mark = null, breath = 1) {
     if (state === "idle")
       return official;
     const color = COLOR[state];
+    if (style === "project") {
+      const m = mark ?? fallbackMark();
+      const running = state === "streaming";
+      const r = running ? breath ? 12 : 10.3 : 12;
+      const opacity = running && !breath ? ' opacity=".75"' : "";
+      return svgUrl(place3(m, m.inner) + `<circle cx="52" cy="12" r="${r}" fill="${PROJECT_COLOR[state] ?? color}"${opacity}/>`);
+    }
     if (style === "emoji")
       return svgUrl(`<text x="32" y="54" font-size="54" text-anchor="middle">${EMOJI[state]}</text>`);
     const m = mark ?? fallbackMark();
@@ -6734,8 +6743,8 @@ ${t(L16.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
     name: "ChatFavicon",
     title: { zh: "标签页图标状态", en: "Chat state favicon" },
     description: {
-      zh: "标签页图标随对话状态变化：回复中、已完成、草稿待发送、出错（含消息发送失败），5 种样式可选。Claude Code 项目页跟随项目主对话和所有线程。",
-      en: "The tab icon follows the chat: replying, done, draft ready, error (including a message that couldn't be sent). Five styles. On Claude Code project pages it follows the project chat and all its threads."
+      zh: "标签页图标随对话状态变化：回复中、已完成、草稿待发送、出错（含消息发送失败），6 种样式可选（含与侧栏项目圆点一致的「项目角标」）。Claude Code 项目页跟随项目主对话和所有线程。",
+      en: "The tab icon follows the chat: replying, done, draft ready, error (including a message that couldn't be sent). Six styles, one matching the sidebar project dot. On Claude Code project pages it follows the project chat and all its threads."
     },
     category: "notifications",
     icon: "tab",
@@ -6772,6 +6781,7 @@ ${t(L16.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
         return !!text && text !== sent && Date.now() - sentAt > 1500;
       };
       let state = "idle";
+      let breath = 1;
       const link = document.createElement("link");
       link.id = ICON_ID;
       link.rel = "icon";
@@ -6802,7 +6812,7 @@ ${t(L16.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
           return release();
         claim();
         loadMark(official);
-        const href = faviconFor(settings11.store.style, state, official, mark);
+        const href = faviconFor(settings11.store.style, state, official, mark, breath);
         if (link.getAttribute("href") !== href)
           link.setAttribute("href", href);
       };
@@ -6961,12 +6971,18 @@ ${t(L16.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
         }
       });
       scope.observe(link, { attributes: true, attributeFilter: ["href"] }, () => {
-        const want = faviconFor(settings11.store.style, state, official, mark);
+        const want = faviconFor(settings11.store.style, state, official, mark, breath);
         if (onChatSurface() && link.getAttribute("href") !== want)
           link.setAttribute("href", want);
       });
       if (document.head)
         scope.observe(document.head, { childList: true }, () => onChatSurface() && (!link.isConnected || [...document.head.querySelectorAll("link")].some(isIconLink)) && paint());
+      scope.interval(() => {
+        if (settings11.store.style !== "project" || state !== "streaming" || matchMedia("(prefers-reduced-motion: reduce)").matches)
+          return breath = 1;
+        breath = breath ? 0 : 1;
+        paint();
+      }, 1500);
       scope.defer(release);
       paint();
     }
@@ -8374,7 +8390,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.104",
+      version: "0.3.105",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -8391,7 +8407,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.104";
+    win[FLAG] = "0.3.105";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -8408,7 +8424,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.104"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.105"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();
