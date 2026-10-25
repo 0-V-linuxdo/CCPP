@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.111
+// @version      20261013.0.3.112
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -973,23 +973,15 @@
     const cached = snapshots.get(channelId);
     let snapshot = cached && Date.now() - cached.at < SNAPSHOT_TTL ? cached.snapshot : null;
     if (!snapshot) {
-      snapshot = (async () => {
-        const [timeline, sessions] = await Promise.all([
-          getCodeJson(`/v1/code/channels/${channelId}/timeline?limit=200&bound_only=true`),
-          getChannelSessions().catch(() => new Map)
-        ]);
+      const ownRead = getChannelSessions().catch(() => new Map).then(async (sessions) => {
         const own = sessions.get(channelId) ?? null;
-        let ownSession = null;
-        if (own) {
-          try {
-            ownSession = await getCodeJson(`/v1/code/sessions/${own}`);
-          } catch {}
-        }
-        return { timeline, own, ownSession };
-      })();
-      const entry = { at: Date.now(), snapshot };
+        const ownSession = own ? await getCodeJson(`/v1/code/sessions/${own}`).catch(() => null) : null;
+        return { own, ownSession };
+      });
+      snapshot = Promise.all([getCodeJson(`/v1/code/channels/${channelId}/timeline?limit=200&bound_only=true`), ownRead]).then(([timeline, own]) => ({ timeline, ...own }));
+      const entry = { at: Infinity, snapshot };
       snapshots.set(channelId, entry);
-      snapshot.catch(() => snapshots.get(channelId) === entry && snapshots.delete(channelId));
+      snapshot.then(() => entry.at = Date.now(), () => snapshots.get(channelId) === entry && snapshots.delete(channelId));
     }
     if (!signal)
       return snapshot;
@@ -2850,7 +2842,7 @@ ${IMAGE_FIELD_CSS}`;
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.111";
+  var version = "0.3.112";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -8507,7 +8499,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.111",
+      version: "0.3.112",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -8524,7 +8516,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.111";
+    win[FLAG] = "0.3.112";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -8541,7 +8533,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.111"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.112"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();

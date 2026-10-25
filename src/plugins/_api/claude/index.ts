@@ -371,7 +371,8 @@ interface ProjectSnapshot {
 
 /**
  * Plugins polling the same project (the tab icon and the sidebar dot) share one read, so a faster poll on the open
- * project doesn't double the requests. Each caller's own signal only stops its own wait.
+ * project doesn't double the requests. A read can take 5–20s, so callers join the one in flight, and a finished one
+ * is reused for a moment. Each caller's own signal only stops its own wait.
  */
 const SNAPSHOT_TTL = 2000;
 const snapshots = new Map<string, { at: number; snapshot: Promise<ProjectSnapshot> }>();
@@ -379,25 +380,24 @@ const snapshots = new Map<string, { at: number; snapshot: Promise<ProjectSnapsho
 function readProject(channelId: string, signal?: AbortSignal): Promise<ProjectSnapshot> {
     if (!CHANNEL_RE.test(channelId)) return Promise.reject(new Error("Bad project id"));
     const cached = snapshots.get(channelId);
+    // `at` stays Infinity while the read is in flight.
     let snapshot = cached && Date.now() - cached.at < SNAPSHOT_TTL ? cached.snapshot : null;
     if (!snapshot) {
-        snapshot = (async () => {
-            const [timeline, sessions] = await Promise.all([
-                getCodeJson(`/v1/code/channels/${channelId}/timeline?limit=200&bound_only=true`),
-                getChannelSessions().catch(() => new Map<string, string>()),
-            ]);
-            const own = sessions.get(channelId) ?? null;
-            let ownSession: unknown = null;
-            if (own) {
-                try {
-                    ownSession = await getCodeJson(`/v1/code/sessions/${own}`);
-                } catch {}
-            }
-            return { timeline, own, ownSession };
-        })();
-        const entry = { at: Date.now(), snapshot };
+        // The timeline and the project's own session are read side by side, not one after the other.
+        const ownRead = getChannelSessions()
+            .catch(() => new Map<string, string>())
+            .then(async sessions => {
+                const own = sessions.get(channelId) ?? null;
+                const ownSession: unknown = own ? await getCodeJson(`/v1/code/sessions/${own}`).catch(() => null) : null;
+                return { own, ownSession };
+            });
+        snapshot = Promise.all([getCodeJson(`/v1/code/channels/${channelId}/timeline?limit=200&bound_only=true`), ownRead]).then(([timeline, own]) => ({ timeline, ...own }));
+        const entry = { at: Infinity, snapshot };
         snapshots.set(channelId, entry);
-        snapshot.catch(() => snapshots.get(channelId) === entry && snapshots.delete(channelId));
+        snapshot.then(
+            () => (entry.at = Date.now()),
+            () => snapshots.get(channelId) === entry && snapshots.delete(channelId),
+        );
     }
     if (!signal) return snapshot;
     return new Promise((resolve, reject) => {

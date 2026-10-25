@@ -534,3 +534,37 @@ describe("usage limit banner", () => {
         expect(findUsageBanners()).toEqual([]);
     });
 });
+
+test("a slow project read is joined instead of sent again", async () => {
+    const original = window.fetch;
+    const realNow = Date.now;
+    let timelines = 0;
+    let finishTimeline!: () => void;
+    const timelineGate = new Promise<void>(resolve => (finishTimeline = resolve));
+    const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
+    window.fetch = (async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes("/timeline")) {
+            timelines++;
+            await timelineGate;
+            return json({ data: [] });
+        }
+        if (url.includes("/v1/code/channels?")) return json({ data: [{ id: "chan_SLOW1", channel_session_id: "cse_OWN1" }] });
+        if (url.includes("/v1/code/sessions/cse_OWN1")) {
+            return json({ response_shape: { status: "active", status_bucket: "working", worker_status: "running" } });
+        }
+        return json({});
+    }) as typeof fetch;
+    try {
+        const first = getProjectPhases("chan_SLOW1");
+        await new Promise(resolve => setTimeout(resolve, 20));
+        Date.now = () => realNow() + 10_000;
+        const second = getProjectActivity("chan_SLOW1");
+        finishTimeline();
+        await Promise.all([first, second]);
+        expect(timelines).toBe(1);
+    } finally {
+        window.fetch = original;
+        Date.now = realNow;
+    }
+});
