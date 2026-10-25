@@ -58,6 +58,13 @@ describe("claude.ai API parsing", () => {
         // A resolved thread is filed under Resolved, even while its session's bucket still says blocked.
         const resolved = { data: [{ thread_status: "resolved", bound_sessions: [{ status: "active", status_bucket: "blocked" }] }, { thread_status: "idle", bound_sessions: [{ status: "active", status_bucket: "completed" }] }] };
         expect(parseActivity("chan_x", resolved)).toEqual({ channelId: "chan_x", working: 0, blocked: 0 });
+        // The thread's own status decides, as in the Threads panel; one thread counts once.
+        const panel = { data: [
+            { thread_status: "needs_input", bound_sessions: [{ status: "active", status_bucket: "blocked" }, { status: "active", status_bucket: "blocked" }] },
+            { thread_status: "idle", bound_sessions: [{ status: "active", status_bucket: "blocked" }] },
+            { thread_status: "working", bound_sessions: [{ status: "active", status_bucket: "completed" }] },
+        ] };
+        expect(parseActivity("chan_x", panel)).toEqual({ channelId: "chan_x", working: 1, blocked: 1 });
         expect(dotKind({ channelId: "c", working: 0, blocked: 2 }, true)).toBe("awaiting");
         expect(dotKind({ channelId: "c", working: 0, blocked: 2 }, false)).toBeNull();
         expect(dotKind({ channelId: "c", working: 1, blocked: 0 }, true)).toBe("clay");
@@ -394,7 +401,9 @@ describe("projectKind", () => {
     test("running beats waiting, own session counts when enabled", () => {
         // Waiting on you comes first, as in claude.ai's own sidebar.
         expect(projectKind(a({ blocked: 1, own: "working" }), true, true)).toBe("awaiting");
-        expect(projectKind(a({ working: 1, own: "blocked" }), true, true)).toBe("awaiting");
+        // The project chat waiting on you isn't a thread waiting on you (Threads panel: Waiting on you · 0).
+        expect(projectKind(a({ working: 1, own: "blocked" }), true, true)).toBe("clay");
+        expect(projectKind(a({ own: "blocked" }), true, true)).toBe(null);
         expect(projectKind(a({ blocked: 1, own: "working" }), false, true)).toBe("clay");
         expect(projectKind(a({ own: "working" }), true, false)).toBe(null);
         expect(projectKind(a({ blocked: 2 }), true, true)).toBe("awaiting");

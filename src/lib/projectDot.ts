@@ -13,10 +13,12 @@ import type { ProjectActivity } from "@api/claude";
  */
 export type DotKind = "clay" | "awaiting" | null;
 
-export function cornerKind(activity: ProjectActivity | undefined, showWaiting: boolean): DotKind {
-    if (activity?.own === "working") return "clay";
-    if (showWaiting && activity?.own === "blocked") return "awaiting";
-    return null;
+/**
+ * The project's own session (its project chat) only adds "running": the Threads panel's "Waiting on you" counts
+ * threads, not the project chat.
+ */
+export function cornerKind(activity: ProjectActivity | undefined, _showWaiting?: boolean): DotKind {
+    return activity?.own === "working" ? "clay" : null;
 }
 
 /** One dot per project, on its icon corner, in claude.ai's own order: waiting on you first, then running. */
@@ -24,7 +26,7 @@ export function projectKind(activity: ProjectActivity | undefined, showWaiting: 
     if (!activity) return null;
     const own = withOwn ? cornerKind(activity, showWaiting) : null;
     const threads = dotKind(activity, showWaiting);
-    if (showWaiting && (own === "awaiting" || activity.blocked > 0)) return "awaiting";
+    if (showWaiting && activity.blocked > 0) return "awaiting";
     return own === "clay" || threads === "clay" ? "clay" : null;
 }
 

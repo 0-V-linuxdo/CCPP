@@ -243,27 +243,26 @@ function normalizeBucket(value: unknown): string {
 }
 
 /**
- * The sessions bound to a project's threads, from its timeline. A resolved thread is left out: the project page
- * files it under Resolved whatever its session's bucket says, so it is never running or waiting on you.
+ * Counts a project's threads by state, the way the project page's Threads panel groups them: by the thread's own
+ * status ("needs_input" is Waiting on you, "working" is Working) when it has one, else by its sessions' buckets.
  */
-function threadSessions(raw: unknown): any[] {
-    const data = raw && typeof raw === "object" && Array.isArray((raw as { data?: unknown }).data) ? (raw as { data: any[] }).data : [];
-    const sessions: any[] = [];
-    for (const message of data) {
-        if (message?.thread_status === "resolved") continue;
-        if (Array.isArray(message?.bound_sessions)) sessions.push(...message.bound_sessions);
-    }
-    return sessions;
-}
-
-/** Counts a project's thread sessions by state, from the same timeline the project page reads. */
 export function parseActivity(channelId: string, raw: unknown): ProjectActivity {
     const activity: ProjectActivity = { channelId, working: 0, blocked: 0 };
-    for (const session of threadSessions(raw)) {
-        if (session?.status === "archived") continue;
-        const bucket = normalizeBucket(session?.status_bucket);
-        if (bucket === "working") activity.working++;
-        else if (bucket === "blocked") activity.blocked++;
+    const data = raw && typeof raw === "object" && Array.isArray((raw as { data?: unknown }).data) ? (raw as { data: any[] }).data : [];
+    for (const message of data) {
+        const status = message?.thread_status;
+        if (status === "resolved") continue;
+        if (typeof status === "string" && status) {
+            if (status === "working") activity.working++;
+            else if (status === "needs_input") activity.blocked++;
+            continue;
+        }
+        for (const session of Array.isArray(message?.bound_sessions) ? message.bound_sessions : []) {
+            if (session?.status === "archived") continue;
+            const bucket = normalizeBucket(session?.status_bucket);
+            if (bucket === "working") activity.working++;
+            else if (bucket === "blocked") activity.blocked++;
+        }
     }
     return activity;
 }
@@ -428,7 +427,11 @@ function readProject(channelId: string, signal?: AbortSignal): Promise<ProjectSn
 export async function getProjectPhases(channelId: string, signal?: AbortSignal, readThread: string | null = null) {
     const { timeline, own, ownSession } = await readProject(channelId, signal);
     const phases = threadPhasesFrom(timeline, readThread);
-    if (own && ownSession) phases.set(own, parseCodePhase(ownSession));
+    // The project chat waiting on you isn't in the Threads panel's "Waiting on you"; only its running or failing counts.
+    if (own && ownSession) {
+        const phase = parseCodePhase(ownSession);
+        phases.set(own, phase === "blocked" ? "idle" : phase);
+    }
     return phases;
 }
 

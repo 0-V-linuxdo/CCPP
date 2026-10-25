@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.114
+// @version      20261013.0.3.115
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -857,27 +857,29 @@
       return "";
     return value.replace(/^SESSION_STATUS_BUCKET_/, "").toLowerCase();
   }
-  function threadSessions(raw) {
-    const data = raw && typeof raw === "object" && Array.isArray(raw.data) ? raw.data : [];
-    const sessions = [];
-    for (const message of data) {
-      if (message?.thread_status === "resolved")
-        continue;
-      if (Array.isArray(message?.bound_sessions))
-        sessions.push(...message.bound_sessions);
-    }
-    return sessions;
-  }
   function parseActivity(channelId, raw) {
     const activity = { channelId, working: 0, blocked: 0 };
-    for (const session of threadSessions(raw)) {
-      if (session?.status === "archived")
+    const data = raw && typeof raw === "object" && Array.isArray(raw.data) ? raw.data : [];
+    for (const message of data) {
+      const status = message?.thread_status;
+      if (status === "resolved")
         continue;
-      const bucket = normalizeBucket(session?.status_bucket);
-      if (bucket === "working")
-        activity.working++;
-      else if (bucket === "blocked")
-        activity.blocked++;
+      if (typeof status === "string" && status) {
+        if (status === "working")
+          activity.working++;
+        else if (status === "needs_input")
+          activity.blocked++;
+        continue;
+      }
+      for (const session of Array.isArray(message?.bound_sessions) ? message.bound_sessions : []) {
+        if (session?.status === "archived")
+          continue;
+        const bucket = normalizeBucket(session?.status_bucket);
+        if (bucket === "working")
+          activity.working++;
+        else if (bucket === "blocked")
+          activity.blocked++;
+      }
     }
     return activity;
   }
@@ -1008,8 +1010,10 @@
   async function getProjectPhases(channelId, signal, readThread = null) {
     const { timeline, own, ownSession } = await readProject(channelId, signal);
     const phases = threadPhasesFrom(timeline, readThread);
-    if (own && ownSession)
-      phases.set(own, parseCodePhase(ownSession));
+    if (own && ownSession) {
+      const phase = parseCodePhase(ownSession);
+      phases.set(own, phase === "blocked" ? "idle" : phase);
+    }
     return phases;
   }
   async function getProjectActivity(channelId, signal) {
@@ -2854,7 +2858,7 @@ ${IMAGE_FIELD_CSS}`;
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.114";
+  var version = "0.3.115";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -5800,19 +5804,15 @@ ${x.css}`)].join(`
   });
 
   // src/lib/projectDot.ts
-  function cornerKind(activity, showWaiting) {
-    if (activity?.own === "working")
-      return "clay";
-    if (showWaiting && activity?.own === "blocked")
-      return "awaiting";
-    return null;
+  function cornerKind(activity, _showWaiting) {
+    return activity?.own === "working" ? "clay" : null;
   }
   function projectKind(activity, showWaiting, withOwn) {
     if (!activity)
       return null;
     const own = withOwn ? cornerKind(activity, showWaiting) : null;
     const threads = dotKind(activity, showWaiting);
-    if (showWaiting && (own === "awaiting" || activity.blocked > 0))
+    if (showWaiting && activity.blocked > 0)
       return "awaiting";
     return own === "clay" || threads === "clay" ? "clay" : null;
   }
@@ -8540,7 +8540,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.114",
+      version: "0.3.115",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -8557,7 +8557,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.114";
+    win[FLAG] = "0.3.115";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -8574,7 +8574,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.114"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.115"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();
