@@ -176,7 +176,7 @@ const resetText = (window: UsageWindow) =>
 
 
 // claude.ai's own usage-ring colours (accent / warning / danger).
-const COLORS = { ok: "var(--cds-fill-accent, #2a78d6)", warn: "var(--cds-fill-warning, #fab219)", bad: "var(--cds-fill-danger, #d03b3b)" };
+const COLORS = { ok: "var(--cds-fill-accent, #257de0)", warn: "var(--cds-fill-warning, #fbb315)", bad: "var(--cds-fill-danger, #dc3c3d)" };
 const SVG_NS = "http://www.w3.org/2000/svg";
 
 /** claude.ai's ring track differs by page (--cds-alpha-2 in chat composers, --cds-alpha-4 in the Claude Code bar); copy the one on screen. */
@@ -250,8 +250,8 @@ const SLOT_CSS = `
 .ccpp-usage-btn { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; height: var(--cds-h-control, 32px); min-width: var(--cds-h-control, 32px); padding: 0; border: 0; border-radius: calc(0.375rem * var(--cds-rem-scale, 1)); background: transparent; color: var(--cds-text-secondary, inherit); font: inherit; font-size: calc(0.8125rem * var(--cds-rem-scale, 1)); cursor: pointer; transition: background-color .15s ease-out; }
 .ccpp-usage-btn:has(> span) { padding: 0 6px; }
 .ccpp-usage-btn:hover, .ccpp-usage-btn[aria-expanded="true"] { color: var(--cds-text-primary, inherit); background: var(--cds-fill-ghost-hover, rgba(127,127,127,.14)); }
-.ccpp-usage-btn:focus-visible { outline: none; box-shadow: var(--cds-shadow-focus, 0 0 0 2px var(--cds-fill-accent, #2a78d6)); }
-.ccpp-usage.err .ccpp-usage-btn { color: var(--cds-text-danger, #d03b3b); }
+.ccpp-usage-btn:focus-visible { outline: none; box-shadow: var(--cds-focus-shadow, 0 0 0 2px var(--cds-fill-accent, #257de0)); }
+.ccpp-usage.err .ccpp-usage-btn { color: var(--cds-text-danger, #f17778); }
 `;
 
 const PANEL_CSS = `

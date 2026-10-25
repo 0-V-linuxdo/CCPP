@@ -12,7 +12,8 @@ import { getText, onSubmit } from "@api/composer";
 import { SEL } from "@api/dom";
 import { onRequestError, onResponse, sameOrigin } from "@api/network";
 import { currentRoute } from "@api/router";
-import { awaitingColor, DOT_COLOR, type DotKind, projectDotOptions, projectKind, SEND_GRACE_MS, shownKind } from "@lib/projectDot";
+import { resolveColor } from "@lib/themeColor";
+import { DOT_COLOR, type DotKind, projectDotOptions, projectKind, SEND_GRACE_MS, shownKind } from "@lib/projectDot";
 
 export type FaviconState = "idle" | "streaming" | "done" | "ready" | "error";
 export type FaviconStyle = "emoji" | "badge" | "dot" | "hole" | "bg" | "project";
@@ -33,19 +34,24 @@ const settings = definePluginSettings({
     },
 });
 
-const COLOR: Record<Exclude<FaviconState, "idle">, string> = {
-    streaming: "#3B82F6",
-    done: "#22C55E",
-    ready: "#F59E0B",
-    error: "#EF4444",
+/**
+ * The icon's colours are claude.ai's theme colours (what its own status dots use): replying in the accent blue, done
+ * in success green, waiting in the warning yellow, errors in danger red; the "project" style's running dot in clay,
+ * like the sidebar's. `THEME` names them, `COLOR` holds their current values as the fallback.
+ */
+export type Palette = Record<Exclude<FaviconState, "idle"> | "clay", string>;
+export const THEME: Palette = {
+    streaming: "var(--cds-fill-accent, #257de0)",
+    done: "var(--cds-fill-success, #10a122)",
+    ready: DOT_COLOR.awaiting,
+    error: "var(--cds-fill-danger, #dc3c3d)",
+    clay: DOT_COLOR.clay,
 };
-const CLAY = "#D97757";
-/** The "project" style uses the sidebar project dot's colours (ProjectStatus): running clay, waiting amber. */
+export const COLOR: Palette = { streaming: "#257de0", done: "#10a122", ready: "#fbb315", error: "#dc3c3d", clay: "#d97757" };
 /** The "project" dot breathes over 3s like the sidebar's, drawn in this many steps each way. */
 const BREATH_MS = 3000;
 const BREATH_STEPS = 12;
 const BREATH_FRAME_MS = 80;
-const PROJECT_COLOR: Partial<Record<Exclude<FaviconState, "idle">, string>> = { streaming: DOT_COLOR.clay, ready: "#c98a12" };
 const EMOJI: Record<Exclude<FaviconState, "idle">, string> = { streaming: "🔄", done: "✔️", ready: "👍", error: "🚫" };
 
 /** claude.ai's own mark (from its SVG favicon): viewBox and inner markup. */
@@ -62,7 +68,7 @@ function fallbackMark(): Mark {
         const length = i % 2 ? 20 : 26;
         const x = (r: number) => (32 + Math.cos(angle) * r).toFixed(1);
         const y = (r: number) => (32 + Math.sin(angle) * r).toFixed(1);
-        spokes.push(`<line x1="${x(5)}" y1="${y(5)}" x2="${x(length)}" y2="${y(length)}" stroke="${CLAY}" stroke-width="6.5" stroke-linecap="round"/>`);
+        spokes.push(`<line x1="${x(5)}" y1="${y(5)}" x2="${x(length)}" y2="${y(length)}" stroke="${COLOR.clay}" stroke-width="6.5" stroke-linecap="round"/>`);
     }
     return { viewBox: "0 0 64 64", inner: spokes.join("") };
 }
@@ -107,20 +113,17 @@ export function breathAt(ms: number, steps = BREATH_STEPS) {
 
 const projectIcons = new Map<string, string>();
 
-/**
- * `waiting` is the sidebar dot's waiting colour as the page resolves it (claude.ai's theme sets it), so the two dots
- * match exactly.
- */
-export function faviconFor(style: FaviconStyle, state: FaviconState, official: string, mark: Mark | null = null, breath = 1, waiting = PROJECT_COLOR.ready!) {
+/** `palette` is `THEME` as the page resolves it right now, so the icon matches claude.ai's own dots. */
+export function faviconFor(style: FaviconStyle, state: FaviconState, official: string, mark: Mark | null = null, breath = 1, palette: Palette = COLOR) {
     if (state === "idle") return official;
-    const color = COLOR[state];
+    const color = palette[state];
     if (style === "project") {
         // The mark shrinks toward the bottom-left and leaves the top-right corner to the dot, so the two never
         // overlap, like the sidebar dot hanging on its icon's corner. A running dot breathes (scale .86–1, opacity
         // .75–1); the mark keeps its own colours.
         const m = mark ?? fallbackMark();
         const t = state === "streaming" ? breath : 1;
-        const fill = state === "ready" ? waiting : (PROJECT_COLOR[state] ?? color);
+        const fill = state === "streaming" ? palette.clay : color;
         const key = `${state}|${t}|${fill}|${m.viewBox}|${m.inner.length}`;
         let url = projectIcons.get(key);
         if (!url) {
@@ -258,7 +261,11 @@ export default definePlugin({
         // The "project" style's running dot breathes like the sidebar's (background tabs get fewer frames: browsers
         // slow their timers).
         let breath = 1;
-        const waitingColor = () => (settings.store.style === "project" && state === "ready" ? awaitingColor() : PROJECT_COLOR.ready!);
+        const palette = (): Palette => {
+            const out = { ...COLOR };
+            for (const key of Object.keys(THEME) as (keyof Palette)[]) out[key] = resolveColor(THEME[key], COLOR[key]);
+            return out;
+        };
         const link = document.createElement("link");
         link.id = ICON_ID;
         link.rel = "icon";
@@ -285,7 +292,7 @@ export default definePlugin({
             if (!onChatSurface()) return release();
             claim();
             loadMark(official);
-            const href = faviconFor(settings.store.style as FaviconStyle, state, official, mark, breath, waitingColor());
+            const href = faviconFor(settings.store.style as FaviconStyle, state, official, mark, breath, palette());
             if (link.getAttribute("href") !== href) link.setAttribute("href", href);
         };
         // Replying = a completion request in flight, a send not yet answered, or claude.ai's own streaming
@@ -469,7 +476,7 @@ export default definePlugin({
         });
         // claude.ai sets the href of every icon link while it replies, ours included; put ours back.
         scope.observe(link, { attributes: true, attributeFilter: ["href"] }, () => {
-            const want = faviconFor(settings.store.style as FaviconStyle, state, official, mark, breath, waitingColor());
+            const want = faviconFor(settings.store.style as FaviconStyle, state, official, mark, breath, palette());
             if (onChatSurface() && link.getAttribute("href") !== want) link.setAttribute("href", want);
         });
         // claude.ai (or another script) may put its icon back or drop ours; take the slot again.

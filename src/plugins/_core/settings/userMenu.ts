@@ -268,7 +268,7 @@ function enhance(menu: HTMLElement, settingsItem: HTMLElement, options: UserMenu
             const dot = h("span", {
                 class: "shrink-0",
                 ...tipAttrs(isActive(plugin) ? "ON" : "OFF"),
-                style: { width: "6px", height: "6px", borderRadius: "50%", marginInlineStart: "8px", background: isActive(plugin) ? "var(--cds-fill-accent, #2a78d6)" : "var(--cds-alpha-2, rgba(127,127,127,.4))" },
+                style: { width: "6px", height: "6px", borderRadius: "50%", marginInlineStart: "8px", background: isActive(plugin) ? "var(--cds-fill-accent, #257de0)" : "var(--cds-alpha-2, rgba(127,127,127,.4))" },
             });
             scroll.appendChild(row(ownIcon(plugin.icon ?? "puzzle"), t(plugin.title), { trailing: dot, run: () => options.openPlugin(plugin) }));
         }

@@ -52,7 +52,7 @@ export function renameVisit(list: Visit[], id: string, title: string) {
 }
 
 const CSS = `
-.overlay { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(0,0,0,.25); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); pointer-events: auto; animation: in .12s ease-out; }
+.overlay { position: fixed; inset: 0; display: grid; place-items: center; background: var(--cds-backdrop, rgba(0,0,0,.5)); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); pointer-events: auto; animation: in .12s ease-out; }
 @keyframes in { from { opacity: 0; } }
 .box { width: min(860px, calc(100vw - 32px)); padding: 16px; border-radius: 18px; background: color-mix(in srgb, var(--bg) 88%, transparent); border: 1px solid var(--line); box-shadow: var(--shadow); }
 .box h3 { margin: 0 0 12px; font-size: 14px; display: flex; justify-content: space-between; } .box h3 span { font-weight: 400; color: var(--fg3); font-size: 12px; }

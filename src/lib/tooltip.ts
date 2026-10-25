@@ -30,7 +30,7 @@ function ensureCard() {
         "data-ccpp-tooltip": "",
         style: {
             position: "fixed", zIndex: "2147483601", pointerEvents: "none", display: "none", flexDirection: "column", gap: "2px", maxWidth: "240px",
-            padding: "6px 8px", borderRadius: "calc(0.375rem * var(--cds-rem-scale, 1))", background: "var(--cds-tooltip-bg, rgb(32,32,31))", color: "var(--cds-tooltip-fg, rgb(240,239,236))",
+            padding: "6px 8px", borderRadius: "calc(0.375rem * var(--cds-rem-scale, 1))", background: "var(--cds-tooltip-bg, rgb(48,48,48))", color: "var(--cds-tooltip-fg, rgba(255,255,255,.93))",
             boxShadow: "inset 0 0 0 1px rgba(255,255,255,.1), 0 1px 2px rgba(11,11,11,.06), 0 2px 8px rgba(0,0,0,.24)",
             font: "400 calc(0.8125rem * var(--cds-rem-scale, 1))/calc(1.125rem * var(--cds-rem-scale, 1)) var(--cds-font-sans, ui-sans-serif, system-ui, sans-serif)",
             textWrap: "balance", whiteSpace: "normal", overflowWrap: "anywhere", textAlign: "start",
@@ -47,7 +47,7 @@ export function showTip(anchor: Element, title: string, detail = "") {
     el.replaceChildren(
         h("span", { text: title }),
         ...(detail
-            ? [h("span", { text: detail, style: { fontSize: "calc(0.6875rem * var(--cds-rem-scale, 1))", lineHeight: "calc(0.875rem * var(--cds-rem-scale, 1))", color: "rgb(195,194,183)" } })]
+            ? [h("span", { text: detail, style: { fontSize: "calc(0.6875rem * var(--cds-rem-scale, 1))", lineHeight: "calc(0.875rem * var(--cds-rem-scale, 1))", color: "color-mix(in srgb, var(--cds-tooltip-fg, #fff) 64%, transparent)" } })]
             : []),
     );
     el.style.display = "flex";

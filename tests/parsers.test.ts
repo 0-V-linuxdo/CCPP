@@ -16,7 +16,7 @@ import { splitLinks } from "../src/plugins/betterLinks";
 import { isTelemetry } from "../src/plugins/noTelemetry";
 import { chatKeyFor, reindex, toggleStar } from "../src/plugins/messageStars/store";
 import { starSpot } from "../src/plugins/messageStars/index";
-import { breathAt, codeProjectOf, computeProjectState, computeState, dotState, faviconFor, projectFacts, parseMark } from "../src/plugins/chatFavicon";
+import { breathAt, codeProjectOf, COLOR, computeProjectState, computeState, dotState, faviconFor, projectFacts, THEME, parseMark } from "../src/plugins/chatFavicon";
 import { channelSendOf } from "../src/plugins/_api/chatState";
 import { alignWithApi, outlineFromApi } from "../src/plugins/chatNavigator";
 import { parseChannelMessages, parseCodePhase, threadPhasesFrom } from "../src/plugins/_api/claude";
@@ -262,7 +262,7 @@ describe("chat favicon", () => {
         const mark = parseMark('<svg width="248" height="248" viewBox="0 0 248 248" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1 1h9" fill="#D97757"/></svg>')!;
         expect(mark.viewBox).toBe("0 0 248 248");
         const tinted = decodeURIComponent(faviconFor("hole", "error", "x", mark));
-        expect(tinted).toContain('fill="#EF4444"');
+        expect(tinted).toContain('fill="#dc3c3d"');
         expect(tinted).not.toContain("#D97757");
         expect(decodeURIComponent(faviconFor("dot", "done", "x", mark))).toContain('fill="#D97757"');
         // The project style: the sidebar dot's colours on the top-right corner, the mark shrunk out of its way.
@@ -276,15 +276,20 @@ describe("chat favicon", () => {
         expect(breathAt(1500)).toBe(1);
         expect(breathAt(750)).toBe(0.5);
         expect(breathAt(4500)).toBe(1);
-        expect(decodeURIComponent(faviconFor("project", "ready", "x", mark))).toContain('fill="#c98a12"');
-        // Waiting takes the colour the page resolves for the sidebar dot.
-        expect(decodeURIComponent(faviconFor("project", "ready", "x", mark, 1, "rgb(245, 166, 35)"))).toContain('fill="rgb(245, 166, 35)"');
-        expect(decodeURIComponent(faviconFor("project", "error", "x", mark))).toContain('fill="#EF4444"');
+        expect(decodeURIComponent(faviconFor("project", "ready", "x", mark))).toContain('fill="#fbb315"');
+        // Colours come from claude.ai's theme as the page resolves it (the sidebar dot's own).
+        const page = { ...COLOR, ready: "rgb(251, 179, 21)", clay: "rgb(217, 119, 87)" };
+        expect(decodeURIComponent(faviconFor("project", "ready", "x", mark, 1, page))).toContain('fill="rgb(251, 179, 21)"');
+        expect(decodeURIComponent(faviconFor("project", "streaming", "x", mark, 1, page))).toContain('fill="rgb(217, 119, 87)"');
+        expect(decodeURIComponent(faviconFor("badge", "ready", "x", mark, 1, page))).toContain('fill="rgb(251, 179, 21)"');
+        expect(decodeURIComponent(faviconFor("project", "error", "x", mark))).toContain('fill="#dc3c3d"');
+        // Every theme name falls back to its current value.
+        for (const key of Object.keys(THEME) as (keyof typeof THEME)[]) expect(THEME[key]).toContain(COLOR[key]);
         // Colours set through a style block or inline style are tinted too.
         const styled = parseMark('<svg viewBox="0 0 10 10"><style>.a{fill:#D97757}.b{fill:#8f8d89}</style><path class="a" d="M0 0h5"/><path style="fill:#8f8d89" d="M5 5h5"/></svg>')!;
         const blue = decodeURIComponent(faviconFor("hole", "streaming", "x", styled));
         expect(blue).not.toMatch(/#D97757|#8f8d89/i);
-        expect(blue).toContain("#3B82F6");
+        expect(blue).toContain("#257de0");
     });
 });
 
@@ -638,5 +643,15 @@ test("the project's own session remembered from last time is read without waitin
     } finally {
         window.fetch = original;
         localStorage.removeItem("ccpp:projectSessions");
+    }
+});
+
+test("every claude.ai theme colour CC++ names exists in claude.ai's theme", async () => {
+    // Names with no such variable in claude.ai silently fall back to a guess (Helium, 2026-10-25: cds-colors.md).
+    const missing = ["--cds-bg-primary", "--cds-border-subtle", "--cds-shadow-focus", "--cds-surface-raised"];
+    const glob = new Bun.Glob("src/**/*.ts");
+    for await (const file of glob.scan(".")) {
+        const text = await Bun.file(file).text();
+        for (const name of missing) expect(`${file}: ${text.includes(`var(${name}`)}`).toBe(`${file}: false`);
     }
 });

@@ -97,7 +97,7 @@ function placeCaret(editor: HTMLElement, atStart: boolean) {
 }
 
 const HUD_CSS = `
-.ccpp-ih-hud { position: fixed; z-index: 2147483646; display: flex; align-items: center; gap: 2px; padding: 4px 8px; border: 1px solid var(--cds-border-subtle, rgba(127,127,127,.25)); border-radius: 8px; background: var(--cds-surface-raised, var(--cds-bg-primary, #262624)); color: var(--cds-text-secondary, #a3a3a3); font-size: 12px; font-variant-numeric: tabular-nums; line-height: 1.2; pointer-events: none; opacity: 0; transform: translate(-50%, -100%); transition: opacity .12s ease; }
+.ccpp-ih-hud { position: fixed; z-index: 2147483646; display: flex; align-items: center; gap: 2px; padding: 4px 8px; border: 1px solid var(--cds-border-line, rgba(127,127,127,.25)); border-radius: 8px; background: var(--cds-surface-popover, #303030); color: var(--cds-text-secondary, #a3a3a3); font-size: 12px; font-variant-numeric: tabular-nums; line-height: 1.2; pointer-events: none; opacity: 0; transform: translate(-50%, -100%); transition: opacity .12s ease; }
 .ccpp-ih-hud.on { opacity: 1; }
 .ccpp-ih-hud.on button { pointer-events: auto; cursor: pointer; }
 .ccpp-ih-hud button { margin: 0; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; line-height: inherit; }

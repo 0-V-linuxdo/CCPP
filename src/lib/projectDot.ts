@@ -13,25 +13,8 @@ import type { ProjectActivity } from "@api/claude";
  */
 export type DotKind = "clay" | "awaiting" | null;
 
-/** The dot's colours: clay while running, claude.ai's warning colour (which its theme sets) while waiting on you. */
-export const DOT_COLOR: Record<Exclude<DotKind, null>, string> = { clay: "#d97757", awaiting: "var(--cds-fill-warning, #c98a12)" };
-
-let resolved: { at: number; color: string } | null = null;
-
-/** The waiting colour as the page draws it right now, for drawings outside the page's CSS (the tab icon). */
-export function awaitingColor(now = Date.now()) {
-    if (resolved && now - resolved.at < 2000) return resolved.color;
-    let color = "#c98a12";
-    try {
-        const probe = document.createElement("span");
-        probe.style.cssText = `position:absolute;visibility:hidden;color:${DOT_COLOR.awaiting}`;
-        (document.body ?? document.documentElement).appendChild(probe);
-        color = getComputedStyle(probe).color || color;
-        probe.remove();
-    } catch {}
-    resolved = { at: now, color };
-    return color;
-}
+/** The dot's colours, claude.ai's own: clay while running, the theme's warning colour while waiting on you. */
+export const DOT_COLOR: Record<Exclude<DotKind, null>, string> = { clay: "var(--cds-clay, #d97757)", awaiting: "var(--cds-fill-warning, #fbb315)" };
 
 /**
  * The project's own session (its project chat) only adds "running": the Threads panel's "Waiting on you" counts

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.118
+// @version      20261013.0.3.119
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -637,8 +637,8 @@
         maxWidth: "240px",
         padding: "6px 8px",
         borderRadius: "calc(0.375rem * var(--cds-rem-scale, 1))",
-        background: "var(--cds-tooltip-bg, rgb(32,32,31))",
-        color: "var(--cds-tooltip-fg, rgb(240,239,236))",
+        background: "var(--cds-tooltip-bg, rgb(48,48,48))",
+        color: "var(--cds-tooltip-fg, rgba(255,255,255,.93))",
         boxShadow: "inset 0 0 0 1px rgba(255,255,255,.1), 0 1px 2px rgba(11,11,11,.06), 0 2px 8px rgba(0,0,0,.24)",
         font: "400 calc(0.8125rem * var(--cds-rem-scale, 1))/calc(1.125rem * var(--cds-rem-scale, 1)) var(--cds-font-sans, ui-sans-serif, system-ui, sans-serif)",
         textWrap: "balance",
@@ -654,7 +654,7 @@
     if (!title)
       return hideTip();
     const el = ensureCard();
-    el.replaceChildren(h("span", { text: title }), ...detail ? [h("span", { text: detail, style: { fontSize: "calc(0.6875rem * var(--cds-rem-scale, 1))", lineHeight: "calc(0.875rem * var(--cds-rem-scale, 1))", color: "rgb(195,194,183)" } })] : []);
+    el.replaceChildren(h("span", { text: title }), ...detail ? [h("span", { text: detail, style: { fontSize: "calc(0.6875rem * var(--cds-rem-scale, 1))", lineHeight: "calc(0.875rem * var(--cds-rem-scale, 1))", color: "color-mix(in srgb, var(--cds-tooltip-fg, #fff) 64%, transparent)" } })] : []);
     el.style.display = "flex";
     const a = anchor.getBoundingClientRect();
     const r = el.getBoundingClientRect();
@@ -1766,11 +1766,11 @@
 .ccpp { --bg: var(--cds-surface-2, #ffffff); --bg-nav: var(--cds-surface-1, #f5f4ef); --bg2: var(--cds-fill-ghost-hover, #f0eee6); --bg3: var(--cds-fill-ghost-selected, #e8e6dc);
   --fg: var(--cds-text-primary, #1f1e1d); --fg2: var(--cds-text-secondary, #5e5d59); --fg3: var(--cds-text-muted, #8f8d86);
   --line: var(--cds-alpha-2, rgba(31,30,29,.12)); --line-soft: var(--cds-alpha-1, rgba(31,30,29,.06));
-  --accent: var(--cds-fill-accent, #2a78d6); --accent-fg: #fff; --clay: #d97757; --ok: #3f9a5b; --warn: var(--cds-fill-warning, #c98a12); --bad: #d03b3b;
+  --accent: var(--cds-fill-accent, #257de0); --accent-fg: var(--cds-on-accent, #fff); --clay: var(--cds-clay, #d97757); --ok: var(--cds-fill-success, #10a122); --warn: var(--cds-fill-warning, #fbb315); --bad: var(--cds-fill-danger, #dc3c3d);
   --field: var(--cds-fill-field, transparent); --field-ring: var(--cds-fill-field-ring, rgba(31,30,29,.15));
   --radius: var(--cds-radius, 8px); --radius-card: calc(var(--cds-radius, 8px) + 4px); --h: var(--cds-h-control, 32px);
   --shadow: inset 0 0 0 var(--cds-ring-inner, 0) var(--cds-ring-color, transparent), 0 0 0 var(--cds-ring-outer, 1px) var(--cds-ring-color, rgba(31,30,29,.1)), var(--cds-shadow-lg, 0 8px 24px rgba(0,0,0,.14));
-  --focus: var(--cds-focus-shadow, 0 0 0 2px #2a78d6);
+  --focus: var(--cds-focus-shadow, 0 0 0 2px #257de0);
   --fs: var(--cds-font-size-body, 14px); --fs-sm: var(--cds-font-size-footnote, 13px); --fs-xs: var(--cds-font-size-caption, 12px);
   font-size: var(--fs); line-height: 1.45; color: var(--fg); -webkit-font-smoothing: antialiased; }
 .ccpp:not(.dark) { color-scheme: light; } .ccpp.dark { color-scheme: dark;
@@ -1993,7 +1993,7 @@ select.input { padding-right: 6px; }
 .ccpp-slot-btn { display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-width: 32px; height: 32px; padding: 0 8px; border-radius: 8px; border: 0; background: transparent; color: var(--cds-text-secondary, inherit); font: inherit; font-size: 12px; cursor: pointer; }
 /* Same colors and hover as claude.ai's ghost buttons next to it. */
 .ccpp-slot-btn:hover { color: var(--cds-text-primary, inherit); background: var(--cds-fill-ghost-hover, rgba(127,127,127,.14)); }
-.ccpp-slot-btn.on { color: #d97757; opacity: 1; }
+.ccpp-slot-btn.on { color: var(--cds-clay, #d97757); opacity: 1; }
 .ccpp-slot-btn[hidden] { display: none; }
 `;
   function place(item, container) {
@@ -2725,7 +2725,7 @@ select.input { padding-right: 6px; }
 .hint { color: var(--fg3); font-size: var(--fs-sm); margin: 0 0 10px; }
 ${IMAGE_FIELD_CSS}`;
   var LAYER_CSS = `
-.backdrop { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: auto; background: color-mix(in srgb, #000 30%, transparent); animation: fade .15s ease-out; }
+.backdrop { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: auto; background: var(--cds-backdrop, rgba(0,0,0,.5)); animation: fade .15s ease-out; }
 .backdrop.clear { background: transparent; }
 @keyframes fade { from { opacity: 0; } }
 @keyframes pop { from { opacity: 0; transform: scale(.98); } }
@@ -2747,7 +2747,7 @@ ${IMAGE_FIELD_CSS}`;
 .d-foot .grow { flex: 1; }
 .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
 .field label { font-size: var(--fs-sm); color: var(--fg2); }
-.btn.danger-solid { background: var(--bad); color: #fff; } .btn.danger-solid:hover { opacity: .9; }
+.btn.danger-solid { background: var(--bad); color: var(--cds-on-danger, #fff); } .btn.danger-solid:hover { opacity: .9; }
 
 /* standalone shell, used when claude.ai's own settings dialog can't host CC++ */
 .shell { position: relative; display: grid; grid-template-columns: 12rem 1fr; width: min(1024px, calc(100% - 32px)); height: min(50rem, calc(100% - 32px)); border-radius: calc(var(--radius) + 8px); background: var(--bg); box-shadow: var(--shadow); overflow: hidden; animation: pop .15s ease-out; }
@@ -2860,7 +2860,7 @@ ${IMAGE_FIELD_CSS}`;
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.118";
+  var version = "0.3.119";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -3152,7 +3152,7 @@ ${IMAGE_FIELD_CSS}`;
         const dot = h("span", {
           class: "shrink-0",
           ...tipAttrs(isActive(plugin) ? "ON" : "OFF"),
-          style: { width: "6px", height: "6px", borderRadius: "50%", marginInlineStart: "8px", background: isActive(plugin) ? "var(--cds-fill-accent, #2a78d6)" : "var(--cds-alpha-2, rgba(127,127,127,.4))" }
+          style: { width: "6px", height: "6px", borderRadius: "50%", marginInlineStart: "8px", background: isActive(plugin) ? "var(--cds-fill-accent, #257de0)" : "var(--cds-alpha-2, rgba(127,127,127,.4))" }
         });
         scroll.appendChild(row(ownIcon(plugin.icon ?? "puzzle"), t(plugin.title), { trailing: dot, run: () => options.openPlugin(plugin) }));
       }
@@ -4738,7 +4738,7 @@ ${x.css}`)].join(`
     return "ok";
   }
   var resetText = (window2) => !window2.resetsAt ? "" : window2.resetsAt - Date.now() < 24 * 3600 * 1000 ? t(L10.resetsIn).replace("{t}", untilText(window2.resetsAt)) : t(L10.resetsAt).replace("{t}", dateTimeText(window2.resetsAt));
-  var COLORS = { ok: "var(--cds-fill-accent, #2a78d6)", warn: "var(--cds-fill-warning, #fab219)", bad: "var(--cds-fill-danger, #d03b3b)" };
+  var COLORS = { ok: "var(--cds-fill-accent, #257de0)", warn: "var(--cds-fill-warning, #fbb315)", bad: "var(--cds-fill-danger, #dc3c3d)" };
   var SVG_NS = "http://www.w3.org/2000/svg";
   var nativeTrack = () => document.querySelector("svg [data-ring-track]")?.getAttribute("stroke") || "var(--cds-alpha-2, rgba(127,127,127,.12))";
   function ringSvg(percent) {
@@ -4793,8 +4793,8 @@ ${x.css}`)].join(`
 .ccpp-usage-btn { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; height: var(--cds-h-control, 32px); min-width: var(--cds-h-control, 32px); padding: 0; border: 0; border-radius: calc(0.375rem * var(--cds-rem-scale, 1)); background: transparent; color: var(--cds-text-secondary, inherit); font: inherit; font-size: calc(0.8125rem * var(--cds-rem-scale, 1)); cursor: pointer; transition: background-color .15s ease-out; }
 .ccpp-usage-btn:has(> span) { padding: 0 6px; }
 .ccpp-usage-btn:hover, .ccpp-usage-btn[aria-expanded="true"] { color: var(--cds-text-primary, inherit); background: var(--cds-fill-ghost-hover, rgba(127,127,127,.14)); }
-.ccpp-usage-btn:focus-visible { outline: none; box-shadow: var(--cds-shadow-focus, 0 0 0 2px var(--cds-fill-accent, #2a78d6)); }
-.ccpp-usage.err .ccpp-usage-btn { color: var(--cds-text-danger, #d03b3b); }
+.ccpp-usage-btn:focus-visible { outline: none; box-shadow: var(--cds-focus-shadow, 0 0 0 2px var(--cds-fill-accent, #257de0)); }
+.ccpp-usage.err .ccpp-usage-btn { color: var(--cds-text-danger, #f17778); }
 `;
   var PANEL_CSS2 = `
 .metric { display: flex; flex-direction: column; gap: 4px; }
@@ -5806,22 +5806,7 @@ ${x.css}`)].join(`
   });
 
   // src/lib/projectDot.ts
-  var DOT_COLOR = { clay: "#d97757", awaiting: "var(--cds-fill-warning, #c98a12)" };
-  var resolved = null;
-  function awaitingColor(now = Date.now()) {
-    if (resolved && now - resolved.at < 2000)
-      return resolved.color;
-    let color = "#c98a12";
-    try {
-      const probe = document.createElement("span");
-      probe.style.cssText = `position:absolute;visibility:hidden;color:${DOT_COLOR.awaiting}`;
-      (document.body ?? document.documentElement).appendChild(probe);
-      color = getComputedStyle(probe).color || color;
-      probe.remove();
-    } catch {}
-    resolved = { at: now, color };
-    return color;
-  }
+  var DOT_COLOR = { clay: "var(--cds-clay, #d97757)", awaiting: "var(--cds-fill-warning, #fbb315)" };
   function cornerKind(activity, _showWaiting) {
     return activity?.own === "working" ? "clay" : null;
   }
@@ -6088,7 +6073,7 @@ ${x.css}`)].join(`
     selection?.addRange(range);
   }
   var HUD_CSS = `
-.ccpp-ih-hud { position: fixed; z-index: 2147483646; display: flex; align-items: center; gap: 2px; padding: 4px 8px; border: 1px solid var(--cds-border-subtle, rgba(127,127,127,.25)); border-radius: 8px; background: var(--cds-surface-raised, var(--cds-bg-primary, #262624)); color: var(--cds-text-secondary, #a3a3a3); font-size: 12px; font-variant-numeric: tabular-nums; line-height: 1.2; pointer-events: none; opacity: 0; transform: translate(-50%, -100%); transition: opacity .12s ease; }
+.ccpp-ih-hud { position: fixed; z-index: 2147483646; display: flex; align-items: center; gap: 2px; padding: 4px 8px; border: 1px solid var(--cds-border-line, rgba(127,127,127,.25)); border-radius: 8px; background: var(--cds-surface-popover, #303030); color: var(--cds-text-secondary, #a3a3a3); font-size: 12px; font-variant-numeric: tabular-nums; line-height: 1.2; pointer-events: none; opacity: 0; transform: translate(-50%, -100%); transition: opacity .12s ease; }
 .ccpp-ih-hud.on { opacity: 1; }
 .ccpp-ih-hud.on button { pointer-events: auto; cursor: pointer; }
 .ccpp-ih-hud button { margin: 0; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; line-height: inherit; }
@@ -6682,6 +6667,25 @@ ${t(L16.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
     }
   });
 
+  // src/lib/themeColor.ts
+  var resolved = new Map;
+  function resolveColor(css, fallback, now = Date.now()) {
+    const cached = resolved.get(css);
+    if (cached && now - cached.at < 2000)
+      return cached.color;
+    let color = fallback;
+    try {
+      const probe = document.createElement("span");
+      probe.style.cssText = "position:absolute;visibility:hidden";
+      probe.style.color = css;
+      (document.body ?? document.documentElement).appendChild(probe);
+      color = getComputedStyle(probe).color || fallback;
+      probe.remove();
+    } catch {}
+    resolved.set(css, { at: now, color });
+    return color;
+  }
+
   // src/plugins/chatFavicon/index.ts
   var settings11 = definePluginSettings({
     style: {
@@ -6698,17 +6702,17 @@ ${t(L16.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
       ]
     }
   });
-  var COLOR = {
-    streaming: "#3B82F6",
-    done: "#22C55E",
-    ready: "#F59E0B",
-    error: "#EF4444"
+  var THEME = {
+    streaming: "var(--cds-fill-accent, #257de0)",
+    done: "var(--cds-fill-success, #10a122)",
+    ready: DOT_COLOR.awaiting,
+    error: "var(--cds-fill-danger, #dc3c3d)",
+    clay: DOT_COLOR.clay
   };
-  var CLAY = "#D97757";
+  var COLOR = { streaming: "#257de0", done: "#10a122", ready: "#fbb315", error: "#dc3c3d", clay: "#d97757" };
   var BREATH_MS = 3000;
   var BREATH_STEPS = 12;
   var BREATH_FRAME_MS = 80;
-  var PROJECT_COLOR = { streaming: DOT_COLOR.clay, ready: "#c98a12" };
   var EMOJI = { streaming: "\uD83D\uDD04", done: "✔️", ready: "\uD83D\uDC4D", error: "\uD83D\uDEAB" };
   function fallbackMark() {
     const spokes = [];
@@ -6717,7 +6721,7 @@ ${t(L16.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
       const length = i % 2 ? 20 : 26;
       const x = (r) => (32 + Math.cos(angle) * r).toFixed(1);
       const y = (r) => (32 + Math.sin(angle) * r).toFixed(1);
-      spokes.push(`<line x1="${x(5)}" y1="${y(5)}" x2="${x(length)}" y2="${y(length)}" stroke="${CLAY}" stroke-width="6.5" stroke-linecap="round"/>`);
+      spokes.push(`<line x1="${x(5)}" y1="${y(5)}" x2="${x(length)}" y2="${y(length)}" stroke="${COLOR.clay}" stroke-width="6.5" stroke-linecap="round"/>`);
     }
     return { viewBox: "0 0 64 64", inner: spokes.join("") };
   }
@@ -6752,14 +6756,14 @@ ${t(L16.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
     return Math.round(t * steps) / steps;
   }
   var projectIcons = new Map;
-  function faviconFor(style, state, official, mark = null, breath = 1, waiting = PROJECT_COLOR.ready) {
+  function faviconFor(style, state, official, mark = null, breath = 1, palette = COLOR) {
     if (state === "idle")
       return official;
-    const color = COLOR[state];
+    const color = palette[state];
     if (style === "project") {
       const m = mark ?? fallbackMark();
       const t = state === "streaming" ? breath : 1;
-      const fill = state === "ready" ? waiting : PROJECT_COLOR[state] ?? color;
+      const fill = state === "streaming" ? palette.clay : color;
       const key = `${state}|${t}|${fill}|${m.viewBox}|${m.inner.length}`;
       let url = projectIcons.get(key);
       if (!url) {
@@ -6868,7 +6872,12 @@ ${t(L16.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
       };
       let state = "idle";
       let breath = 1;
-      const waitingColor = () => settings11.store.style === "project" && state === "ready" ? awaitingColor() : PROJECT_COLOR.ready;
+      const palette = () => {
+        const out = { ...COLOR };
+        for (const key of Object.keys(THEME))
+          out[key] = resolveColor(THEME[key], COLOR[key]);
+        return out;
+      };
       const link = document.createElement("link");
       link.id = ICON_ID;
       link.rel = "icon";
@@ -6899,7 +6908,7 @@ ${t(L16.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
           return release();
         claim();
         loadMark(official);
-        const href = faviconFor(settings11.store.style, state, official, mark, breath, waitingColor());
+        const href = faviconFor(settings11.store.style, state, official, mark, breath, palette());
         if (link.getAttribute("href") !== href)
           link.setAttribute("href", href);
       };
@@ -7073,7 +7082,7 @@ ${t(L16.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
         }
       });
       scope.observe(link, { attributes: true, attributeFilter: ["href"] }, () => {
-        const want = faviconFor(settings11.store.style, state, official, mark, breath, waitingColor());
+        const want = faviconFor(settings11.store.style, state, official, mark, breath, palette());
         if (onChatSurface() && link.getAttribute("href") !== want)
           link.setAttribute("href", want);
       });
@@ -7539,7 +7548,7 @@ ${targets.map((t) => `${t}:hover`).join(`,
     return next;
   }
   var CSS8 = `
-.overlay { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(0,0,0,.25); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); pointer-events: auto; animation: in .12s ease-out; }
+.overlay { position: fixed; inset: 0; display: grid; place-items: center; background: var(--cds-backdrop, rgba(0,0,0,.5)); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); pointer-events: auto; animation: in .12s ease-out; }
 @keyframes in { from { opacity: 0; } }
 .box { width: min(860px, calc(100vw - 32px)); padding: 16px; border-radius: 18px; background: color-mix(in srgb, var(--bg) 88%, transparent); border: 1px solid var(--line); box-shadow: var(--shadow); }
 .box h3 { margin: 0 0 12px; font-size: 14px; display: flex; justify-content: space-between; } .box h3 span { font-weight: 400; color: var(--fg3); font-size: 12px; }
@@ -8560,7 +8569,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.118",
+      version: "0.3.119",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -8577,7 +8586,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.118";
+    win[FLAG] = "0.3.119";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -8594,7 +8603,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.118"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.119"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();

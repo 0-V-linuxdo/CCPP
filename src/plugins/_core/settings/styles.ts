@@ -86,7 +86,7 @@ ${IMAGE_FIELD_CSS}`;
 
 /** Our own dialogs: plugin settings, confirmations, theme editors, and the standalone shell. */
 export const LAYER_CSS = `
-.backdrop { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: auto; background: color-mix(in srgb, #000 30%, transparent); animation: fade .15s ease-out; }
+.backdrop { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: auto; background: var(--cds-backdrop, rgba(0,0,0,.5)); animation: fade .15s ease-out; }
 .backdrop.clear { background: transparent; }
 @keyframes fade { from { opacity: 0; } }
 @keyframes pop { from { opacity: 0; transform: scale(.98); } }
@@ -108,7 +108,7 @@ export const LAYER_CSS = `
 .d-foot .grow { flex: 1; }
 .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
 .field label { font-size: var(--fs-sm); color: var(--fg2); }
-.btn.danger-solid { background: var(--bad); color: #fff; } .btn.danger-solid:hover { opacity: .9; }
+.btn.danger-solid { background: var(--bad); color: var(--cds-on-danger, #fff); } .btn.danger-solid:hover { opacity: .9; }
 
 /* standalone shell, used when claude.ai's own settings dialog can't host CC++ */
 .shell { position: relative; display: grid; grid-template-columns: 12rem 1fr; width: min(1024px, calc(100% - 32px)); height: min(50rem, calc(100% - 32px)); border-radius: calc(var(--radius) + 8px); background: var(--bg); box-shadow: var(--shadow); overflow: hidden; animation: pop .15s ease-out; }
