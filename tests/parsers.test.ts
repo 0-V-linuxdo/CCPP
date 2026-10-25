@@ -268,15 +268,17 @@ describe("chat favicon", () => {
         // The project style: the sidebar dot's colours on the top-right corner, the mark shrunk out of its way.
         const running = decodeURIComponent(faviconFor("project", "streaming", "x", mark));
         expect(running).toContain('<svg x="0" y="14" width="50" height="50"');
-        expect(running).toContain('cx="53" cy="11" r="11.00" fill="#D97757"/>');
+        expect(running).toContain('cx="53" cy="11" r="11.00" fill="#d97757"/>');
         expect(running).not.toContain("mask");
-        expect(decodeURIComponent(faviconFor("project", "streaming", "x", mark, 0))).toContain('r="9.46" fill="#D97757" opacity="0.750"');
+        expect(decodeURIComponent(faviconFor("project", "streaming", "x", mark, 0))).toContain('r="9.46" fill="#d97757" opacity="0.750"');
         // The breath eases in and out over 3s, in even steps.
         expect(breathAt(0)).toBe(0);
         expect(breathAt(1500)).toBe(1);
         expect(breathAt(750)).toBe(0.5);
         expect(breathAt(4500)).toBe(1);
-        expect(decodeURIComponent(faviconFor("project", "ready", "x", mark))).toContain('fill="#C98A12"');
+        expect(decodeURIComponent(faviconFor("project", "ready", "x", mark))).toContain('fill="#c98a12"');
+        // Waiting takes the colour the page resolves for the sidebar dot.
+        expect(decodeURIComponent(faviconFor("project", "ready", "x", mark, 1, "rgb(245, 166, 35)"))).toContain('fill="rgb(245, 166, 35)"');
         expect(decodeURIComponent(faviconFor("project", "error", "x", mark))).toContain('fill="#EF4444"');
         // Colours set through a style block or inline style are tinted too.
         const styled = parseMark('<svg viewBox="0 0 10 10"><style>.a{fill:#D97757}.b{fill:#8f8d89}</style><path class="a" d="M0 0h5"/><path style="fill:#8f8d89" d="M5 5h5"/></svg>')!;

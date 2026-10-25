@@ -12,7 +12,7 @@ import { h } from "@lib/dom";
 import { tipAttrs } from "@lib/tooltip";
 import { ApiError, getProjectActivity, type ProjectActivity } from "@api/claude";
 import { watch } from "@api/dom";
-import { type DotKind, projectKind, SEND_GRACE_MS, shownKind } from "@lib/projectDot";
+import { DOT_COLOR, type DotKind, projectKind, SEND_GRACE_MS, shownKind } from "@lib/projectDot";
 import { onRoute } from "@api/router";
 import { addStyle } from "@api/styles";
 
@@ -49,8 +49,8 @@ const ICON_HOLDER = ".df-leading-slot .relative, [data-leading-slot] .relative";
 const CSS = `
 [data-ccpp-corner] { position: absolute; top: -1px; inset-inline-end: -2px; display: flex; pointer-events: none; }
 [data-ccpp-corner] .status-dot { width: 6px; height: 6px; border-radius: 50%; display: block; }
-[data-ccpp-corner] .status-dot[data-kind="clay"] { background-color: #d97757; animation: ccpp-breathe 3s ease-in-out infinite; }
-[data-ccpp-corner] .status-dot[data-kind="awaiting"] { background-color: var(--cds-fill-warning, #c98a12); }
+[data-ccpp-corner] .status-dot[data-kind="clay"] { background-color: ${DOT_COLOR.clay}; animation: ccpp-breathe 3s ease-in-out infinite; }
+[data-ccpp-corner] .status-dot[data-kind="awaiting"] { background-color: ${DOT_COLOR.awaiting}; }
 @keyframes ccpp-breathe { 0%, 100% { transform: scale(.86); opacity: .75; } 50% { transform: scale(1); opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { [data-ccpp-corner] .status-dot { animation: none !important; } }
 `;

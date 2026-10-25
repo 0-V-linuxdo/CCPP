@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.117
+// @version      20261013.0.3.118
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -2860,7 +2860,7 @@ ${IMAGE_FIELD_CSS}`;
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.117";
+  var version = "0.3.118";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -5806,6 +5806,22 @@ ${x.css}`)].join(`
   });
 
   // src/lib/projectDot.ts
+  var DOT_COLOR = { clay: "#d97757", awaiting: "var(--cds-fill-warning, #c98a12)" };
+  var resolved = null;
+  function awaitingColor(now = Date.now()) {
+    if (resolved && now - resolved.at < 2000)
+      return resolved.color;
+    let color = "#c98a12";
+    try {
+      const probe = document.createElement("span");
+      probe.style.cssText = `position:absolute;visibility:hidden;color:${DOT_COLOR.awaiting}`;
+      (document.body ?? document.documentElement).appendChild(probe);
+      color = getComputedStyle(probe).color || color;
+      probe.remove();
+    } catch {}
+    resolved = { at: now, color };
+    return color;
+  }
   function cornerKind(activity, _showWaiting) {
     return activity?.own === "working" ? "clay" : null;
   }
@@ -5860,8 +5876,8 @@ ${x.css}`)].join(`
   var CSS7 = `
 [data-ccpp-corner] { position: absolute; top: -1px; inset-inline-end: -2px; display: flex; pointer-events: none; }
 [data-ccpp-corner] .status-dot { width: 6px; height: 6px; border-radius: 50%; display: block; }
-[data-ccpp-corner] .status-dot[data-kind="clay"] { background-color: #d97757; animation: ccpp-breathe 3s ease-in-out infinite; }
-[data-ccpp-corner] .status-dot[data-kind="awaiting"] { background-color: var(--cds-fill-warning, #c98a12); }
+[data-ccpp-corner] .status-dot[data-kind="clay"] { background-color: ${DOT_COLOR.clay}; animation: ccpp-breathe 3s ease-in-out infinite; }
+[data-ccpp-corner] .status-dot[data-kind="awaiting"] { background-color: ${DOT_COLOR.awaiting}; }
 @keyframes ccpp-breathe { 0%, 100% { transform: scale(.86); opacity: .75; } 50% { transform: scale(1); opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { [data-ccpp-corner] .status-dot { animation: none !important; } }
 `;
@@ -6692,7 +6708,7 @@ ${t(L16.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
   var BREATH_MS = 3000;
   var BREATH_STEPS = 12;
   var BREATH_FRAME_MS = 80;
-  var PROJECT_COLOR = { streaming: CLAY, ready: "#C98A12" };
+  var PROJECT_COLOR = { streaming: DOT_COLOR.clay, ready: "#c98a12" };
   var EMOJI = { streaming: "\uD83D\uDD04", done: "✔️", ready: "\uD83D\uDC4D", error: "\uD83D\uDEAB" };
   function fallbackMark() {
     const spokes = [];
@@ -6736,19 +6752,20 @@ ${t(L16.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
     return Math.round(t * steps) / steps;
   }
   var projectIcons = new Map;
-  function faviconFor(style, state, official, mark = null, breath = 1) {
+  function faviconFor(style, state, official, mark = null, breath = 1, waiting = PROJECT_COLOR.ready) {
     if (state === "idle")
       return official;
     const color = COLOR[state];
     if (style === "project") {
       const m = mark ?? fallbackMark();
       const t = state === "streaming" ? breath : 1;
-      const key = `${state}|${t}|${m.viewBox}|${m.inner.length}`;
+      const fill = state === "ready" ? waiting : PROJECT_COLOR[state] ?? color;
+      const key = `${state}|${t}|${fill}|${m.viewBox}|${m.inner.length}`;
       let url = projectIcons.get(key);
       if (!url) {
         const r = (11 * (0.86 + 0.14 * t)).toFixed(2);
         const opacity = t < 1 ? ` opacity="${(0.75 + 0.25 * t).toFixed(3)}"` : "";
-        url = svgUrl(`${place3(m, m.inner, 0, 14, 50)}<circle cx="53" cy="11" r="${r}" fill="${PROJECT_COLOR[state] ?? color}"${opacity}/>`);
+        url = svgUrl(`${place3(m, m.inner, 0, 14, 50)}<circle cx="53" cy="11" r="${r}" fill="${fill}"${opacity}/>`);
         if (projectIcons.size > 4 * (BREATH_STEPS + 1))
           projectIcons.clear();
         projectIcons.set(key, url);
@@ -6851,6 +6868,7 @@ ${t(L16.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
       };
       let state = "idle";
       let breath = 1;
+      const waitingColor = () => settings11.store.style === "project" && state === "ready" ? awaitingColor() : PROJECT_COLOR.ready;
       const link = document.createElement("link");
       link.id = ICON_ID;
       link.rel = "icon";
@@ -6881,7 +6899,7 @@ ${t(L16.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
           return release();
         claim();
         loadMark(official);
-        const href = faviconFor(settings11.store.style, state, official, mark, breath);
+        const href = faviconFor(settings11.store.style, state, official, mark, breath, waitingColor());
         if (link.getAttribute("href") !== href)
           link.setAttribute("href", href);
       };
@@ -7055,7 +7073,7 @@ ${t(L16.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
         }
       });
       scope.observe(link, { attributes: true, attributeFilter: ["href"] }, () => {
-        const want = faviconFor(settings11.store.style, state, official, mark, breath);
+        const want = faviconFor(settings11.store.style, state, official, mark, breath, waitingColor());
         if (onChatSurface() && link.getAttribute("href") !== want)
           link.setAttribute("href", want);
       });
@@ -8542,7 +8560,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.117",
+      version: "0.3.118",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -8559,7 +8577,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.117";
+    win[FLAG] = "0.3.118";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -8576,7 +8594,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.117"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.118"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();
