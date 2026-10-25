@@ -7,11 +7,12 @@
 import { definePlugin } from "@kernel/plugins";
 import { definePluginSettings } from "@kernel/settings";
 import { chatPhase } from "@api/chatState";
-import { ApiError, type CodePhase, getProjectPhases } from "@api/claude";
+import { ApiError, type CodePhase, getProjectActivity, getProjectPhases, type ProjectActivity } from "@api/claude";
 import { getText, onSubmit } from "@api/composer";
 import { SEL } from "@api/dom";
 import { onRequestError, onResponse, sameOrigin } from "@api/network";
 import { currentRoute } from "@api/router";
+import { type DotKind, projectDotOptions, projectKind, SEND_GRACE_MS, shownKind } from "@lib/projectDot";
 
 export type FaviconState = "idle" | "streaming" | "done" | "ready" | "error";
 export type FaviconStyle = "emoji" | "badge" | "dot" | "hole" | "bg" | "project";
@@ -183,6 +184,11 @@ export function computeProjectState(facts: ChatFacts, project: ProjectFacts): Fa
     return "idle";
 }
 
+/** The "project" style on a project page shows exactly the sidebar dot: running, waiting on you, or nothing. */
+export function dotState(kind: DotKind): FaviconState {
+    return kind === "clay" ? "streaming" : kind === "awaiting" ? "ready" : "idle";
+}
+
 const ICON_ID = "ccpp-favicon";
 const ERROR_EVENT = /^event:\s*error\s*$|"type"\s*:\s*"error"/m;
 const STOP_EVENT = /^event:\s*message_stop\s*$|"type"\s*:\s*"message_stop"/m;
@@ -201,8 +207,8 @@ export default definePlugin({
     name: "ChatFavicon",
     title: { zh: "标签页图标状态", en: "Chat state favicon" },
     description: {
-        zh: "标签页图标随对话状态变化：回复中、已完成、草稿待发送、出错（含消息发送失败），6 种样式可选（含与侧栏项目圆点一致的「项目角标」）。Claude Code 项目页跟随项目主对话和所有线程，按 claude.ai 自己的顺序：等你回复、失败、有未读结果、运行中。",
-        en: "The tab icon follows the chat: replying, done, draft ready, error (including a message that couldn't be sent). Six styles, one matching the sidebar project dot. On Claude Code project pages it follows the project chat and all its threads, in claude.ai's own order: waiting on you, failed, unread results, running.",
+        zh: "标签页图标随对话状态变化：回复中、已完成、草稿待发送、出错（含消息发送失败），6 种样式可选；「项目角标」样式在项目页上和侧栏项目圆点完全一致（同样的状态、颜色和优先级）。Claude Code 项目页跟随项目主对话和所有线程，按 claude.ai 自己的顺序：等你回复、失败、有未读结果、运行中。",
+        en: "The tab icon follows the chat: replying, done, draft ready, error (including a message that couldn't be sent). Six styles; on project pages the project-dot style shows exactly what the sidebar project dot shows. On Claude Code project pages it follows the project chat and all its threads, in claude.ai's own order: waiting on you, failed, unread results, running.",
     },
     category: "notifications",
     icon: "tab",
@@ -297,9 +303,13 @@ export default definePlugin({
             } else if (!now && streaming) finished = true;
             streaming = now;
             const facts = { streaming, errored, finished, draft: draft() };
-            const next = codeChannel && codeProjectOf(location.pathname, location.search)?.channel === codeChannel
-                ? computeProjectState(facts, { waiting: codeWaiting, failed: codeFailed, unread: codeUnread, working: codeWorking })
-                : computeState(facts);
+            const onProject = !!codeChannel && codeProjectOf(location.pathname, location.search)?.channel === codeChannel;
+            const { showWaiting, withOwn } = projectDotOptions();
+            const next = !onProject
+                ? computeState(facts)
+                : settings.store.style === "project"
+                  ? dotState(shownKind(codeActivity, showWaiting, withOwn, codeSent.channel === codeChannel ? codeSent.until : 0))
+                  : computeProjectState(facts, { waiting: codeWaiting, failed: codeFailed, unread: codeUnread, working: codeWorking });
             if (next === state) return;
             state = next;
             paint();
@@ -315,12 +325,16 @@ export default definePlugin({
         });
         // Every Code session of the open project, so a thread finishing or waiting shows from any page of it.
         let codeChannel = "";
+        // What the sidebar dot reads for the open project, and its "just sent" grace, for the "project" style.
+        let codeActivity: ProjectActivity | undefined;
+        let codeSent = { channel: "", until: 0 };
         let codeBusy = false;
         let codePausedUntil = 0;
         const pollCode = async () => {
             const page = codeProjectOf(location.pathname, location.search);
             if (!page) {
                 codeChannel = "";
+                codeActivity = undefined;
                 if (codeWorking || codeWaiting || codeFailed || codeUnread) {
                     codeWorking = codeWaiting = codeFailed = codeUnread = false;
                     update();
@@ -331,9 +345,12 @@ export default definePlugin({
             codeBusy = true;
             try {
                 const channel = page.channel;
-                const phases = await getProjectPhases(channel, scope.signal, page.thread);
+                // Both come from one shared read of the project.
+                const [phases, activity] = await Promise.all([getProjectPhases(channel, scope.signal, page.thread), getProjectActivity(channel, scope.signal)]);
                 if (!scope.alive || page.channel !== codeProjectOf(location.pathname, location.search)?.channel) return;
                 codeChannel = channel;
+                codeActivity = activity;
+                if (codeSent.channel === channel && projectKind(activity, false, projectDotOptions().withOwn) === "clay") codeSent = { channel: "", until: 0 };
                 // Failed and unread show for as long as claude.ai still lists them that way, not just when they change.
                 ({ working: codeWorking, waiting: codeWaiting, failed: codeFailed, unread: codeUnread } = projectFacts(phases.values()));
                 update();
@@ -394,6 +411,17 @@ export default definePlugin({
         });
         // claude.ai gave up sending a message on a project page ("Couldn't send the message").
         scope.on("send:failed", fail);
+        scope.on("send:failed", ({ channelId }) => {
+            if (channelId !== codeSent.channel) return;
+            codeSent = { channel: "", until: 0 };
+            update();
+        });
+        // Like the sidebar dot, a send lights the "project" style at once.
+        scope.on("send:ok", ({ channelId }) => {
+            if (channelId !== codeProjectOf(location.pathname, location.search)?.channel) return;
+            codeSent = { channel: channelId, until: Date.now() + SEND_GRACE_MS };
+            update();
+        });
         onResponse(scope, req => sameOrigin(req) && req.method === "POST" && isCompletion(req.url.pathname), async response => {
             inflight++;
             pendingUntil = 0;

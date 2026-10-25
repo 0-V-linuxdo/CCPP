@@ -7,6 +7,7 @@ import { titleFrom } from "../src/plugins/_api/chatState";
 import { recordVisit, renameVisit } from "../src/plugins/recentChats";
 import { level } from "../src/plugins/usageDisplay";
 import { cornerKind, dotKind, openProjectOf, projectKind, SEND_GRACE_MS, shownKind } from "../src/plugins/projectStatus";
+import { projectDotOptions } from "../src/lib/projectDot";
 import { remember } from "../src/plugins/inputHistory";
 import { parsePresets } from "../src/plugins/promptPresets";
 import { pickPhrase, fillPhrase } from "../src/plugins/customGreeting";
@@ -15,7 +16,7 @@ import { splitLinks } from "../src/plugins/betterLinks";
 import { isTelemetry } from "../src/plugins/noTelemetry";
 import { chatKeyFor, reindex, toggleStar } from "../src/plugins/messageStars/store";
 import { starSpot } from "../src/plugins/messageStars/index";
-import { breathAt, codeProjectOf, computeProjectState, computeState, faviconFor, projectFacts, parseMark } from "../src/plugins/chatFavicon";
+import { breathAt, codeProjectOf, computeProjectState, computeState, dotState, faviconFor, projectFacts, parseMark } from "../src/plugins/chatFavicon";
 import { channelSendOf } from "../src/plugins/_api/chatState";
 import { alignWithApi, outlineFromApi } from "../src/plugins/chatNavigator";
 import { parseChannelMessages, parseCodePhase, threadPhasesFrom } from "../src/plugins/_api/claude";
@@ -222,6 +223,16 @@ describe("chat favicon", () => {
         const opened = { data: [{ id: "cmsg_R", thread_status: "idle", has_unread: true, bound_sessions: [{ id: "cse_r", status: "active", status_bucket: "review_ready" }] }] };
         expect(threadPhasesFrom(opened, "cmsg_R").get("cse_r")).toBe("idle");
         expect(threadPhasesFrom(opened, "cmsg_X").get("cse_r")).toBe("unread");
+    });
+    test("the project style shows exactly what the sidebar dot shows", () => {
+        const a = (o: Partial<{ working: number; blocked: number; own: "working" | "blocked" | null }>) => ({ channelId: "c", working: 0, blocked: 0, own: null, ...o });
+        expect(dotState(shownKind(a({ working: 1 }), true, true))).toBe("streaming");
+        expect(dotState(shownKind(a({ working: 1, blocked: 1 }), true, true))).toBe("ready");
+        expect(dotState(shownKind(a({ working: 1, blocked: 1 }), false, true))).toBe("streaming");
+        expect(dotState(shownKind(a({ own: "working" }), true, false))).toBe("idle");
+        expect(dotState(shownKind(a({}), true, true, 2000, 1000))).toBe("streaming");
+        expect(dotState(shownKind(undefined, true, true))).toBe("idle");
+        expect(projectDotOptions()).toEqual({ showWaiting: true, withOwn: true });
     });
     test("project pages follow claude.ai's order: waiting, error, unread, running", () => {
         const quiet = { streaming: false, errored: false, finished: false, draft: false };

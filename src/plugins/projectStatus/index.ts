@@ -12,8 +12,11 @@ import { h } from "@lib/dom";
 import { tipAttrs } from "@lib/tooltip";
 import { ApiError, getProjectActivity, type ProjectActivity } from "@api/claude";
 import { watch } from "@api/dom";
+import { type DotKind, projectKind, SEND_GRACE_MS, shownKind } from "@lib/projectDot";
 import { onRoute } from "@api/router";
 import { addStyle } from "@api/styles";
+
+export { cornerKind, dotKind, type DotKind, projectKind, SEND_GRACE_MS, shownKind } from "@lib/projectDot";
 
 const logger = new Logger("ProjectStatus");
 
@@ -53,40 +56,9 @@ const CSS = `
 `;
 
 
-export type DotKind = "clay" | "awaiting" | null;
-
-export function cornerKind(activity: ProjectActivity | undefined, showWaiting: boolean): DotKind {
-    if (activity?.own === "working") return "clay";
-    if (showWaiting && activity?.own === "blocked") return "awaiting";
-    return null;
-}
-
-/** One dot per project, on its icon corner, in claude.ai's own order: waiting on you first, then running. */
-export function projectKind(activity: ProjectActivity | undefined, showWaiting: boolean, withOwn: boolean): DotKind {
-    if (!activity) return null;
-    const own = withOwn ? cornerKind(activity, showWaiting) : null;
-    const threads = dotKind(activity, showWaiting);
-    if (showWaiting && (own === "awaiting" || activity.blocked > 0)) return "awaiting";
-    return own === "clay" || threads === "clay" ? "clay" : null;
-}
-
-/** A send to the project counts as running at once, until a read confirms it or the grace runs out. */
-export const SEND_GRACE_MS = 15_000;
-
-export function shownKind(activity: ProjectActivity | undefined, showWaiting: boolean, withOwn: boolean, sentUntil = 0, now = Date.now()): DotKind {
-    return now < sentUntil ? "clay" : projectKind(activity, showWaiting, withOwn);
-}
-
 /** The project a /code/project/… page shows, threads included. */
 export function openProjectOf(path: string) {
     return /^\/code\/project\/(chan_[A-Za-z0-9]+)/.exec(path)?.[1] ?? null;
-}
-
-export function dotKind(activity: ProjectActivity | undefined, showWaiting: boolean): DotKind {
-    if (!activity) return null;
-    if (activity.working > 0) return "clay";
-    if (showWaiting && activity.blocked > 0) return "awaiting";
-    return null;
 }
 
 export default definePlugin({

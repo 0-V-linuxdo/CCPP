@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.113
+// @version      20261013.0.3.114
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -2854,7 +2854,7 @@ ${IMAGE_FIELD_CSS}`;
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.113";
+  var version = "0.3.114";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -5799,6 +5799,41 @@ ${x.css}`)].join(`
     }
   });
 
+  // src/lib/projectDot.ts
+  function cornerKind(activity, showWaiting) {
+    if (activity?.own === "working")
+      return "clay";
+    if (showWaiting && activity?.own === "blocked")
+      return "awaiting";
+    return null;
+  }
+  function projectKind(activity, showWaiting, withOwn) {
+    if (!activity)
+      return null;
+    const own = withOwn ? cornerKind(activity, showWaiting) : null;
+    const threads = dotKind(activity, showWaiting);
+    if (showWaiting && (own === "awaiting" || activity.blocked > 0))
+      return "awaiting";
+    return own === "clay" || threads === "clay" ? "clay" : null;
+  }
+  var SEND_GRACE_MS = 15000;
+  function shownKind(activity, showWaiting, withOwn, sentUntil = 0, now = Date.now()) {
+    return now < sentUntil ? "clay" : projectKind(activity, showWaiting, withOwn);
+  }
+  function dotKind(activity, showWaiting) {
+    if (!activity)
+      return null;
+    if (activity.working > 0)
+      return "clay";
+    if (showWaiting && activity.blocked > 0)
+      return "awaiting";
+    return null;
+  }
+  function projectDotOptions() {
+    const flag = (key) => getRaw("ProjectStatus", key) !== false;
+    return { showWaiting: flag("showWaiting"), withOwn: flag("showCode") };
+  }
+
   // src/plugins/projectStatus/index.ts
   var logger10 = new Logger("ProjectStatus");
   var settings7 = definePluginSettings({
@@ -5828,37 +5863,8 @@ ${x.css}`)].join(`
 @keyframes ccpp-breathe { 0%, 100% { transform: scale(.86); opacity: .75; } 50% { transform: scale(1); opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { [data-ccpp-corner] .status-dot { animation: none !important; } }
 `;
-  function cornerKind(activity, showWaiting) {
-    if (activity?.own === "working")
-      return "clay";
-    if (showWaiting && activity?.own === "blocked")
-      return "awaiting";
-    return null;
-  }
-  function projectKind(activity, showWaiting, withOwn) {
-    if (!activity)
-      return null;
-    const own = withOwn ? cornerKind(activity, showWaiting) : null;
-    const threads = dotKind(activity, showWaiting);
-    if (showWaiting && (own === "awaiting" || activity.blocked > 0))
-      return "awaiting";
-    return own === "clay" || threads === "clay" ? "clay" : null;
-  }
-  var SEND_GRACE_MS = 15000;
-  function shownKind(activity, showWaiting, withOwn, sentUntil = 0, now = Date.now()) {
-    return now < sentUntil ? "clay" : projectKind(activity, showWaiting, withOwn);
-  }
   function openProjectOf(path) {
     return /^\/code\/project\/(chan_[A-Za-z0-9]+)/.exec(path)?.[1] ?? null;
-  }
-  function dotKind(activity, showWaiting) {
-    if (!activity)
-      return null;
-    if (activity.working > 0)
-      return "clay";
-    if (showWaiting && activity.blocked > 0)
-      return "awaiting";
-    return null;
   }
   var projectStatus_default = definePlugin({
     name: "ProjectStatus",
@@ -6785,6 +6791,9 @@ ${t(L16.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
       return "done";
     return "idle";
   }
+  function dotState(kind) {
+    return kind === "clay" ? "streaming" : kind === "awaiting" ? "ready" : "idle";
+  }
   var ICON_ID = "ccpp-favicon";
   var ERROR_EVENT = /^event:\s*error\s*$|"type"\s*:\s*"error"/m;
   var STOP_EVENT = /^event:\s*message_stop\s*$|"type"\s*:\s*"message_stop"/m;
@@ -6801,8 +6810,8 @@ ${t(L16.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
     name: "ChatFavicon",
     title: { zh: "标签页图标状态", en: "Chat state favicon" },
     description: {
-      zh: "标签页图标随对话状态变化：回复中、已完成、草稿待发送、出错（含消息发送失败），6 种样式可选（含与侧栏项目圆点一致的「项目角标」）。Claude Code 项目页跟随项目主对话和所有线程，按 claude.ai 自己的顺序：等你回复、失败、有未读结果、运行中。",
-      en: "The tab icon follows the chat: replying, done, draft ready, error (including a message that couldn't be sent). Six styles, one matching the sidebar project dot. On Claude Code project pages it follows the project chat and all its threads, in claude.ai's own order: waiting on you, failed, unread results, running."
+      zh: "标签页图标随对话状态变化：回复中、已完成、草稿待发送、出错（含消息发送失败），6 种样式可选；「项目角标」样式在项目页上和侧栏项目圆点完全一致（同样的状态、颜色和优先级）。Claude Code 项目页跟随项目主对话和所有线程，按 claude.ai 自己的顺序：等你回复、失败、有未读结果、运行中。",
+      en: "The tab icon follows the chat: replying, done, draft ready, error (including a message that couldn't be sent). Six styles; on project pages the project-dot style shows exactly what the sidebar project dot shows. On Claude Code project pages it follows the project chat and all its threads, in claude.ai's own order: waiting on you, failed, unread results, running."
     },
     category: "notifications",
     icon: "tab",
@@ -6891,7 +6900,9 @@ ${t(L16.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
           finished = true;
         streaming = now;
         const facts = { streaming, errored, finished, draft: draft() };
-        const next = codeChannel && codeProjectOf(location.pathname, location.search)?.channel === codeChannel ? computeProjectState(facts, { waiting: codeWaiting, failed: codeFailed, unread: codeUnread, working: codeWorking }) : computeState(facts);
+        const onProject = !!codeChannel && codeProjectOf(location.pathname, location.search)?.channel === codeChannel;
+        const { showWaiting, withOwn } = projectDotOptions();
+        const next = !onProject ? computeState(facts) : settings11.store.style === "project" ? dotState(shownKind(codeActivity, showWaiting, withOwn, codeSent.channel === codeChannel ? codeSent.until : 0)) : computeProjectState(facts, { waiting: codeWaiting, failed: codeFailed, unread: codeUnread, working: codeWorking });
         if (next === state)
           return;
         state = next;
@@ -6905,12 +6916,15 @@ ${t(L16.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
         update();
       });
       let codeChannel = "";
+      let codeActivity;
+      let codeSent = { channel: "", until: 0 };
       let codeBusy = false;
       let codePausedUntil = 0;
       const pollCode = async () => {
         const page = codeProjectOf(location.pathname, location.search);
         if (!page) {
           codeChannel = "";
+          codeActivity = undefined;
           if (codeWorking || codeWaiting || codeFailed || codeUnread) {
             codeWorking = codeWaiting = codeFailed = codeUnread = false;
             update();
@@ -6922,10 +6936,13 @@ ${t(L16.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
         codeBusy = true;
         try {
           const channel = page.channel;
-          const phases = await getProjectPhases(channel, scope.signal, page.thread);
+          const [phases, activity] = await Promise.all([getProjectPhases(channel, scope.signal, page.thread), getProjectActivity(channel, scope.signal)]);
           if (!scope.alive || page.channel !== codeProjectOf(location.pathname, location.search)?.channel)
             return;
           codeChannel = channel;
+          codeActivity = activity;
+          if (codeSent.channel === channel && projectKind(activity, false, projectDotOptions().withOwn) === "clay")
+            codeSent = { channel: "", until: 0 };
           ({ working: codeWorking, waiting: codeWaiting, failed: codeFailed, unread: codeUnread } = projectFacts(phases.values()));
           update();
         } catch (error) {
@@ -6981,6 +6998,18 @@ ${t(L16.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
           fail();
       });
       scope.on("send:failed", fail);
+      scope.on("send:failed", ({ channelId }) => {
+        if (channelId !== codeSent.channel)
+          return;
+        codeSent = { channel: "", until: 0 };
+        update();
+      });
+      scope.on("send:ok", ({ channelId }) => {
+        if (channelId !== codeProjectOf(location.pathname, location.search)?.channel)
+          return;
+        codeSent = { channel: channelId, until: Date.now() + SEND_GRACE_MS };
+        update();
+      });
       onResponse(scope, (req) => sameOrigin(req) && req.method === "POST" && isCompletion(req.url.pathname), async (response) => {
         inflight++;
         pendingUntil = 0;
@@ -8511,7 +8540,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.113",
+      version: "0.3.114",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -8528,7 +8557,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.113";
+    win[FLAG] = "0.3.114";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -8545,7 +8574,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.113"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.114"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();
