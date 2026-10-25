@@ -110,18 +110,17 @@ export function faviconFor(style: FaviconStyle, state: FaviconState, official: s
     if (state === "idle") return official;
     const color = COLOR[state];
     if (style === "project") {
-        // A dot on the mark's top-right corner, like the sidebar's; a running one breathes (scale .86–1, opacity
-        // .75–1). The mark keeps its own colours; a clear gap cut around the dot keeps a clay dot apart from the
-        // clay mark at 16px.
+        // The mark shrinks toward the bottom-left and leaves the top-right corner to the dot, so the two never
+        // overlap, like the sidebar dot hanging on its icon's corner. A running dot breathes (scale .86–1, opacity
+        // .75–1); the mark keeps its own colours.
         const m = mark ?? fallbackMark();
         const t = state === "streaming" ? breath : 1;
         const key = `${state}|${t}|${m.viewBox}|${m.inner.length}`;
         let url = projectIcons.get(key);
         if (!url) {
-            const r = (13 * (0.86 + 0.14 * t)).toFixed(2);
+            const r = (11 * (0.86 + 0.14 * t)).toFixed(2);
             const opacity = t < 1 ? ` opacity="${(0.75 + 0.25 * t).toFixed(3)}"` : "";
-            const knockout = `<mask id="k"><rect width="64" height="64" fill="#fff"/><circle cx="50.5" cy="13.5" r="19" fill="#000"/></mask>`;
-            url = svgUrl(`${knockout}<g mask="url(#k)">${place(m, m.inner)}</g><circle cx="50.5" cy="13.5" r="${r}" fill="${PROJECT_COLOR[state] ?? color}"${opacity}/>`);
+            url = svgUrl(`${place(m, m.inner, 0, 14, 50)}<circle cx="53" cy="11" r="${r}" fill="${PROJECT_COLOR[state] ?? color}"${opacity}/>`);
             if (projectIcons.size > 4 * (BREATH_STEPS + 1)) projectIcons.clear();
             projectIcons.set(key, url);
         }

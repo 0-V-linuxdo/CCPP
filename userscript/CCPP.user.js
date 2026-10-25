@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.108
+// @version      20261013.0.3.109
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -2829,7 +2829,7 @@ ${IMAGE_FIELD_CSS}`;
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.108";
+  var version = "0.3.109";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -6713,10 +6713,9 @@ ${t(L16.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
       const key = `${state}|${t}|${m.viewBox}|${m.inner.length}`;
       let url = projectIcons.get(key);
       if (!url) {
-        const r = (13 * (0.86 + 0.14 * t)).toFixed(2);
+        const r = (11 * (0.86 + 0.14 * t)).toFixed(2);
         const opacity = t < 1 ? ` opacity="${(0.75 + 0.25 * t).toFixed(3)}"` : "";
-        const knockout = `<mask id="k"><rect width="64" height="64" fill="#fff"/><circle cx="50.5" cy="13.5" r="19" fill="#000"/></mask>`;
-        url = svgUrl(`${knockout}<g mask="url(#k)">${place3(m, m.inner)}</g><circle cx="50.5" cy="13.5" r="${r}" fill="${PROJECT_COLOR[state] ?? color}"${opacity}/>`);
+        url = svgUrl(`${place3(m, m.inner, 0, 14, 50)}<circle cx="53" cy="11" r="${r}" fill="${PROJECT_COLOR[state] ?? color}"${opacity}/>`);
         if (projectIcons.size > 4 * (BREATH_STEPS + 1))
           projectIcons.clear();
         projectIcons.set(key, url);
@@ -8475,7 +8474,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.108",
+      version: "0.3.109",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -8492,7 +8491,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.108";
+    win[FLAG] = "0.3.109";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -8509,7 +8508,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.108"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.109"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();

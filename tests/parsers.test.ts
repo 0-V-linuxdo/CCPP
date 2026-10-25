@@ -218,12 +218,12 @@ describe("chat favicon", () => {
         expect(tinted).toContain('fill="#EF4444"');
         expect(tinted).not.toContain("#D97757");
         expect(decodeURIComponent(faviconFor("dot", "done", "x", mark))).toContain('fill="#D97757"');
-        // The project style: the sidebar dot's colours on the top-right corner, a gap round it, the mark untouched.
+        // The project style: the sidebar dot's colours on the top-right corner, the mark shrunk out of its way.
         const running = decodeURIComponent(faviconFor("project", "streaming", "x", mark));
-        expect(running).toContain('cx="50.5" cy="13.5" r="13.00" fill="#D97757"/>');
-        expect(running).toContain('mask="url(#k)"');
-        expect(running).toContain('fill="#D97757"/></svg></g>');
-        expect(decodeURIComponent(faviconFor("project", "streaming", "x", mark, 0))).toContain('r="11.18" fill="#D97757" opacity="0.750"');
+        expect(running).toContain('<svg x="0" y="14" width="50" height="50"');
+        expect(running).toContain('cx="53" cy="11" r="11.00" fill="#D97757"/>');
+        expect(running).not.toContain("mask");
+        expect(decodeURIComponent(faviconFor("project", "streaming", "x", mark, 0))).toContain('r="9.46" fill="#D97757" opacity="0.750"');
         // The breath eases in and out over 3s, in even steps.
         expect(breathAt(0)).toBe(0);
         expect(breathAt(1500)).toBe(1);
