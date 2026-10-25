@@ -44,6 +44,14 @@ export const SEL = {
     greeting: "[data-new-page-greeting-text]",
     /** The Claude spark beside the home greeting; layouts without the text marker are found from it. */
     greetingSpark: ':is([data-new-page-greeting-spark], svg[data-cds="Spark"])',
+    /** A project page's Threads panel: its Waiting on you / Working / Idle / Resolved groups. */
+    threadsPanel: ":is([data-home-section], [data-home-group], [data-home-heading])",
+    /**
+     * Text the user or Claude wrote: messages, the input, and links to chats, sessions, projects and threads
+     * (their titles), in the sidebar or the Threads panel. Hiders matching claude.ai's own wording skip these,
+     * so a chat titled "Upgrade" or "隐藏用量限制提示条" stays put.
+     */
+    userContent: ':is([data-testid="transcript-list"], [data-testid="transcript-row"], [data-testid="chat-input"], [data-testid="code-prompt-input"], [data-testid="sidebar-recents"], [data-home-section], [data-home-group], [data-home-heading], a[href^="/chat/"], a[href^="/code/"], a[href^="/project/"], a[href*="?thread="], [contenteditable="true"], textarea)',
     menu: '[role="menu"]',
     menuItem: '[role="menuitem"]',
     jumpToLatest: '[data-testid="jump-to-latest"]',

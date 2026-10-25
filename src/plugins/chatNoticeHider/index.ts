@@ -6,7 +6,7 @@
 
 import { definePlugin } from "@kernel/plugins";
 import { definePluginSettings } from "@kernel/settings";
-import { onDomChange } from "@api/dom";
+import { onDomChange, SEL } from "@api/dom";
 import { addStyle } from "@api/styles";
 
 const settings = definePluginSettings({
@@ -16,6 +16,11 @@ const settings = definePluginSettings({
 });
 
 const APP_PROMO_RE = /^(get the (desktop |mobile )?app|download (the )?(desktop |mobile )?app|download claude( for (mac|windows|desktop))?|get claude for (mac|windows|desktop)|下载(桌面|客户端|应用|App)|获取(桌面版|应用|App))/i;
+
+/** App download prompts, by their wording; a chat or thread titled "Download the app…" is left alone. */
+export function findAppPromos(root: ParentNode = document): HTMLElement[] {
+    return [...root.querySelectorAll<HTMLElement>('a, button, [role="link"]')].filter(el => !el.closest(`[data-ccpp], [role="menu"], nav, ${SEL.userContent}`) && APP_PROMO_RE.test(el.textContent?.trim() ?? ""));
+}
 
 export function chatNoticeCss(options: { disclaimer: boolean; appPromo: boolean; bugReport: boolean }) {
     return [
@@ -42,10 +47,7 @@ export default definePlugin({
         addStyle(scope, chatNoticeCss(settings.store), "chat-notices");
         if (!settings.store.appPromo) return;
         onDomChange(scope, () => {
-            for (const el of document.querySelectorAll<HTMLElement>('a, button, [role="link"]')) {
-                if (el.dataset.ccppAppPromo !== undefined || el.closest('[data-ccpp], [role="menu"], nav')) continue;
-                if (APP_PROMO_RE.test(el.textContent?.trim() ?? "")) el.dataset.ccppAppPromo = "";
-            }
+            for (const el of findAppPromos()) if (el.dataset.ccppAppPromo === undefined) el.dataset.ccppAppPromo = "";
         });
         scope.defer(() => document.querySelectorAll("[data-ccpp-app-promo]").forEach(el => el.removeAttribute("data-ccpp-app-promo")));
     },

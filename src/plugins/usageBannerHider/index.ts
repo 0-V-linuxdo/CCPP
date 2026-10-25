@@ -24,16 +24,16 @@ const MAX_TEXT = 240;
  * such as a project's Threads panel. Text inside a link or button is a title (a thread called "Hide usage
  * limit banner"), never the bar's own line.
  */
-const SKIP = `${SEL.transcriptRow}, ${SEL.transcript}, ${SEL.editor}, ${SEL.sidebar}, nav, [role="menu"], [role="dialog"], [contenteditable="true"], textarea, [data-ccpp], [data-home-section], [data-home-group], [data-home-heading], ul, ol, a[href], button, [role="button"], [role="list"], [role="listitem"], [role="option"]`;
+const SKIP = `${SEL.userContent}, ${SEL.sidebar}, nav, [role="menu"], [role="dialog"], [data-ccpp], ul, ol, a[href], button, [role="button"], [role="list"], [role="listitem"], [role="option"]`;
 const MARK = "data-ccpp-usage-banner";
 
 export type BannerKind = "approaching" | "exhausted";
 
-/** The whole bar holding `text`: its largest short ancestor that still sits outside the input and has a button. */
+/** The whole bar holding `text`: its largest short ancestor that still holds no input or titles and has a button. */
 function barOf(text: Element): HTMLElement | null {
     let bar: HTMLElement | null = null;
     for (let node: HTMLElement | null = text as HTMLElement; node && node !== document.body; node = node.parentElement) {
-        if ((node.textContent?.trim().length ?? 0) > MAX_TEXT || node.querySelector(`${SEL.editor}, textarea, [contenteditable="true"]`)) break;
+        if ((node.textContent?.trim().length ?? 0) > MAX_TEXT || node.querySelector(SEL.userContent)) break;
         if (node.querySelector('button, a[href], [role="button"]')) bar = node;
     }
     return bar;

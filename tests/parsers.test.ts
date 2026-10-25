@@ -535,6 +535,8 @@ test("the tab icon and the sidebar dot share one read of a project", async () =>
 });
 
 import { findUsageBanners } from "../src/plugins/usageBannerHider";
+import { findUpgradeNags } from "../src/plugins/cleaner";
+import { findAppPromos } from "../src/plugins/chatNoticeHider";
 
 describe("usage limit banner", () => {
     const composer = `<div data-cds="ChatComposer"><div data-testid="chat-input" contenteditable="true"><p>hi</p></div></div>`;
@@ -558,6 +560,20 @@ describe("usage limit banner", () => {
             <a href="/code/project/chan_1?thread=a"><span>隐藏用量限制提示条</span><button aria-label="More">…</button></a>
             <div role="button"><span>Fix session usage limit check</span></div></div>${composer}`;
         expect(findUsageBanners()).toEqual([]);
+    });
+});
+
+describe("hiders matching claude.ai's wording leave titles alone", () => {
+    const titles = (title: string) => `<div data-testid="sidebar-recents"><a href="/chat/1"><span>${title}</span></a></div>
+        <div data-home-section="active"><a href="/code/project/chan_1?thread=t1"><span>${title}</span></a><button>${title}</button></div>
+        <div data-testid="transcript-row"><button>${title}</button></div>`;
+    test("Cleaner hides the upgrade button, not chats or threads called Upgrade", () => {
+        document.body.innerHTML = `${titles("Upgrade")}<a id="nag" href="/settings/billing">Upgrade</a><button id="btn">升级</button>`;
+        expect(findUpgradeNags().map(el => el.id)).toEqual(["nag", "btn"]);
+    });
+    test("ChatNoticeHider hides the app prompt, not chats or threads called Download the app", () => {
+        document.body.innerHTML = `${titles("Download the app icons")}<a id="promo" href="/download">Download the desktop app</a>`;
+        expect(findAppPromos().map(el => el.id)).toEqual(["promo"]);
     });
 });
 

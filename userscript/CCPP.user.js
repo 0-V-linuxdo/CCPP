@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.116
+// @version      20261013.0.3.117
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -1237,6 +1237,8 @@
     modelSelector: ':is([data-testid="model-selector-dropdown"], [data-testid="epitaxy-cds-model-selector"], [data-testid="environment-row-model"])',
     greeting: "[data-new-page-greeting-text]",
     greetingSpark: ':is([data-new-page-greeting-spark], svg[data-cds="Spark"])',
+    threadsPanel: ":is([data-home-section], [data-home-group], [data-home-heading])",
+    userContent: ':is([data-testid="transcript-list"], [data-testid="transcript-row"], [data-testid="chat-input"], [data-testid="code-prompt-input"], [data-testid="sidebar-recents"], [data-home-section], [data-home-group], [data-home-heading], a[href^="/chat/"], a[href^="/code/"], a[href^="/project/"], a[href*="?thread="], [contenteditable="true"], textarea)',
     menu: '[role="menu"]',
     menuItem: '[role="menuitem"]',
     jumpToLatest: '[data-testid="jump-to-latest"]'
@@ -2858,7 +2860,7 @@ ${IMAGE_FIELD_CSS}`;
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.116";
+  var version = "0.3.117";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -7375,6 +7377,9 @@ Write it down while the idea is fresh` })
     templates: { type: "boolean", label: { zh: "隐藏侧栏「从模板新建」按钮", en: "Hide the sidebar “New from a template” button" }, default: false }
   });
   var UPGRADE_RE = /^(upgrade|upgrade plan|upgrade to (pro|max)|get (pro|max)|try (pro|max)|升级|升级套餐)$/i;
+  function findUpgradeNags(root = document) {
+    return [...root.querySelectorAll("a, button")].filter((el) => !el.closest(`[data-ccpp], ${SEL.userContent}`) && UPGRADE_RE.test(el.textContent?.trim() ?? ""));
+  }
   function cleanerCss(options) {
     return [
       `[data-ccpp-cleaned] { display: none !important; }`,
@@ -7398,12 +7403,9 @@ Write it down while the idea is fresh` })
       addStyle(scope, cleanerCss(settings15.store), "cleaner");
       if (settings15.store.upgrade) {
         onDomChange(scope, () => {
-          for (const el of document.querySelectorAll("a, button")) {
-            if (el.dataset.ccppCleaned !== undefined || el.closest("[data-ccpp]"))
-              continue;
-            if (UPGRADE_RE.test(el.textContent?.trim() ?? ""))
+          for (const el of findUpgradeNags())
+            if (el.dataset.ccppCleaned === undefined)
               el.dataset.ccppCleaned = "";
-          }
         });
         scope.defer(() => document.querySelectorAll("[data-ccpp-cleaned]").forEach((el) => el.removeAttribute("data-ccpp-cleaned")));
       }
@@ -7987,6 +7989,9 @@ ${m.text.trim()}`).join(`
     bugReport: { type: "boolean", label: { zh: "隐藏 Claude Code 侧栏右下角的 Bug 反馈按钮", en: "Hide the bug report button at the bottom right of the Claude Code sidebar" }, default: true }
   });
   var APP_PROMO_RE = /^(get the (desktop |mobile )?app|download (the )?(desktop |mobile )?app|download claude( for (mac|windows|desktop))?|get claude for (mac|windows|desktop)|下载(桌面|客户端|应用|App)|获取(桌面版|应用|App))/i;
+  function findAppPromos(root = document) {
+    return [...root.querySelectorAll('a, button, [role="link"]')].filter((el) => !el.closest(`[data-ccpp], [role="menu"], nav, ${SEL.userContent}`) && APP_PROMO_RE.test(el.textContent?.trim() ?? ""));
+  }
   function chatNoticeCss(options) {
     return [
       options.disclaimer ? `[data-disclaimer="true"] { display: none !important; }` : "",
@@ -8013,12 +8018,9 @@ ${m.text.trim()}`).join(`
       if (!settings24.store.appPromo)
         return;
       onDomChange(scope, () => {
-        for (const el of document.querySelectorAll('a, button, [role="link"]')) {
-          if (el.dataset.ccppAppPromo !== undefined || el.closest('[data-ccpp], [role="menu"], nav'))
-            continue;
-          if (APP_PROMO_RE.test(el.textContent?.trim() ?? ""))
+        for (const el of findAppPromos())
+          if (el.dataset.ccppAppPromo === undefined)
             el.dataset.ccppAppPromo = "";
-        }
       });
       scope.defer(() => document.querySelectorAll("[data-ccpp-app-promo]").forEach((el) => el.removeAttribute("data-ccpp-app-promo")));
     }
@@ -8032,12 +8034,12 @@ ${m.text.trim()}`).join(`
   var LIMIT_RE = /\b(usage|session|weekly|daily|message|5-hour) limits?\b|\bout of (free |extra )?(messages|usage)\b|用量(上限|限制|已用完|已耗尽)|使用(上限|限制)/i;
   var APPROACHING_RE = /\bapproaching\b|接近|即将/i;
   var MAX_TEXT = 240;
-  var SKIP2 = `${SEL.transcriptRow}, ${SEL.transcript}, ${SEL.editor}, ${SEL.sidebar}, nav, [role="menu"], [role="dialog"], [contenteditable="true"], textarea, [data-ccpp], [data-home-section], [data-home-group], [data-home-heading], ul, ol, a[href], button, [role="button"], [role="list"], [role="listitem"], [role="option"]`;
+  var SKIP2 = `${SEL.userContent}, ${SEL.sidebar}, nav, [role="menu"], [role="dialog"], [data-ccpp], ul, ol, a[href], button, [role="button"], [role="list"], [role="listitem"], [role="option"]`;
   var MARK = "data-ccpp-usage-banner";
   function barOf2(text) {
     let bar = null;
     for (let node = text;node && node !== document.body; node = node.parentElement) {
-      if ((node.textContent?.trim().length ?? 0) > MAX_TEXT || node.querySelector(`${SEL.editor}, textarea, [contenteditable="true"]`))
+      if ((node.textContent?.trim().length ?? 0) > MAX_TEXT || node.querySelector(SEL.userContent))
         break;
       if (node.querySelector('button, a[href], [role="button"]'))
         bar = node;
@@ -8540,7 +8542,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.116",
+      version: "0.3.117",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -8557,7 +8559,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.116";
+    win[FLAG] = "0.3.117";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -8574,7 +8576,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.116"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.117"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();

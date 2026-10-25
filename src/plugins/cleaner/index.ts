@@ -6,7 +6,7 @@
 
 import { definePlugin } from "@kernel/plugins";
 import { definePluginSettings } from "@kernel/settings";
-import { onDomChange } from "@api/dom";
+import { onDomChange, SEL } from "@api/dom";
 import { addStyle } from "@api/styles";
 
 const settings = definePluginSettings({
@@ -17,6 +17,11 @@ const settings = definePluginSettings({
 });
 
 const UPGRADE_RE = /^(upgrade|upgrade plan|upgrade to (pro|max)|get (pro|max)|try (pro|max)|升级|升级套餐)$/i;
+
+/** Upgrade buttons and links, by their wording; a chat or thread titled "Upgrade" is left alone. */
+export function findUpgradeNags(root: ParentNode = document): HTMLElement[] {
+    return [...root.querySelectorAll<HTMLElement>("a, button")].filter(el => !el.closest(`[data-ccpp], ${SEL.userContent}`) && UPGRADE_RE.test(el.textContent?.trim() ?? ""));
+}
 
 export function cleanerCss(options: { plan: boolean; codeNudge: boolean; templates: boolean }) {
     return [
@@ -41,10 +46,7 @@ export default definePlugin({
         addStyle(scope, cleanerCss(settings.store), "cleaner");
         if (settings.store.upgrade) {
             onDomChange(scope, () => {
-                for (const el of document.querySelectorAll<HTMLElement>("a, button")) {
-                    if (el.dataset.ccppCleaned !== undefined || el.closest("[data-ccpp]")) continue;
-                    if (UPGRADE_RE.test(el.textContent?.trim() ?? "")) el.dataset.ccppCleaned = "";
-                }
+                for (const el of findUpgradeNags()) if (el.dataset.ccppCleaned === undefined) el.dataset.ccppCleaned = "";
             });
             scope.defer(() => document.querySelectorAll("[data-ccpp-cleaned]").forEach(el => el.removeAttribute("data-ccpp-cleaned")));
         }
