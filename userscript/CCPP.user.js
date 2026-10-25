@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.107
+// @version      20261013.0.3.108
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -2829,7 +2829,7 @@ ${IMAGE_FIELD_CSS}`;
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.107";
+  var version = "0.3.108";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -7959,6 +7959,71 @@ ${m.text.trim()}`).join(`
     }
   });
 
+  // src/plugins/usageBannerHider/index.ts
+  var settings25 = definePluginSettings({
+    approaching: { type: "boolean", label: { zh: "隐藏「接近用量上限」提示（Approaching session usage limit）", en: "Hide “Approaching usage limit” banners" }, default: true },
+    exhausted: { type: "boolean", label: { zh: "隐藏「用量已耗尽」提示（You've hit your limit 等）", en: "Hide “Usage limit reached” banners" }, default: true }
+  });
+  var LIMIT_RE = /\b(usage|session|weekly|daily|message|5-hour) limits?\b|\bout of (free |extra )?(messages|usage)\b|用量(上限|限制|已用完|已耗尽)|使用(上限|限制)/i;
+  var APPROACHING_RE = /\bapproaching\b|接近|即将/i;
+  var MAX_TEXT = 240;
+  var SKIP2 = `${SEL.transcriptRow}, ${SEL.transcript}, ${SEL.editor}, ${SEL.sidebar}, nav, [role="menu"], [role="dialog"], [contenteditable="true"], textarea, [data-ccpp]`;
+  var MARK = "data-ccpp-usage-banner";
+  function barOf2(text) {
+    let bar = null;
+    for (let node = text;node && node !== document.body; node = node.parentElement) {
+      if ((node.textContent?.trim().length ?? 0) > MAX_TEXT || node.querySelector(`${SEL.editor}, textarea, [contenteditable="true"]`))
+        break;
+      if (node.querySelector('button, a[href], [role="button"]'))
+        bar = node;
+    }
+    return bar;
+  }
+  function findUsageBanners(root = document) {
+    const found = new Map;
+    for (const el of root.querySelectorAll("p, span, div, h2, h3, strong")) {
+      if (el.childElementCount > 2 || el.closest(SKIP2))
+        continue;
+      const text = el.textContent?.trim() ?? "";
+      if (!text || text.length > MAX_TEXT || !LIMIT_RE.test(text))
+        continue;
+      const bar = barOf2(el);
+      if (bar && !found.has(bar))
+        found.set(bar, APPROACHING_RE.test(bar.textContent ?? "") ? "approaching" : "exhausted");
+    }
+    return [...found].map(([el, kind]) => ({ el, kind }));
+  }
+  var usageBannerHider_default = definePlugin({
+    name: "UsageBannerHider",
+    title: { zh: "隐藏用量限制提示条", en: "Hide usage limit banner" },
+    description: {
+      zh: "隐藏输入框上方的用量提示条：「接近用量上限」（Approaching session usage limit · Resets at … · Get more usage）和「用量已耗尽」两种可分别开关。设置页里的用量信息不受影响。",
+      en: "Hides the usage bar above the input: “Approaching session usage limit · Resets at … · Get more usage” and the limit-reached one, each switchable. Usage on the settings pages is left alone."
+    },
+    category: "declutter",
+    icon: "gauge",
+    enabledByDefault: true,
+    updatedAt: "2026-10-25",
+    dependencies: ["StylesApi", "DomApi"],
+    settings: settings25,
+    start(scope) {
+      const { approaching, exhausted } = settings25.store;
+      if (!approaching && !exhausted)
+        return;
+      addStyle(scope, `[${MARK}] { display: none !important; }`, "usage-banner");
+      onDomChange(scope, () => {
+        if (location.pathname.startsWith("/settings"))
+          return;
+        for (const { el, kind } of findUsageBanners()) {
+          if (el.hasAttribute(MARK) || !(kind === "approaching" ? approaching : exhausted))
+            continue;
+          el.setAttribute(MARK, kind);
+        }
+      });
+      scope.defer(() => document.querySelectorAll(`[${MARK}]`).forEach((el) => el.removeAttribute(MARK)));
+    }
+  });
+
   // src/plugins/runningPill/index.ts
   var RUNNING_PILL = '[aria-busy="true"].rounded-full:has(> [data-cds="Spinner"])';
   var BRAND = "var(--cds-fill-brand, #c6613f)";
@@ -7988,7 +8053,7 @@ ${RUNNING_PILL} {
   });
 
   // src/plugins/customIdentity/index.ts
-  var settings25 = definePluginSettings({
+  var settings26 = definePluginSettings({
     displayName: {
       type: "string",
       label: { zh: "显示名", en: "Display name" },
@@ -8068,14 +8133,14 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
     enabledByDefault: false,
     updatedAt: "2026-10-22",
     dependencies: ["StylesApi", "DomApi"],
-    settings: settings25,
+    settings: settings26,
     start(scope) {
       const swaps = new TextSwaps;
       const setCss = addStyle(scope, "", "custom-identity");
       let lastUrl = null;
-      const setSizeCss = addStyle(scope, sizeCss(settings25.store.avatarSize), "custom-identity-size");
+      const setSizeCss = addStyle(scope, sizeCss(settings26.store.avatarSize), "custom-identity-size");
       const paint = () => {
-        const { displayName, avatar, applyToMenu, greeting } = settings25.store;
+        const { displayName, avatar, applyToMenu, greeting } = settings26.store;
         const name = displayName.trim();
         const url = avatar.trim();
         if (url !== lastUrl) {
@@ -8137,7 +8202,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
       repaintOnChange(scope, paint);
       this.onSettingsChange = () => {
         lastUrl = null;
-        setSizeCss(sizeCss(settings25.store.avatarSize));
+        setSizeCss(sizeCss(settings26.store.avatarSize));
         swaps.restore();
         for (const el of document.querySelectorAll(`[${ME}]`))
           el.removeAttribute(ME);
@@ -8158,7 +8223,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
   });
 
   // src/plugins/hideIdentity/index.ts
-  var settings26 = definePluginSettings({
+  var settings27 = definePluginSettings({
     hideEmail: {
       type: "boolean",
       label: { zh: "隐藏邮箱", en: "Hide email" },
@@ -8195,9 +8260,9 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
     enabledByDefault: true,
     updatedAt: "2026-10-22",
     dependencies: ["StylesApi", "DomApi"],
-    settings: settings26,
+    settings: settings27,
     start(scope) {
-      const { hideEmail, hideName } = settings26.store;
+      const { hideEmail, hideName } = settings27.store;
       addStyle(scope, `[${HIDE}] { display: none !important; }`, "hide-identity");
       const swaps = new TextSwaps;
       const hidden = new Set;
@@ -8250,7 +8315,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
   });
 
   // src/plugins/autoRetry/index.ts
-  var settings27 = definePluginSettings({
+  var settings28 = definePluginSettings({
     maxRetries: { type: "number", label: { zh: "最多连续重试几次", en: "Maximum retries in a row" }, default: 3, min: 1, max: 10 },
     delay: { type: "number", label: { zh: "重试前等待", en: "Wait before retrying" }, default: 2, min: 0, max: 60, unit: "s" }
   });
@@ -8286,7 +8351,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
     enabledByDefault: true,
     updatedAt: "2026-10-24",
     dependencies: ["ChatStateApi", "ComposerApi", "NoticesApi"],
-    settings: settings27,
+    settings: settings28,
     start(scope) {
       let last = null;
       const counts = new Map;
@@ -8302,7 +8367,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
         const sent = last;
         if (!sent?.editor)
           return;
-        const max = settings27.store.maxRetries;
+        const max = settings28.store.maxRetries;
         const count = (counts.get(channelId) ?? 0) + 1;
         if (count > max) {
           counts.delete(channelId);
@@ -8320,14 +8385,14 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
             return;
           }
           resend(editor);
-        }, settings27.store.delay * 1000);
+        }, settings28.store.delay * 1000);
       });
     }
   });
 
   // src/plugins/codeBrandColor/index.ts
   var CLAUDE_ORANGE = "#c6613f";
-  var settings28 = definePluginSettings({
+  var settings29 = definePluginSettings({
     color: { type: "color", label: { zh: "颜色", en: "Color" }, description: { zh: "默认是 Claude 的橙色。", en: "Defaults to Claude's orange." }, default: CLAUDE_ORANGE }
   });
   var codeBrandCss = (color) => `
@@ -8345,9 +8410,9 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
     enabledByDefault: true,
     updatedAt: "2026-10-24",
     dependencies: ["StylesApi"],
-    settings: settings28,
+    settings: settings29,
     start(scope) {
-      const color = () => /^#[0-9a-f]{6}$/i.test(settings28.store.color) ? settings28.store.color : CLAUDE_ORANGE;
+      const color = () => /^#[0-9a-f]{6}$/i.test(settings29.store.color) ? settings29.store.color : CLAUDE_ORANGE;
       const css = () => codeBrandCss(color());
       const set = addStyle(scope, css(), "code-brand-color");
       this.onSettingsChange = () => set(css());
@@ -8396,6 +8461,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
     consoleJanitor_default,
     sidebarDefaultCode_default,
     chatNoticeHider_default,
+    usageBannerHider_default,
     runningPill_default,
     customIdentity_default,
     hideIdentity_default,
@@ -8409,7 +8475,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.107",
+      version: "0.3.108",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -8426,7 +8492,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.107";
+    win[FLAG] = "0.3.108";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -8443,7 +8509,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.107"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.108"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();

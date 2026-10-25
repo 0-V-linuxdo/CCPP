@@ -46,6 +46,7 @@ import noTelemetry from "@plugins/noTelemetry";
 import consoleJanitor from "@plugins/consoleJanitor";
 import sidebarDefaultCode from "@plugins/sidebarDefaultCode";
 import chatNoticeHider from "@plugins/chatNoticeHider";
+import usageBannerHider from "@plugins/usageBannerHider";
 import runningPill from "@plugins/runningPill";
 import customIdentity from "@plugins/customIdentity";
 import hideIdentity from "@plugins/hideIdentity";
@@ -56,5 +57,5 @@ import codeBrandColor from "@plugins/codeBrandColor";
 export const PLUGINS: Plugin[] = [
     domApi, stylesApi, routerApi, networkApi, claudeApi, chatStateApi, noticesApi, slotsApi, composerApi, transcriptApi, hotkeysApi, menuApi,
     settings, themes, quickCss, backup,
-    usageDisplay, chatNavigator, messageStars, projectStatus, inputHistory, promptPresets, replyNotification, chatFavicon, widerChat, composerLook, customGreeting, cleaner, noShareLink, noDictation, streamerMode, recentChats, exportChat, messageTimestamps, collapseCode, betterLinks, noTelemetry, consoleJanitor, sidebarDefaultCode, chatNoticeHider, runningPill, customIdentity, hideIdentity, autoRetry, codeBrandColor,
+    usageDisplay, chatNavigator, messageStars, projectStatus, inputHistory, promptPresets, replyNotification, chatFavicon, widerChat, composerLook, customGreeting, cleaner, noShareLink, noDictation, streamerMode, recentChats, exportChat, messageTimestamps, collapseCode, betterLinks, noTelemetry, consoleJanitor, sidebarDefaultCode, chatNoticeHider, usageBannerHider, runningPill, customIdentity, hideIdentity, autoRetry, codeBrandColor,
 ];

@@ -481,3 +481,24 @@ test("the tab icon and the sidebar dot share one read of a project", async () =>
         window.fetch = original;
     }
 });
+
+import { findUsageBanners } from "../src/plugins/usageBannerHider";
+
+describe("usage limit banner", () => {
+    const composer = `<div data-cds="ChatComposer"><div data-testid="chat-input" contenteditable="true"><p>hi</p></div></div>`;
+    test("finds the approaching bar above the input, buttons included", () => {
+        document.body.innerHTML = `<main><div id="holder"><div id="bar"><svg></svg><span>Approaching session usage limit</span><span>Resets at 11:20 AM</span><a href="/upgrade">Get more usage</a><button aria-label="Dismiss">×</button></div>${composer}</div></main>`;
+        const found = findUsageBanners();
+        expect(found.map(b => [b.el.id, b.kind])).toEqual([["bar", "approaching"]]);
+    });
+    test("tells the limit-reached bar apart", () => {
+        document.body.innerHTML = `<div id="bar"><p>You've hit your weekly limit</p><p>Resets Mon 9:00 AM</p><button>Get more usage</button></div>${composer}`;
+        expect(findUsageBanners().map(b => [b.el.id, b.kind])).toEqual([["bar", "exhausted"]]);
+    });
+    test("leaves messages, the input and button-less text alone", () => {
+        document.body.innerHTML = `<div data-testid="transcript-row"><p>What is the session usage limit?</p><button>Copy</button></div>
+            <div><p>Your usage limit resets daily</p></div>
+            <div data-cds="ChatComposer"><div data-testid="chat-input" contenteditable="true"><p>approaching usage limit</p></div><button>Send</button></div>`;
+        expect(findUsageBanners()).toEqual([]);
+    });
+});
