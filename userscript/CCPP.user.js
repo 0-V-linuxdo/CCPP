@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261013.0.3.119
+// @version      20261013.0.3.120
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -2647,6 +2647,26 @@ select.input { padding-right: 6px; }
 .img-note:empty { display: none; }
 `;
 
+  // src/lib/themeColor.ts
+  var STAR_COLOR = "#ff7a17";
+  var resolved = new Map;
+  function resolveColor(css, fallback, now = Date.now()) {
+    const cached = resolved.get(css);
+    if (cached && now - cached.at < 2000)
+      return cached.color;
+    let color = fallback;
+    try {
+      const probe = document.createElement("span");
+      probe.style.cssText = "position:absolute;visibility:hidden";
+      probe.style.color = css;
+      (document.body ?? document.documentElement).appendChild(probe);
+      color = getComputedStyle(probe).color || fallback;
+      probe.remove();
+    } catch {}
+    resolved.set(css, { at: now, color });
+    return color;
+  }
+
   // src/plugins/_core/settings/styles.ts
   var PANEL_CSS = `
 /* A page's toolbar (tabs, search, filters) stays at the top while its list scrolls under it. */
@@ -2690,7 +2710,7 @@ select.input { padding-right: 6px; }
 .card-title:hover { text-decoration: underline; text-underline-offset: 2px; }
 .card-actions { display: flex; align-items: center; gap: 0; flex: none; }
 .card-actions .icon-btn { width: 26px; height: 26px; }
-.icon-btn.star.on { color: #e3a008; } .icon-btn.star.on svg { fill: currentColor; }
+.icon-btn.star.on { color: ${STAR_COLOR}; } .icon-btn.star.on svg { fill: currentColor; }
 .icon-btn.pin.on { color: var(--fg); } .icon-btn.pin.on svg { fill: currentColor; }
 .card-actions .switch { margin-left: 6px; }
 .card-desc { margin-top: 8px; font-size: .8125rem; line-height: 1.45; color: var(--fg2); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
@@ -2860,7 +2880,7 @@ ${IMAGE_FIELD_CSS}`;
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.119";
+  var version = "0.3.120";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -4962,12 +4982,12 @@ ${x.css}`)].join(`
 .tick::after { content: ""; display: block; height: 1px; width: 6px; border-radius: 999px; background: color-mix(in srgb, var(--fg3) 60%, transparent); transition: width .15s ease, background-color .15s ease; }
 .tick.assistant::after { width: 12px; }
 .tick.current::after { width: 16px; background: var(--fg); }
-.tick.marked::after { background: #ff7a17; }
+.tick.marked::after { background: ${STAR_COLOR}; }
 .tick.live::after { height: 0; background: none; border-top: 1px dashed color-mix(in srgb, var(--fg3) 70%, transparent); }
 .tick.live.current::after { border-top-color: var(--fg); }
 .rail:hover .tick::after { background: color-mix(in srgb, var(--fg3) 85%, transparent); }
 .rail:hover .tick.current::after { background: var(--fg); }
-.rail:hover .tick.marked::after { background: #ff7a17; }
+.rail:hover .tick.marked::after { background: ${STAR_COLOR}; }
 .menu { position: absolute; top: 50%; right: calc(100% + 4px); width: min(288px, 70vw); max-height: var(--menu-h, 70vh); overflow: auto; padding: 6px; border-radius: 20px; background: var(--bg); box-shadow: var(--shadow); color: var(--fg); pointer-events: auto;
   opacity: 0; visibility: hidden; transform: translate(8px, -50%); transition: opacity .2s ease, visibility .2s ease, transform .2s ease; overscroll-behavior: contain; }
 .rail.open .menu { opacity: 1; visibility: visible; transform: translate(0, -50%); }
@@ -4979,7 +4999,7 @@ ${x.css}`)].join(`
 .emoji { flex: none; font-size: 15px; line-height: 1; }
 .label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .label.dim { color: var(--fg3); font-style: italic; }
-.star { flex: none; color: #ff7a17; font-size: 12px; }
+.star { flex: none; color: ${STAR_COLOR}; font-size: 12px; }
 @media (prefers-reduced-motion: reduce) { .menu, .tick::after { transition: none; } }
 `;
   var seen2 = new Map;
@@ -5523,10 +5543,10 @@ ${x.css}`)].join(`
 .ccpp-star-btn:not(.ccpp-native) { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 8px; border: 0; background: transparent; color: var(--cds-text-secondary, inherit); cursor: pointer; }
 .ccpp-star-btn:not(.ccpp-native):hover { color: var(--cds-text-primary, inherit); background: var(--cds-fill-ghost-hover, rgba(127,127,127,.14)); }
 /* Like void++: a starred message is marked only by its star, orange on a faint orange tint; the message itself is left alone. */
-.ccpp-star-btn.on { color: #ff7a17; background: rgb(255 122 23 / 14%); opacity: 1; }
-.ccpp-star-btn.on:hover, .ccpp-star-btn.on:focus-visible { color: #ff7a17; background: rgb(255 122 23 / 22%); }
+.ccpp-star-btn.on { color: ${STAR_COLOR}; background: color-mix(in srgb, ${STAR_COLOR} 14%, transparent); opacity: 1; }
+.ccpp-star-btn.on:hover, .ccpp-star-btn.on:focus-visible { color: ${STAR_COLOR}; background: color-mix(in srgb, ${STAR_COLOR} 22%, transparent); }
 `;
-  var LIST_CSS = `.sec { font-size: 12px; color: var(--fg3); padding: 2px 8px; } .star { color: #ff7a17; flex: none; }`;
+  var LIST_CSS = `.sec { font-size: 12px; color: var(--fg3); padding: 2px 8px; } .star { color: ${STAR_COLOR}; flex: none; }`;
   function rowInfo(row) {
     const index = Number(row.dataset.index);
     const message = row.querySelector(`${SEL.userMessage}, ${SEL.assistantMessage}`);
@@ -6666,25 +6686,6 @@ ${t(L16.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
       }
     }
   });
-
-  // src/lib/themeColor.ts
-  var resolved = new Map;
-  function resolveColor(css, fallback, now = Date.now()) {
-    const cached = resolved.get(css);
-    if (cached && now - cached.at < 2000)
-      return cached.color;
-    let color = fallback;
-    try {
-      const probe = document.createElement("span");
-      probe.style.cssText = "position:absolute;visibility:hidden";
-      probe.style.color = css;
-      (document.body ?? document.documentElement).appendChild(probe);
-      color = getComputedStyle(probe).color || fallback;
-      probe.remove();
-    } catch {}
-    resolved.set(css, { at: now, color });
-    return color;
-  }
 
   // src/plugins/chatFavicon/index.ts
   var settings11 = definePluginSettings({
@@ -8569,7 +8570,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.119",
+      version: "0.3.120",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -8586,7 +8587,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.119";
+    win[FLAG] = "0.3.120";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -8603,7 +8604,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.119"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.120"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();

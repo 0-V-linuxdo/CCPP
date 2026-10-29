@@ -4,6 +4,9 @@
  * SPDX-License-Identifier: MIT
  */
 
+/** CC++'s one star colour (void++'s orange): starred messages, their marks in the navigator, starred plugins. */
+export const STAR_COLOR = "#ff7a17";
+
 const resolved = new Map<string, { at: number; color: string }>();
 
 /**

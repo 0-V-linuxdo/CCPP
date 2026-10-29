@@ -5,6 +5,7 @@
  */
 
 import { IMAGE_FIELD_CSS } from "./imageField";
+import { STAR_COLOR } from "@lib/themeColor";
 
 /** The CC++ pages (plugins, themes, Quick CSS). Mirrors claude.ai's settings panel and void++'s cards. */
 export const PANEL_CSS = `
@@ -49,7 +50,7 @@ export const PANEL_CSS = `
 .card-title:hover { text-decoration: underline; text-underline-offset: 2px; }
 .card-actions { display: flex; align-items: center; gap: 0; flex: none; }
 .card-actions .icon-btn { width: 26px; height: 26px; }
-.icon-btn.star.on { color: #e3a008; } .icon-btn.star.on svg { fill: currentColor; }
+.icon-btn.star.on { color: ${STAR_COLOR}; } .icon-btn.star.on svg { fill: currentColor; }
 .icon-btn.pin.on { color: var(--fg); } .icon-btn.pin.on svg { fill: currentColor; }
 .card-actions .switch { margin-left: 6px; }
 .card-desc { margin-top: 8px; font-size: .8125rem; line-height: 1.45; color: var(--fg2); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }

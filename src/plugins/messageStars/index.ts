@@ -12,6 +12,7 @@ import { h } from "@lib/dom";
 import { agoText, snippet } from "@lib/format";
 import { icon } from "@lib/icons";
 import { createPopover } from "@lib/popover";
+import { STAR_COLOR } from "@lib/themeColor";
 import { tipAttrs } from "@lib/tooltip";
 import { chatTitle } from "@api/chatState";
 import { SEL, watch } from "@api/dom";
@@ -38,11 +39,11 @@ const CSS = `
 .ccpp-star-btn:not(.ccpp-native) { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 8px; border: 0; background: transparent; color: var(--cds-text-secondary, inherit); cursor: pointer; }
 .ccpp-star-btn:not(.ccpp-native):hover { color: var(--cds-text-primary, inherit); background: var(--cds-fill-ghost-hover, rgba(127,127,127,.14)); }
 /* Like void++: a starred message is marked only by its star, orange on a faint orange tint; the message itself is left alone. */
-.ccpp-star-btn.on { color: #ff7a17; background: rgb(255 122 23 / 14%); opacity: 1; }
-.ccpp-star-btn.on:hover, .ccpp-star-btn.on:focus-visible { color: #ff7a17; background: rgb(255 122 23 / 22%); }
+.ccpp-star-btn.on { color: ${STAR_COLOR}; background: color-mix(in srgb, ${STAR_COLOR} 14%, transparent); opacity: 1; }
+.ccpp-star-btn.on:hover, .ccpp-star-btn.on:focus-visible { color: ${STAR_COLOR}; background: color-mix(in srgb, ${STAR_COLOR} 22%, transparent); }
 `;
 
-const LIST_CSS = `.sec { font-size: 12px; color: var(--fg3); padding: 2px 8px; } .star { color: #ff7a17; flex: none; }`;
+const LIST_CSS = `.sec { font-size: 12px; color: var(--fg3); padding: 2px 8px; } .star { color: ${STAR_COLOR}; flex: none; }`;
 
 function rowInfo(row: HTMLElement) {
     const index = Number(row.dataset.index);
