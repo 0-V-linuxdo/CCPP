@@ -7,7 +7,11 @@
 import { readFileSync, writeFileSync } from "fs";
 
 const pkg = JSON.parse(readFileSync("package.json", "utf-8"));
-const VERSION_DATE = "20261013";
+// Build date (Beijing time), so the date part moves with every release.
+// Violentmonkey compares @version numerically part by part, so a later date always wins.
+const VERSION_DATE = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit" })
+    .format(new Date())
+    .replaceAll("-", "");
 const displayVersion = `[${VERSION_DATE}] v${pkg.version}`;
 const REPO = "https://github.com/0-V-linuxdo/CCPP";
 const RAW = "https://raw.githubusercontent.com/0-V-linuxdo/CCPP/main/userscript/CCPP.user.js";
