@@ -2,11 +2,25 @@
 
 claude.ai 的插件化用户脚本：**一切皆插件**。内核只负责插件注册、依赖解析、生命周期与设置存储；网络钩子、路由、DOM 观察、样式注入、设置面板本身也都是插件。
 
-[安装 / 更新](https://raw.githubusercontent.com/0-V-linuxdo/CCPP/main/userscript/CCPP.user.js)（Tampermonkey / Violentmonkey / ScriptCat 等）
+[安装 / 更新](https://raw.githubusercontent.com/0-V-linuxdo/CCPP/main/userscript/CCPP.user.js)（Tampermonkey / Violentmonkey / ScriptCat 等；桌面版见下文 AdGuard 用法）
 
 打开设置：头像菜单里的「CC++ 设置」、脚本管理器菜单，或快捷键 `⌘/Ctrl + Shift + .`。
 
 界面语言跟随 claude.ai 自身的语言设置（不是浏览器语言）：claude.ai 为中文时显示中文，其余一律英文；也可在 CC++ 设置里手动指定。
+
+## 桌面版（配合 AdGuard）
+
+Claude 桌面版（macOS / Windows）装不了浏览器扩展，可以借 AdGuard 桌面版的「用户脚本」功能注入 CC++：
+
+1. AdGuard →「扩展」（用户脚本）→ 添加，填入上面的安装链接。
+2. AdGuard →「过滤的应用」里加入 Claude 桌面版并开启过滤；「HTTPS 过滤」要打开，否则脚本注入不进 claude.ai。
+   想在 Helium 等 Chromium 系浏览器里也走 AdGuard 注入，同样把浏览器加进去（Helium 还要连同 Helium Helper 一起加）。
+3. **完全退出**后重新打开 Claude（关窗口不够，要从菜单栏 / 托盘退出），头像菜单里出现「CC++ 设置」即生效。
+
+> [!IMPORTANT]
+> **必须保留原始 User-Agent。** AdGuard「隐身模式」里的「隐藏 User-Agent」会把 UA 里的 `Claude/x.y` 去掉，claude.ai 于是把桌面版当成网页版渲染，左上角红绿灯按钮会压住标题栏、布局错乱。请关闭这一项，或在隐身模式里把 claude.ai / Claude 桌面版设为例外。
+
+AdGuard 不支持 `GM_registerMenuCommand`，所以没有脚本管理器菜单；设置入口仍在头像菜单的「CC++ 设置」，快捷键照常可用。脚本更新后同样要完全重启 Claude 才会生效。
 
 ## 功能插件
 
