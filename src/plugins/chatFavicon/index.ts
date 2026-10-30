@@ -315,7 +315,8 @@ export default definePlugin({
                 finished = false;
             } else if (!now && streaming) finished = true;
             streaming = now;
-            const facts = { streaming, errored, finished, draft: draft() };
+            // In chats a send claude.ai gave up on stays marked on the message ("Failed to send") until it goes out.
+            const facts = { streaming, errored: errored || !!document.querySelector(SEL.failedSend), finished, draft: draft() };
             const onProject = !!codeChannel && codeProjectOf(location.pathname, location.search)?.channel === codeChannel;
             const { showWaiting, withOwn } = projectDotOptions();
             const next = !onProject

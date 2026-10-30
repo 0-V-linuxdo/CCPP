@@ -32,6 +32,12 @@ export const SEL = {
     assistantMessage: '[data-testid="assistant-message"]',
     streaming: '[data-testid="assistant-message"][data-is-streaming="true"]',
     messageActions: '[data-testid="message-actions"]',
+    /** The action bar under your own message (it fades in on hover; the time is its first child). */
+    userMessageActions: '[data-testid="user-message-actions"]',
+    /** Your message after claude.ai gave up sending it ("Failed to send · Retry · Discard"). */
+    failedSend: '[data-cds="UserMessage"][data-state="failed"]',
+    /** The Retry link on a failed message: the text link that isn't Discard (it has no test id of its own). */
+    failedSendRetry: '[data-cds="TextLink"][role="button"]:not([data-testid="failed-send-discard"])',
     messageTime: 'time[data-cds="RelativeTime"]',
     prose: '[data-cds="Prose"]',
     composer: '[data-cds="ChatComposer"]',

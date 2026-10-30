@@ -687,3 +687,39 @@ describe("BetterLinks colors", () => {
         expect(linkCss({ colors: true, linkColor: "#111111", visited: false, visitedColor: "#222222" })).not.toContain(":visited");
     });
 });
+
+import { hideOnLoad, isBlankClick } from "../src/plugins/betterSidebar";
+import { PRIVATE_ROW } from "../src/plugins/streamerMode";
+
+describe("BetterSidebar", () => {
+    test("marks the stored sidebar hidden and keeps the rest of the store", () => {
+        localStorage.setItem("dframe-store", JSON.stringify({ state: { collapsed: false, sidebarWidth: 276 }, version: 3 }));
+        expect(hideOnLoad(localStorage)).toBe(true);
+        expect(JSON.parse(localStorage.getItem("dframe-store")!)).toEqual({ state: { collapsed: true, sidebarWidth: 276 }, version: 3 });
+        expect(hideOnLoad(localStorage)).toBe(false);
+        localStorage.removeItem("dframe-store");
+        expect(hideOnLoad(localStorage)).toBe(false);
+    });
+    test("only empty space counts as a blank click", () => {
+        document.body.innerHTML = `<nav aria-label="Sidebar"><div data-testid="sidebar"><div data-testid="sidebar-pinned" data-tab-section><a id="row" href="/chat/1" data-row><span id="label">Chat</span></a></div>
+            <div id="recents" data-testid="sidebar-recents"><div data-row-key="label:x"><button id="toggle" data-group-toggle>Idle</button></div></div></div></nav><main id="main"></main>`;
+        const el = (id: string) => document.getElementById(id);
+        expect(isBlankClick(el("recents"))).toBe(true);
+        expect(isBlankClick(el("label"))).toBe(false);
+        expect(isBlankClick(el("toggle"))).toBe(false);
+        expect(isBlankClick(el("main"))).toBe(false);
+    });
+});
+
+describe("StreamerMode settings rows and failed sends", () => {
+    test("knows which Account rows show who you are", () => {
+        for (const label of ["Full name", "What should Claude call you?", "Organization ID"]) expect(PRIVATE_ROW.test(label)).toBe(true);
+        for (const label of ["What best describes your work?", "Passkey", "Log out of all devices"]) expect(PRIVATE_ROW.test(label)).toBe(false);
+    });
+    test("finds a failed send's Retry link, not Discard", () => {
+        document.body.innerHTML = `<div data-cds="UserMessage" data-turn-key="t" data-state="failed"><span>Failed to send</span>
+            <span><span data-cds="TextLink" role="button" id="retry">Retry</span></span><span><span data-cds="TextLink" role="button" data-testid="failed-send-discard">Discard</span></span></div>`;
+        const failed = document.querySelector(SEL.failedSend)!;
+        expect(failed.querySelector(SEL.failedSendRetry)?.id).toBe("retry");
+    });
+});

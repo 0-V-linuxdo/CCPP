@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261030.0.3.124
+// @version      20261030.0.3.125
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -1228,6 +1228,9 @@
     assistantMessage: '[data-testid="assistant-message"]',
     streaming: '[data-testid="assistant-message"][data-is-streaming="true"]',
     messageActions: '[data-testid="message-actions"]',
+    userMessageActions: '[data-testid="user-message-actions"]',
+    failedSend: '[data-cds="UserMessage"][data-state="failed"]',
+    failedSendRetry: '[data-cds="TextLink"][role="button"]:not([data-testid="failed-send-discard"])',
     messageTime: 'time[data-cds="RelativeTime"]',
     prose: '[data-cds="Prose"]',
     composer: '[data-cds="ChatComposer"]',
@@ -2880,7 +2883,7 @@ ${IMAGE_FIELD_CSS}`;
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.124";
+  var version = "0.3.125";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -7042,7 +7045,7 @@ ${t(L16.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
         } else if (!now && streaming)
           finished = true;
         streaming = now;
-        const facts = { streaming, errored, finished, draft: draft() };
+        const facts = { streaming, errored: errored || !!document.querySelector(SEL.failedSend), finished, draft: draft() };
         const onProject = !!codeChannel && codeProjectOf(location.pathname, location.search)?.channel === codeChannel;
         const { showWaiting, withOwn } = projectDotOptions();
         const next = !onProject ? computeState(facts) : settings11.store.style === "project" ? dotState(shownKind(codeActivity, showWaiting, withOwn, codeSent.channel === codeChannel ? codeSent.until : 0)) : computeProjectState(facts, { waiting: codeWaiting, failed: codeFailed, unread: codeUnread, working: codeWorking });
@@ -7620,15 +7623,27 @@ Write it down while the idea is fresh` })
 
   // src/plugins/streamerMode/index.ts
   var settings17 = definePluginSettings({
-    identity: { type: "boolean", label: { zh: "模糊你的名字、头像、套餐与设备名", en: "Blur your name, avatar, plan and device name" }, default: true },
+    identity: { type: "boolean", label: { zh: "模糊你的名字、邮箱、套餐与设备名", en: "Blur your name, email, plan and device name" }, default: true },
+    avatar: { type: "boolean", label: { zh: "模糊你的头像", en: "Blur your avatar" }, default: true },
+    settingsPage: {
+      type: "boolean",
+      label: { zh: "模糊设置页里的姓名和组织 ID", en: "Blur your name and organization ID in settings" },
+      description: { zh: "「账户」页的全名、Claude 怎么称呼你、组织 ID，以及那里的头像。", en: "Full name, what Claude calls you, organization ID and the avatar on the Account page." },
+      default: true
+    },
     sidebar: { type: "boolean", label: { zh: "模糊侧栏的对话 / 项目标题", en: "Blur chat and project titles in the sidebar" }, default: true },
     title: { type: "boolean", label: { zh: "模糊当前对话 / 项目标题", en: "Blur the current chat or project title" }, default: false },
     hover: { type: "boolean", label: { zh: "悬停时显示", en: "Reveal on hover" }, default: true },
     amount: { type: "number", label: { zh: "模糊程度", en: "Blur amount" }, default: 6, min: 2, max: 16, unit: "px" }
   });
+  var PRIVATE_ROW = /^(full name|what should claude call you\??|organization id|全名|姓名|组织\s*id|.*称呼你.*)$/i;
+  var PRIVATE = "data-ccpp-private";
   function streamerCss(o) {
+    const avatar = o.avatar ?? o.identity;
     const targets = [
-      ...o.identity ? ['[data-testid="user-menu-button"] .df-user-menu-trailing', '[data-testid="user-menu-button"] [data-cds="Avatar"]', "[data-new-page-greeting-text]", '[data-testid="cowork-computer-link-indicator"]'] : [],
+      ...o.identity ? ['[data-testid="user-menu-button"] .df-user-menu-trailing', '[data-testid="user-menu-header"]', "[data-new-page-greeting-text]", '[data-testid="cowork-computer-link-indicator"]'] : [],
+      ...avatar ? ['[data-testid="user-menu-button"] [data-cds="Avatar"]'] : [],
+      ...o.settingsPage ? [`[${PRIVATE}] [data-settings-control]`, ...avatar ? ['[data-settings-row] [data-cds="Avatar"][data-ccpp-me]'] : []] : [],
       ...o.sidebar ? ['[data-testid="sidebar"] [data-row-label]', '[data-testid="sidebar"] a[href^="/chat/"]'] : [],
       ...o.title ? ['[data-testid="session-title-split"]', "[data-pane-title]", '[data-perf-region="side_pane"] [data-top-right] [data-cds="OverflowTooltip"]'] : []
     ];
@@ -7644,15 +7659,24 @@ ${targets.map((t) => `${t}:hover`).join(`,
   var streamerMode_default = definePlugin({
     name: "StreamerMode",
     title: { zh: "直播 / 截图模式", en: "Streamer mode" },
-    description: { zh: "模糊你的名字、头像、套餐与侧栏标题，录屏或截图时不泄露隐私；悬停可临时查看。", en: "Blurs your name, avatar, plan and sidebar titles for screen sharing; hover to peek." },
+    description: { zh: "模糊你的名字、邮箱、头像、套餐、设置页里的个人信息与侧栏标题，录屏或截图时不泄露隐私；悬停可临时查看。", en: "Blurs your name, email, avatar, plan, personal details in settings and sidebar titles for screen sharing; hover to peek." },
     category: "privacy",
     icon: "eyeOff",
+    updatedAt: "2026-10-30",
     enabledByDefault: false,
-    dependencies: ["StylesApi"],
+    dependencies: ["DomApi", "StylesApi"],
     settings: settings17,
     start(scope) {
       const set = addStyle(scope, streamerCss(settings17.store), "streamer");
       this.onSettingsChange = () => set(streamerCss(settings17.store));
+      watch(scope, "[data-settings-row]", (row) => {
+        const id = row.getAttribute("aria-labelledby");
+        const label = (id ? document.getElementById(id) : null)?.textContent?.trim() ?? "";
+        if (!PRIVATE_ROW.test(label))
+          return;
+        row.setAttribute(PRIVATE, "");
+        return () => row.removeAttribute(PRIVATE);
+      });
     }
   });
 
@@ -7884,23 +7908,39 @@ ${m.text.trim()}`).join(`
   // src/plugins/messageTimestamps/index.ts
   var settings20 = definePluginSettings({
     always: { type: "boolean", label: { zh: "始终显示时间（不用悬停）", en: "Always show the time (no hover needed)" }, default: true },
-    absolute: { type: "boolean", label: { zh: "显示具体时间而不是「x 分钟前」", en: "Show the exact time instead of “x minutes ago”" }, default: true }
+    absolute: { type: "boolean", label: { zh: "显示具体时间而不是「x 分钟前」", en: "Show the exact time instead of “x minutes ago”" }, default: true },
+    hideOwn: {
+      type: "boolean",
+      label: { zh: "隐藏你自己消息的时间", en: "Hide the time on your own messages" },
+      description: { zh: "你的消息悬停时，操作栏最前面那个时间。", en: "The time at the start of the bar that shows when you hover your message." },
+      default: false
+    }
   });
+  var REPLY_TIME = `${SEL.messageActions} ${SEL.messageTime}`;
+  var OWN_TIME = `${SEL.userMessageActions} ${SEL.messageTime}`;
   var messageTimestamps_default = definePlugin({
     name: "MessageTimestamps",
     title: { zh: "消息时间", en: "Message timestamps" },
-    description: { zh: "让回复操作栏里的时间始终可见，并显示为具体时间（今天只显示时:分），悬停看完整日期。", en: "Keeps the time in the reply action bar visible and shows the exact time (just hh:mm today), full date on hover." },
+    description: {
+      zh: "让回复操作栏里的时间始终可见；回复和你自己消息的时间都显示为具体时间（今天只显示时:分），悬停看完整日期。也可以隐藏你自己消息的时间。",
+      en: "Keeps the time in the reply action bar visible; replies and your own messages show the exact time (just hh:mm today), full date on hover. The time on your own messages can be hidden."
+    },
     category: "messages",
     icon: "clock",
+    updatedAt: "2026-10-30",
     enabledByDefault: false,
     dependencies: ["DomApi", "StylesApi"],
     settings: settings20,
     start(scope) {
-      if (settings20.store.always)
-        addStyle(scope, `${SEL.messageActions} ${SEL.messageTime} { opacity: 1 !important; visibility: visible !important; }`, "timestamps");
+      const css = [
+        settings20.store.always ? `${REPLY_TIME} { opacity: 1 !important; visibility: visible !important; }` : "",
+        settings20.store.hideOwn ? `${OWN_TIME} { display: none !important; }` : ""
+      ].join(`
+`);
+      addStyle(scope, css, "timestamps");
       if (!settings20.store.absolute)
         return;
-      watch(scope, `${SEL.messageActions} ${SEL.messageTime}`, (el) => {
+      watch(scope, settings20.store.hideOwn ? REPLY_TIME : `${REPLY_TIME}, ${OWN_TIME}`, (el) => {
         const paint = () => {
           const at = Date.parse(el.getAttribute("datetime") ?? "");
           if (!Number.isFinite(at))
@@ -8569,8 +8609,18 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
   // src/plugins/autoRetry/index.ts
   var settings29 = definePluginSettings({
     maxRetries: { type: "number", label: { zh: "最多连续重试几次", en: "Maximum retries in a row" }, default: 3, min: 1, max: 10 },
-    delay: { type: "number", label: { zh: "重试前等待", en: "Wait before retrying" }, default: 2, min: 0, max: 60, unit: "s" }
+    delay: { type: "number", label: { zh: "重试前等待", en: "Wait before retrying" }, default: 2, min: 0, max: 60, unit: "s" },
+    chats: {
+      type: "boolean",
+      label: { zh: "普通对话发送失败也重试", en: "Also retry in chats" },
+      description: {
+        zh: "claude.ai 自己重试约 70 秒仍发不出去、消息下出现「Failed to send · Retry」时，自动点 Retry。",
+        en: "When claude.ai has given up after about 70s of its own retries and shows “Failed to send · Retry”, clicks Retry."
+      },
+      default: true
+    }
   });
+  var CHAT_MIN_DELAY_MS = 3000;
   var L20 = {
     retrying: { zh: "发送失败，正在重试（{n}/{max}）", en: "Couldn't send, retrying ({n}/{max})" },
     gaveUp: { zh: "已重试 {max} 次仍未发出，请稍后手动发送。", en: "Still not sent after {max} retries. Send it again later." },
@@ -8595,14 +8645,14 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
     name: "AutoRetry",
     title: { zh: "发送失败自动重试", en: "Auto retry" },
     description: {
-      zh: "Claude Code 项目页弹出「Couldn't send the message」时，自动把放回输入框的消息重新发送，可设次数和间隔。",
-      en: `When a Claude Code project page says "Couldn't send the message", sends the message claude.ai put back in the box again. Retries and delay are adjustable.`
+      zh: "消息发不出去时自动重发：Claude Code 项目页弹出「Couldn't send the message」时重发放回输入框的消息；普通对话出现「Failed to send」时点 Retry。可设次数和间隔。",
+      en: `Resends messages that couldn't be sent: on Claude Code project pages ("Couldn't send the message") the text claude.ai put back in the box, in chats ("Failed to send") by clicking Retry. Retries and delay are adjustable.`
     },
     category: "chats",
     icon: "refresh",
     enabledByDefault: true,
-    updatedAt: "2026-10-24",
-    dependencies: ["ChatStateApi", "ComposerApi", "NoticesApi"],
+    updatedAt: "2026-10-30",
+    dependencies: ["ChatStateApi", "ComposerApi", "DomApi", "NoticesApi"],
     settings: settings29,
     start(scope) {
       let last = null;
@@ -8639,6 +8689,28 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
           resend(editor);
         }, settings29.store.delay * 1000);
       });
+      if (!settings29.store.chats)
+        return;
+      const turns = new Map;
+      watch(scope, SEL.failedSend, (message) => {
+        const turn = message.getAttribute("data-turn-key") ?? "";
+        const max = settings29.store.maxRetries;
+        const count = (turns.get(turn) ?? 0) + 1;
+        if (count > max) {
+          turns.delete(turn);
+          toast(fill4(t(L20.gaveUp), count, max), { kind: "error", key: "auto-retry", timeoutMs: 8000 });
+          return;
+        }
+        turns.set(turn, count);
+        toast(fill4(t(L20.retrying), count, max), { kind: "warn", key: "auto-retry" });
+        const timer = setTimeout(() => {
+          if (!message.isConnected || !message.matches(SEL.failedSend))
+            return;
+          message.querySelector(SEL.failedSendRetry)?.click();
+        }, Math.max(CHAT_MIN_DELAY_MS, settings29.store.delay * 1000));
+        return () => clearTimeout(timer);
+      });
+      scope.on("route", () => turns.clear());
     }
   });
 
@@ -8668,6 +8740,101 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
       const css = () => codeBrandCss(color());
       const set = addStyle(scope, css(), "code-brand-color");
       this.onSettingsChange = () => set(css());
+    }
+  });
+
+  // src/plugins/betterSidebar/index.ts
+  var settings31 = definePluginSettings({
+    clickToggle: {
+      type: "boolean",
+      label: { zh: "点侧栏空白处收起 / 展开侧栏", en: "Click empty sidebar space to hide or show it" },
+      default: true
+    },
+    startHidden: {
+      type: "boolean",
+      label: { zh: "打开页面时侧栏收起", en: "Start with the sidebar hidden" },
+      default: false
+    },
+    collapsePinned: {
+      type: "boolean",
+      label: { zh: "打开页面时折叠「置顶」分组", en: "Start with the Pinned group collapsed" },
+      default: false
+    },
+    collapseRecents: {
+      type: "boolean",
+      label: { zh: "打开页面时折叠最近对话的分组", en: "Start with the recents groups collapsed" },
+      description: { zh: "最近对话按状态等分出的各组。", en: "The groups recents are sorted into, by state and so on." },
+      default: false
+    }
+  });
+  var STORE_KEY = "dframe-store";
+  function hideOnLoad(storage) {
+    try {
+      const raw = storage.getItem(STORE_KEY);
+      if (!raw)
+        return false;
+      const store = JSON.parse(raw);
+      if (!store?.state || typeof store.state !== "object" || store.state.collapsed === true)
+        return false;
+      store.state.collapsed = true;
+      storage.setItem(STORE_KEY, JSON.stringify(store));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  var TOGGLE = 'button[aria-keyshortcuts$="+b" i], [data-testid="sidebar-compact-trigger"]';
+  var BLANK = `${SEL.sidebar}, ${SEL.sidebarRecents}, [data-tab-section], [aria-label="Sidebar"], nav`;
+  var ACTIVE = 'a, button, input, textarea, select, label, [role="button"], [role="menuitem"], [role="link"], [data-row], [contenteditable="true"]';
+  function isBlankClick(target) {
+    if (!target?.closest(`${SEL.sidebar}, [aria-label="Sidebar"]`))
+      return false;
+    return target.matches(BLANK) && !target.closest(ACTIVE);
+  }
+  var GROUPS_GIVE_UP_MS = 15000;
+  var groupsDone = false;
+  var betterSidebar_default = definePlugin({
+    name: "BetterSidebar",
+    title: { zh: "侧栏增强", en: "Better sidebar" },
+    description: {
+      zh: "点侧栏空白处收起 / 展开侧栏；可设打开页面时侧栏收起，或折叠「置顶」、最近对话的分组。",
+      en: "Click empty sidebar space to hide or show the sidebar; optionally start with it hidden, or with the Pinned and recents groups collapsed."
+    },
+    category: "navigation",
+    icon: "collapse",
+    enabledByDefault: true,
+    updatedAt: "2026-10-30",
+    startAt: "document-start",
+    dependencies: ["DomApi"],
+    settings: settings31,
+    start(scope) {
+      if (settings31.store.startHidden && document.readyState === "loading")
+        hideOnLoad(localStorage);
+      if (settings31.store.clickToggle) {
+        scope.listen(document, "click", (event) => {
+          if (event.button !== 0 || event.defaultPrevented || !isBlankClick(event.target))
+            return;
+          if (String(getSelection() ?? "").trim())
+            return;
+          document.querySelector(TOGGLE)?.click();
+        });
+      }
+      if (groupsDone || !(settings31.store.collapsePinned || settings31.store.collapseRecents))
+        return;
+      const run = scope.child();
+      run.timeout(() => {
+        groupsDone = true;
+        run.dispose();
+      }, GROUPS_GIVE_UP_MS);
+      const seen = new WeakSet;
+      watch(run, `${SEL.sidebar} button[data-group-toggle][aria-expanded="true"]`, (toggle) => {
+        if (groupsDone || seen.has(toggle))
+          return;
+        seen.add(toggle);
+        const recents = !!toggle.closest(`${SEL.sidebarRecents}, [data-recents-list], .dframe-recents-by-mode`);
+        if (recents ? settings31.store.collapseRecents : settings31.store.collapsePinned)
+          toggle.click();
+      });
     }
   });
 
@@ -8718,7 +8885,8 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
     customIdentity_default,
     hideIdentity_default,
     autoRetry_default,
-    codeBrandColor_default
+    codeBrandColor_default,
+    betterSidebar_default
   ];
 
   // src/index.ts
@@ -8727,7 +8895,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.124",
+      version: "0.3.125",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -8744,7 +8912,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.124";
+    win[FLAG] = "0.3.125";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -8761,7 +8929,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.124"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.125"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();
