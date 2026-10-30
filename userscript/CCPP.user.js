@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261029.0.3.123
+// @version      20261030.0.3.124
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -2880,7 +2880,7 @@ ${IMAGE_FIELD_CSS}`;
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.123";
+  var version = "0.3.124";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -3193,14 +3193,25 @@ ${IMAGE_FIELD_CSS}`;
       settingsItem.appendChild(mark);
       added.push(mark);
       top.attach(settingsItem, "15rem", (scroll, child) => {
-        scroll.appendChild(row(ownIcon("settings"), t(L3.openNative), { run: () => location.hash = "settings/general" }));
-        scroll.appendChild(separator());
-        scroll.appendChild(caption("CC++"));
-        fillCcpp(scroll, child);
-        scroll.appendChild(separator());
-        scroll.appendChild(caption(t(L3.claude)));
-        for (const section of NATIVE_SECTIONS)
+        const group = (title) => {
+          if (scroll.childElementCount)
+            scroll.appendChild(separator());
+          if (title)
+            scroll.appendChild(caption(title));
+        };
+        if (options.flyoutShows("open"))
+          scroll.appendChild(row(ownIcon("settings"), t(L3.openNative), { run: () => location.hash = options.nativeHash() }));
+        if (options.flyoutShows("ccpp")) {
+          group("CC++");
+          fillCcpp(scroll, child);
+        }
+        const sections = NATIVE_SECTIONS.filter((section) => options.flyoutShows(section.hash));
+        if (sections.length)
+          group(t(L3.claude));
+        for (const section of sections)
           scroll.appendChild(row(sectionIcon(section), t(section.label), { run: () => location.hash = section.hash }));
+        if (!scroll.childElementCount)
+          scroll.appendChild(row(ownIcon("settings"), t(L3.openNative), { run: () => location.hash = options.nativeHash() }));
       });
     }
     if (options.entry) {
@@ -3835,6 +3846,11 @@ ${IMAGE_FIELD_CSS}`;
     });
     redraw();
   }
+  var inFlyout = (v) => v.settingsFlyout === true;
+  var flyoutSections = Object.fromEntries(NATIVE_SECTIONS.map((section) => [
+    `flyout:${section.hash}`,
+    { type: "boolean", label: { zh: `子菜单里显示「${section.label.zh}」`, en: `Show “${section.label.en}” in the submenu` }, default: true, visible: inFlyout }
+  ]));
   var settings = definePluginSettings({
     language: {
       type: "select",
@@ -3863,6 +3879,28 @@ ${IMAGE_FIELD_CSS}`;
     },
     userMenuEntry: { type: "boolean", label: { zh: "头像菜单里的 CC++ 子菜单", en: "CC++ submenu in the account menu" }, default: true },
     settingsFlyout: { type: "boolean", label: { zh: "头像菜单的「设置」展开成子菜单", en: "Account-menu Settings opens a submenu" }, description: { zh: "悬停展开，点击仍打开设置。", en: "Hover to expand; click still opens settings." }, default: true },
+    flyoutOpen: { type: "boolean", label: { zh: "子菜单里显示「打开设置」", en: "Show “Open settings” in the submenu" }, default: true, visible: inFlyout },
+    flyoutLast: {
+      type: "boolean",
+      label: { zh: "「打开设置」回到上次看的设置页", en: "“Open settings” returns to the last settings page" },
+      description: { zh: "关闭后总是打开「通用」。", en: "Off always opens General." },
+      default: true,
+      visible: (v) => inFlyout(v) && v.flyoutOpen === true
+    },
+    flyoutCcpp: { type: "boolean", label: { zh: "子菜单里显示 CC++ 的页面", en: "Show CC++ pages in the submenu" }, default: true, visible: inFlyout },
+    ...flyoutSections,
+    menuPlugins: {
+      type: "select",
+      label: { zh: "「插件」子菜单列出哪些插件", en: "Plugins listed in the Plugins submenu" },
+      default: "all",
+      options: [
+        { value: "all", label: { zh: "全部", en: "All" } },
+        { value: "enabled", label: { zh: "已开启的", en: "Enabled ones" } },
+        { value: "favorites", label: { zh: "收藏的", en: "Favorites" } },
+        { value: "configurable", label: { zh: "有设置项的", en: "Ones with settings" } }
+      ],
+      visible: (v) => v.userMenuEntry === true || inFlyout(v)
+    },
     hotkey: { type: "string", label: { zh: "打开设置的快捷键", en: "Shortcut to open settings" }, description: { zh: "如 mod+shift+.，留空关闭。", en: "e.g. mod+shift+.; empty disables." }, default: "mod+shift+." },
     composerEntry: { type: "boolean", label: { zh: "在输入框旁显示 CC++ 按钮", en: "CC++ button next to the model picker" }, default: false },
     showApiPlugins: { type: "boolean", label: { zh: "显示 API / 核心插件", en: "Show API and core plugins" }, default: false }
@@ -3889,6 +3927,21 @@ ${IMAGE_FIELD_CSS}`;
     if (nativeOpen())
       document.querySelector('[data-perf-region="settings_panel"] button[aria-label]')?.click();
   }
+  var lastNative = persisted("settings-last-native", "settings/general", (v) => typeof v === "string" && NATIVE_SECTIONS.some((s) => s.hash === v));
+  var nativeHash = () => settings.store.flyoutLast ? lastNative.get() : "settings/general";
+  function menuPlugins() {
+    const all = listedPlugins().sort((a, b) => t(a.title).localeCompare(t(b.title)));
+    switch (settings.store.menuPlugins) {
+      case "enabled":
+        return all.filter((p) => isActive(p));
+      case "favorites":
+        return all.filter((p) => isFavorite(p.name));
+      case "configurable":
+        return all.filter((p) => Object.values(p.settings?.def ?? {}).some((o) => o.type !== "action"));
+      default:
+        return all;
+    }
+  }
   var entries = null;
   function installEntries(parent) {
     entries?.dispose();
@@ -3899,7 +3952,9 @@ ${IMAGE_FIELD_CSS}`;
         settingsFlyout: settings.store.settingsFlyout,
         shortcut: settings.store.hotkey.trim() ? comboKeys(settings.store.hotkey) : [],
         tabs: sortedTabs,
-        plugins: () => listedPlugins().sort((a, b) => t(a.title).localeCompare(t(b.title))),
+        plugins: menuPlugins,
+        flyoutShows: (row) => settings.store[row === "open" ? "flyoutOpen" : row === "ccpp" ? "flyoutCcpp" : `flyout:${row}`] !== false,
+        nativeHash,
         openTab: (tab) => openSettings({ tab }),
         openPlugin: (plugin) => openPluginDialog(plugin)
       });
@@ -3920,6 +3975,7 @@ ${IMAGE_FIELD_CSS}`;
     },
     category: "core",
     icon: "settings",
+    updatedAt: "2026-10-30",
     required: true,
     dependencies: ["DomApi", "HotkeysApi", "MenuApi", "SlotsApi", "StylesApi"],
     settings,
@@ -3933,6 +3989,13 @@ ${IMAGE_FIELD_CSS}`;
       scope.defer(onSettingsChange((_, key) => key === "enabled" && redraw()));
       scope.defer(prefs.subscribe(redraw));
       installEntries(scope);
+      const remember = () => {
+        const hash = location.hash.slice(1);
+        if (NATIVE_SECTIONS.some((s) => s.hash === hash))
+          lastNative.set(hash);
+      };
+      remember();
+      scope.listen(window, "hashchange", remember);
     },
     onSettingsChange(key, scope) {
       if (key === "language")
@@ -6493,6 +6556,15 @@ Summarize in at most 5 bullet points:`
     minSeconds: { type: "number", label: { zh: "回复至少持续多久才提醒", en: "Only replies longer than" }, default: 5, min: 0, max: 120, unit: "s" },
     sound: { type: "boolean", label: { zh: "提示音", en: "Sound" }, default: true },
     volume: { type: "number", label: { zh: "音量", en: "Volume" }, default: 40, min: 5, max: 100, step: 5, unit: "%", visible: (v) => v.sound === true },
+    soundUrl: {
+      type: "string",
+      label: { zh: "自定义提示音", en: "Custom sound" },
+      description: { zh: "音频文件的 https 链接（mp3 / ogg / wav），留空用内置提示音；读不到时也退回内置提示音。", en: "An https link to an audio file (mp3 / ogg / wav); empty uses the built-in chime, which also plays when the link can't be loaded." },
+      placeholder: { zh: "https://…/ding.mp3", en: "https://…/ding.mp3" },
+      default: "",
+      visible: (v) => v.sound === true
+    },
+    listen: { type: "action", label: { zh: "试听提示音", en: "Preview the sound" }, button: { zh: "播放", en: "Play" }, visible: (v) => v.sound === true, run: () => void playSound(settings10.store.volume) },
     desktop: { type: "boolean", label: { zh: "系统通知", en: "Desktop notification" }, default: true },
     toast: { type: "boolean", label: { zh: "页面内提示条", en: "In-page toast" }, default: true },
     others: {
@@ -6513,6 +6585,46 @@ Summarize in at most 5 bullet points:`
     took: { zh: "用时 {s} 秒", en: "Took {s}s" },
     open: { zh: "点击回到对话", en: "Click to return to the chat" }
   };
+  function fetchSound(url) {
+    if (typeof GM_xmlhttpRequest === "function") {
+      return new Promise((resolve) => GM_xmlhttpRequest({
+        method: "GET",
+        url,
+        timeout: 15000,
+        responseType: "arraybuffer",
+        onload: (r) => resolve(r.status >= 200 && r.status < 300 ? r.response : null),
+        onerror: () => resolve(null),
+        ontimeout: () => resolve(null)
+      }));
+    }
+    return fetch(url, { credentials: "omit", referrerPolicy: "no-referrer" }).then((r) => r.ok ? r.arrayBuffer() : null).catch(() => null);
+  }
+  var cached = null;
+  async function playSound(volume) {
+    const url = settings10.store.soundUrl.trim();
+    if (!/^https?:\/\//i.test(url))
+      return chime(volume);
+    if (cached?.url !== url)
+      cached = { url, data: fetchSound(url) };
+    const data = await cached.data;
+    const Ctx = window.AudioContext ?? window.webkitAudioContext;
+    if (!data || !Ctx)
+      return chime(volume);
+    const ctx = new Ctx;
+    try {
+      const buffer = await ctx.decodeAudioData(data.slice(0));
+      const source = ctx.createBufferSource();
+      const gain = ctx.createGain();
+      gain.gain.value = Math.max(0, Math.min(1, volume / 100));
+      source.buffer = buffer;
+      source.connect(gain).connect(ctx.destination);
+      source.onended = () => void ctx.close();
+      source.start();
+    } catch {
+      ctx.close();
+      chime(volume);
+    }
+  }
   function chime(volume) {
     const Ctx = window.AudioContext ?? window.webkitAudioContext;
     if (!Ctx)
@@ -6579,7 +6691,7 @@ Summarize in at most 5 bullet points:`
     };
     const away = test || settings10.store.when === "always" || document.hidden || !document.hasFocus();
     if (settings10.store.sound && away)
-      chime(settings10.store.volume);
+      playSound(settings10.store.volume);
     if (settings10.store.toast || event.other) {
       const key = event.chatId ? `reply-${event.chatId}` : "reply-done";
       const close = toast([body, event.preview].filter(Boolean).join(`
@@ -6649,6 +6761,7 @@ ${t(L16.open)}`, tag: `ccpp-${event.chatId ?? "reply"}`, silent: true });
     },
     category: "notifications",
     icon: "bell",
+    updatedAt: "2026-10-30",
     enabledByDefault: true,
     dependencies: ["ChatStateApi", "NoticesApi", "RouterApi", "ClaudeApi"],
     settings: settings10,
@@ -7402,8 +7515,25 @@ Write it down while the idea is fresh` })
     upgrade: { type: "boolean", label: { zh: "隐藏升级 / 购买入口", en: "Hide upgrade and buy prompts" }, default: true },
     plan: { type: "boolean", label: { zh: "隐藏头像旁的套餐名", en: "Hide the plan name next to your name" }, default: false },
     codeNudge: { type: "boolean", label: { zh: "隐藏输入框里的 Claude Code 推广提示", en: "Hide the Claude Code nudge in the input" }, default: true },
-    templates: { type: "boolean", label: { zh: "隐藏侧栏「从模板新建」按钮", en: "Hide the sidebar “New from a template” button" }, default: false }
+    templates: { type: "boolean", label: { zh: "隐藏侧栏「从模板新建」按钮", en: "Hide the sidebar “New from a template” button" }, default: false },
+    modelUpsell: {
+      type: "boolean",
+      label: { zh: "隐藏模型菜单里的购买提示", en: "Hide upsells in the model menu" },
+      description: { zh: "「Buy credits」标签和菜单底部的套餐说明链接。", en: "The “Buy credits” badge and the plan note at the bottom of the menu." },
+      default: true
+    },
+    lockedModels: {
+      type: "boolean",
+      label: { zh: "隐藏要额外付费才能用的模型", en: "Hide models that need extra credits" },
+      description: { zh: "模型菜单里不能直接选、要买用量额度的那几行。", en: "Rows in the model menu you can't pick without buying usage credits." },
+      default: false
+    }
   });
+  var MODEL_MENU = '[role="menu"][data-cds="ModelSelector"]';
+  var BUY_RE = /^(buy credits|get credits|购买额度|购买用量)$/i;
+  function findCreditBadges(root = document) {
+    return [...root.querySelectorAll(`${MODEL_MENU} [data-cds="Badge"]`)].filter((el) => BUY_RE.test(el.textContent?.trim() ?? ""));
+  }
   var UPGRADE_RE = /^(upgrade|upgrade plan|upgrade to (pro|max)|get (pro|max)|try (pro|max)|升级|升级套餐)$/i;
   function findUpgradeNags(root = document) {
     return [...root.querySelectorAll("a, button")].filter((el) => !el.closest(`[data-ccpp], ${SEL.userContent}`) && UPGRADE_RE.test(el.textContent?.trim() ?? ""));
@@ -7414,24 +7544,28 @@ Write it down while the idea is fresh` })
       `a[href^="/upgrade"], a[href*="/upgrade?"] { display: none !important; }`,
       options.plan ? `[data-testid="user-menu-button"] .df-footer-suffix-text { display: none !important; }` : "",
       options.codeNudge ? `#claude-code-nudge-body, [id^="claude-code-nudge"] { display: none !important; }` : "",
-      options.templates ? `button[aria-label="New from a template"] { display: none !important; }` : ""
+      options.templates ? `button[aria-label="New from a template"] { display: none !important; }` : "",
+      options.modelUpsell ? `${MODEL_MENU} a[role="menuitem"][href*="support.claude.com"] { display: none !important; }` : "",
+      options.lockedModels ? `${MODEL_MENU} [role="menuitem"][data-model-id] { display: none !important; }` : ""
     ].join(`
 `);
   }
   var cleaner_default = definePlugin({
     name: "Cleaner",
     title: { zh: "界面清理", en: "Cleaner" },
-    description: { zh: "隐藏升级推销、套餐标签、Claude Code 推广提示等干扰元素（各项可分别开关）。", en: "Hides upgrade nags, the plan label, the Claude Code nudge and similar clutter (each switchable)." },
+    description: { zh: "隐藏升级推销、套餐标签、Claude Code 推广提示、模型菜单里的购买提示等干扰元素（各项可分别开关）。", en: "Hides upgrade nags, the plan label, the Claude Code nudge, model-menu upsells and similar clutter (each switchable)." },
     category: "declutter",
     icon: "brush",
+    updatedAt: "2026-10-30",
     enabledByDefault: true,
     dependencies: ["StylesApi", "DomApi"],
     settings: settings15,
     start(scope) {
       addStyle(scope, cleanerCss(settings15.store), "cleaner");
-      if (settings15.store.upgrade) {
+      if (settings15.store.upgrade || settings15.store.modelUpsell) {
         onDomChange(scope, () => {
-          for (const el of findUpgradeNags())
+          const nags = [...settings15.store.upgrade ? findUpgradeNags() : [], ...settings15.store.modelUpsell ? findCreditBadges() : []];
+          for (const el of nags)
             if (el.dataset.ccppCleaned === undefined)
               el.dataset.ccppCleaned = "";
         });
@@ -7828,6 +7962,21 @@ ${m.text.trim()}`).join(`
   });
 
   // src/plugins/betterLinks/index.ts
+  var settings22 = definePluginSettings({
+    bare: { type: "boolean", label: { zh: "裸域名变成链接", en: "Turn bare domains into links" }, default: true },
+    colors: { type: "boolean", label: { zh: "给回复里的链接上色", en: "Color links in replies" }, default: false },
+    linkColor: { type: "color", label: { zh: "链接颜色", en: "Link color" }, default: "#4a9eff", visible: (v) => v.colors === true },
+    visited: { type: "boolean", label: { zh: "访问过的链接用另一种颜色", en: "Another color for visited links" }, default: true, visible: (v) => v.colors === true },
+    visitedColor: { type: "color", label: { zh: "已访问链接颜色", en: "Visited link color" }, default: "#9b59b6", visible: (v) => v.colors === true && v.visited === true }
+  });
+  function linkCss(o) {
+    if (!o.colors)
+      return "";
+    const links = `:is(${SEL.assistantMessage}, ${SEL.userMessage}) a[href]`;
+    const visited = o.visited ? `
+${links}:visited { color: ${o.visitedColor} !important; text-decoration-color: ${o.visitedColor} !important; }` : "";
+    return `${links} { color: ${o.linkColor} !important; text-decoration-color: ${o.linkColor} !important; }${visited}`;
+  }
   var DOMAIN_RE = /(?<![@\w./-])((?:https?:\/\/)?(?:[a-z0-9-]+\.)+(?:com|org|net|io|dev|ai|app|edu|gov|co|cn|me|info|xyz|so|sh|gg|tv|uk|de|jp)(?:\/[^\s<>()"'，。、）]*)?)(?![\w@-])/gi;
   function splitLinks(text) {
     const out = [];
@@ -7850,13 +7999,21 @@ ${m.text.trim()}`).join(`
   var SKIP = "a, code, pre, button, [contenteditable], .katex";
   var betterLinks_default = definePlugin({
     name: "BetterLinks",
-    title: { zh: "裸域名可点击", en: "Clickable bare domains" },
-    description: { zh: "把回复里没有加链接的域名（如 example.com/docs）变成可点击的链接，只处理已完成的回复。", en: "Turns bare domains in finished replies (like example.com/docs) into links." },
+    title: { zh: "更好的链接", en: "Better links" },
+    description: {
+      zh: "把回复里没有加链接的域名（如 example.com/docs）变成可点击的链接（只处理已完成的回复），可给链接和访问过的链接分别上色。",
+      en: "Turns bare domains in finished replies (like example.com/docs) into links, and can color links and visited links."
+    },
     category: "messages",
     icon: "link",
+    updatedAt: "2026-10-30",
     enabledByDefault: false,
-    dependencies: ["DomApi"],
+    dependencies: ["DomApi", "StylesApi"],
+    settings: settings22,
     start(scope) {
+      addStyle(scope, linkCss(settings22.store), "better-links");
+      if (!settings22.store.bare)
+        return;
       watch(scope, `${SEL.assistantMessage}[data-is-streaming="false"] ${SEL.prose}`, (prose) => {
         const added = [];
         const walker = document.createTreeWalker(prose, NodeFilter.SHOW_TEXT, {
@@ -7921,7 +8078,7 @@ ${m.text.trim()}`).join(`
   });
 
   // src/plugins/consoleJanitor/index.ts
-  var settings22 = definePluginSettings({
+  var settings23 = definePluginSettings({
     levels: {
       type: "select",
       label: { zh: "静音哪些输出", en: "Silence" },
@@ -7940,10 +8097,10 @@ ${m.text.trim()}`).join(`
     icon: "terminal",
     enabledByDefault: false,
     startAt: "document-start",
-    settings: settings22,
+    settings: settings23,
     start(scope) {
       const target = pageWindow.console;
-      const levels = settings22.store.levels === "warn" ? ["log", "info", "debug", "warn"] : ["log", "info", "debug"];
+      const levels = settings23.store.levels === "warn" ? ["log", "info", "debug", "warn"] : ["log", "info", "debug"];
       for (const level of levels) {
         const original = target[level];
         const quiet = function(...args) {
@@ -7962,7 +8119,7 @@ ${m.text.trim()}`).join(`
   // src/plugins/sidebarDefaultCode/index.ts
   var GIVE_UP_MS = 15000;
   var decided = false;
-  var settings23 = definePluginSettings({
+  var settings24 = definePluginSettings({
     onlyCodePages: {
       type: "boolean",
       label: { zh: "只在 claude.ai/code 开头的页面切换", en: "Only on claude.ai/code pages" },
@@ -7974,7 +8131,7 @@ ${m.text.trim()}`).join(`
     }
   });
   var isCodePage = () => location.pathname === "/code" || location.pathname.startsWith("/code/");
-  var allowedHere = () => settings23.store.onlyCodePages ? isCodePage() : currentRoute().kind === "new";
+  var allowedHere = () => settings24.store.onlyCodePages ? isCodePage() : currentRoute().kind === "new";
   var hasDraft = () => !!document.querySelector(SEL.editor)?.textContent?.trim();
   var sidebarDefaultCode_default = definePlugin({
     name: "SidebarDefaultCode",
@@ -7988,7 +8145,7 @@ ${m.text.trim()}`).join(`
     enabledByDefault: true,
     updatedAt: "2026-10-18",
     dependencies: ["DomApi", "RouterApi"],
-    settings: settings23,
+    settings: settings24,
     start(scope) {
       if (decided)
         return;
@@ -8011,7 +8168,7 @@ ${m.text.trim()}`).join(`
   });
 
   // src/plugins/chatNoticeHider/index.ts
-  var settings24 = definePluginSettings({
+  var settings25 = definePluginSettings({
     disclaimer: { type: "boolean", label: { zh: "隐藏底部的 AI 声明（Claude is AI and can make mistakes.）", en: "Hide the AI notice under the input (Claude is AI and can make mistakes.)" }, default: true },
     appPromo: { type: "boolean", label: { zh: "隐藏 App 下载提示（侧栏底部的「Get apps and extensions」按钮等）", en: "Hide app download prompts (the sidebar’s “Get apps and extensions” button and similar)" }, default: true },
     bugReport: { type: "boolean", label: { zh: "隐藏 Claude Code 侧栏右下角的 Bug 反馈按钮", en: "Hide the bug report button at the bottom right of the Claude Code sidebar" }, default: true }
@@ -8040,10 +8197,10 @@ ${m.text.trim()}`).join(`
     enabledByDefault: true,
     updatedAt: "2026-10-22",
     dependencies: ["StylesApi", "DomApi"],
-    settings: settings24,
+    settings: settings25,
     start(scope) {
-      addStyle(scope, chatNoticeCss(settings24.store), "chat-notices");
-      if (!settings24.store.appPromo)
+      addStyle(scope, chatNoticeCss(settings25.store), "chat-notices");
+      if (!settings25.store.appPromo)
         return;
       onDomChange(scope, () => {
         for (const el of findAppPromos())
@@ -8055,7 +8212,7 @@ ${m.text.trim()}`).join(`
   });
 
   // src/plugins/usageBannerHider/index.ts
-  var settings25 = definePluginSettings({
+  var settings26 = definePluginSettings({
     approaching: { type: "boolean", label: { zh: "隐藏「接近用量上限」提示（Approaching session usage limit）", en: "Hide “Approaching usage limit” banners" }, default: true },
     exhausted: { type: "boolean", label: { zh: "隐藏「用量已耗尽」提示（You've hit your limit 等）", en: "Hide “Usage limit reached” banners" }, default: true }
   });
@@ -8100,9 +8257,9 @@ ${m.text.trim()}`).join(`
     enabledByDefault: true,
     updatedAt: "2026-10-25",
     dependencies: ["StylesApi", "DomApi"],
-    settings: settings25,
+    settings: settings26,
     start(scope) {
-      const { approaching, exhausted } = settings25.store;
+      const { approaching, exhausted } = settings26.store;
       if (!approaching && !exhausted)
         return;
       addStyle(scope, `[${MARK}] { display: none !important; }`, "usage-banner");
@@ -8148,7 +8305,7 @@ ${RUNNING_PILL} {
   });
 
   // src/plugins/customIdentity/index.ts
-  var settings26 = definePluginSettings({
+  var settings27 = definePluginSettings({
     displayName: {
       type: "string",
       label: { zh: "显示名", en: "Display name" },
@@ -8228,14 +8385,14 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
     enabledByDefault: false,
     updatedAt: "2026-10-22",
     dependencies: ["StylesApi", "DomApi"],
-    settings: settings26,
+    settings: settings27,
     start(scope) {
       const swaps = new TextSwaps;
       const setCss = addStyle(scope, "", "custom-identity");
       let lastUrl = null;
-      const setSizeCss = addStyle(scope, sizeCss(settings26.store.avatarSize), "custom-identity-size");
+      const setSizeCss = addStyle(scope, sizeCss(settings27.store.avatarSize), "custom-identity-size");
       const paint = () => {
-        const { displayName, avatar, applyToMenu, greeting } = settings26.store;
+        const { displayName, avatar, applyToMenu, greeting } = settings27.store;
         const name = displayName.trim();
         const url = avatar.trim();
         if (url !== lastUrl) {
@@ -8297,7 +8454,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
       repaintOnChange(scope, paint);
       this.onSettingsChange = () => {
         lastUrl = null;
-        setSizeCss(sizeCss(settings26.store.avatarSize));
+        setSizeCss(sizeCss(settings27.store.avatarSize));
         swaps.restore();
         for (const el of document.querySelectorAll(`[${ME}]`))
           el.removeAttribute(ME);
@@ -8318,7 +8475,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
   });
 
   // src/plugins/hideIdentity/index.ts
-  var settings27 = definePluginSettings({
+  var settings28 = definePluginSettings({
     hideEmail: {
       type: "boolean",
       label: { zh: "隐藏邮箱", en: "Hide email" },
@@ -8355,9 +8512,9 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
     enabledByDefault: true,
     updatedAt: "2026-10-22",
     dependencies: ["StylesApi", "DomApi"],
-    settings: settings27,
+    settings: settings28,
     start(scope) {
-      const { hideEmail, hideName } = settings27.store;
+      const { hideEmail, hideName } = settings28.store;
       addStyle(scope, `[${HIDE}] { display: none !important; }`, "hide-identity");
       const swaps = new TextSwaps;
       const hidden = new Set;
@@ -8410,7 +8567,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
   });
 
   // src/plugins/autoRetry/index.ts
-  var settings28 = definePluginSettings({
+  var settings29 = definePluginSettings({
     maxRetries: { type: "number", label: { zh: "最多连续重试几次", en: "Maximum retries in a row" }, default: 3, min: 1, max: 10 },
     delay: { type: "number", label: { zh: "重试前等待", en: "Wait before retrying" }, default: 2, min: 0, max: 60, unit: "s" }
   });
@@ -8446,7 +8603,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
     enabledByDefault: true,
     updatedAt: "2026-10-24",
     dependencies: ["ChatStateApi", "ComposerApi", "NoticesApi"],
-    settings: settings28,
+    settings: settings29,
     start(scope) {
       let last = null;
       const counts = new Map;
@@ -8462,7 +8619,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
         const sent = last;
         if (!sent?.editor)
           return;
-        const max = settings28.store.maxRetries;
+        const max = settings29.store.maxRetries;
         const count = (counts.get(channelId) ?? 0) + 1;
         if (count > max) {
           counts.delete(channelId);
@@ -8480,14 +8637,14 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
             return;
           }
           resend(editor);
-        }, settings28.store.delay * 1000);
+        }, settings29.store.delay * 1000);
       });
     }
   });
 
   // src/plugins/codeBrandColor/index.ts
   var CLAUDE_ORANGE = "#c6613f";
-  var settings29 = definePluginSettings({
+  var settings30 = definePluginSettings({
     color: { type: "color", label: { zh: "颜色", en: "Color" }, description: { zh: "默认是 Claude 的橙色。", en: "Defaults to Claude's orange." }, default: CLAUDE_ORANGE }
   });
   var codeBrandCss = (color) => `
@@ -8505,9 +8662,9 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
     enabledByDefault: true,
     updatedAt: "2026-10-24",
     dependencies: ["StylesApi"],
-    settings: settings29,
+    settings: settings30,
     start(scope) {
-      const color = () => /^#[0-9a-f]{6}$/i.test(settings29.store.color) ? settings29.store.color : CLAUDE_ORANGE;
+      const color = () => /^#[0-9a-f]{6}$/i.test(settings30.store.color) ? settings30.store.color : CLAUDE_ORANGE;
       const css = () => codeBrandCss(color());
       const set = addStyle(scope, css(), "code-brand-color");
       this.onSettingsChange = () => set(css());
@@ -8570,7 +8727,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.123",
+      version: "0.3.124",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -8587,7 +8744,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.123";
+    win[FLAG] = "0.3.124";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -8604,7 +8761,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.123"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.124"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();

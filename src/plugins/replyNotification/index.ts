@@ -25,6 +25,15 @@ const settings = definePluginSettings({
     minSeconds: { type: "number", label: { zh: "回复至少持续多久才提醒", en: "Only replies longer than" }, default: 5, min: 0, max: 120, unit: "s" },
     sound: { type: "boolean", label: { zh: "提示音", en: "Sound" }, default: true },
     volume: { type: "number", label: { zh: "音量", en: "Volume" }, default: 40, min: 5, max: 100, step: 5, unit: "%", visible: v => v.sound === true },
+    soundUrl: {
+        type: "string",
+        label: { zh: "自定义提示音", en: "Custom sound" },
+        description: { zh: "音频文件的 https 链接（mp3 / ogg / wav），留空用内置提示音；读不到时也退回内置提示音。", en: "An https link to an audio file (mp3 / ogg / wav); empty uses the built-in chime, which also plays when the link can't be loaded." },
+        placeholder: { zh: "https://…/ding.mp3", en: "https://…/ding.mp3" },
+        default: "",
+        visible: v => v.sound === true,
+    },
+    listen: { type: "action", label: { zh: "试听提示音", en: "Preview the sound" }, button: { zh: "播放", en: "Play" }, visible: v => v.sound === true, run: () => void playSound(settings.store.volume) },
     desktop: { type: "boolean", label: { zh: "系统通知", en: "Desktop notification" }, default: true },
     toast: { type: "boolean", label: { zh: "页面内提示条", en: "In-page toast" }, default: true },
     others: {
@@ -46,6 +55,58 @@ const L = {
     took: { zh: "用时 {s} 秒", en: "Took {s}s" },
     open: { zh: "点击回到对话", en: "Click to return to the chat" },
 };
+
+declare const GM_xmlhttpRequest:
+    | ((details: { method: string; url: string; timeout?: number; responseType?: "arraybuffer"; onload(r: { status: number; response: ArrayBuffer }): void; onerror(e: unknown): void; ontimeout?(): void }) => void)
+    | undefined;
+
+/** Downloads a sound file past CORS and claude.ai's media policy (through the userscript manager when it can). */
+function fetchSound(url: string): Promise<ArrayBuffer | null> {
+    if (typeof GM_xmlhttpRequest === "function") {
+        return new Promise(resolve =>
+            GM_xmlhttpRequest!({
+                method: "GET",
+                url,
+                timeout: 15000,
+                responseType: "arraybuffer",
+                onload: r => resolve(r.status >= 200 && r.status < 300 ? r.response : null),
+                onerror: () => resolve(null),
+                ontimeout: () => resolve(null),
+            }),
+        );
+    }
+    return fetch(url, { credentials: "omit", referrerPolicy: "no-referrer" })
+        .then(r => (r.ok ? r.arrayBuffer() : null))
+        .catch(() => null);
+}
+
+/** The custom sound, downloaded once per URL. */
+let cached: { url: string; data: Promise<ArrayBuffer | null> } | null = null;
+
+/** Plays the custom sound through Web Audio, or the built-in chime when there is none or it can't be played. */
+export async function playSound(volume: number) {
+    const url = settings.store.soundUrl.trim();
+    if (!/^https?:\/\//i.test(url)) return chime(volume);
+    if (cached?.url !== url) cached = { url, data: fetchSound(url) };
+    const data = await cached.data;
+    const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!data || !Ctx) return chime(volume);
+    const ctx = new Ctx();
+    try {
+        // decodeAudioData detaches its buffer; keep the cached copy for next time.
+        const buffer = await ctx.decodeAudioData(data.slice(0));
+        const source = ctx.createBufferSource();
+        const gain = ctx.createGain();
+        gain.gain.value = Math.max(0, Math.min(1, volume / 100));
+        source.buffer = buffer;
+        source.connect(gain).connect(ctx.destination);
+        source.onended = () => void ctx.close();
+        source.start();
+    } catch {
+        void ctx.close();
+        chime(volume);
+    }
+}
 
 /** A short two-note chime made with Web Audio; no sound file is downloaded. */
 export function chime(volume: number) {
@@ -124,7 +185,7 @@ function notify(event: DoneEvent, test = false) {
         if (event.chatId) openChat(event.chatId);
     };
     const away = test || settings.store.when === "always" || document.hidden || !document.hasFocus();
-    if (settings.store.sound && away) chime(settings.store.volume);
+    if (settings.store.sound && away) void playSound(settings.store.volume);
     if (settings.store.toast || event.other) {
         const key = event.chatId ? `reply-${event.chatId}` : "reply-done";
         const close = toast([body, event.preview].filter(Boolean).join("\n"), { title, kind: event.error ? "error" : "ok", onClick: back, key, timeoutMs: settings.store.keep ? 0 : settings.store.toastSec * 1000 });
@@ -193,6 +254,7 @@ export default definePlugin({
     },
     category: "notifications",
     icon: "bell",
+    updatedAt: "2026-10-30",
     enabledByDefault: true,
     dependencies: ["ChatStateApi", "NoticesApi", "RouterApi", "ClaudeApi"],
     settings,

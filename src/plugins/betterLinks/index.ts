@@ -5,8 +5,25 @@
  */
 
 import { definePlugin } from "@kernel/plugins";
+import { definePluginSettings } from "@kernel/settings";
 import { h } from "@lib/dom";
 import { SEL, watch } from "@api/dom";
+import { addStyle } from "@api/styles";
+
+const settings = definePluginSettings({
+    bare: { type: "boolean", label: { zh: "裸域名变成链接", en: "Turn bare domains into links" }, default: true },
+    colors: { type: "boolean", label: { zh: "给回复里的链接上色", en: "Color links in replies" }, default: false },
+    linkColor: { type: "color", label: { zh: "链接颜色", en: "Link color" }, default: "#4a9eff", visible: v => v.colors === true },
+    visited: { type: "boolean", label: { zh: "访问过的链接用另一种颜色", en: "Another color for visited links" }, default: true, visible: v => v.colors === true },
+    visitedColor: { type: "color", label: { zh: "已访问链接颜色", en: "Visited link color" }, default: "#9b59b6", visible: v => v.colors === true && v.visited === true },
+});
+
+export function linkCss(o: { colors: boolean; linkColor: string; visited: boolean; visitedColor: string }) {
+    if (!o.colors) return "";
+    const links = `:is(${SEL.assistantMessage}, ${SEL.userMessage}) a[href]`;
+    const visited = o.visited ? `\n${links}:visited { color: ${o.visitedColor} !important; text-decoration-color: ${o.visitedColor} !important; }` : "";
+    return `${links} { color: ${o.linkColor} !important; text-decoration-color: ${o.linkColor} !important; }${visited}`;
+}
 
 /** Bare domains such as example.com/path — not e-mail addresses, not inside words. */
 export const DOMAIN_RE = /(?<![@\w./-])((?:https?:\/\/)?(?:[a-z0-9-]+\.)+(?:com|org|net|io|dev|ai|app|edu|gov|co|cn|me|info|xyz|so|sh|gg|tv|uk|de|jp)(?:\/[^\s<>()"'，。、）]*)?)(?![\w@-])/gi;
@@ -32,13 +49,20 @@ const SKIP = "a, code, pre, button, [contenteditable], .katex";
 
 export default definePlugin({
     name: "BetterLinks",
-    title: { zh: "裸域名可点击", en: "Clickable bare domains" },
-    description: { zh: "把回复里没有加链接的域名（如 example.com/docs）变成可点击的链接，只处理已完成的回复。", en: "Turns bare domains in finished replies (like example.com/docs) into links." },
+    title: { zh: "更好的链接", en: "Better links" },
+    description: {
+        zh: "把回复里没有加链接的域名（如 example.com/docs）变成可点击的链接（只处理已完成的回复），可给链接和访问过的链接分别上色。",
+        en: "Turns bare domains in finished replies (like example.com/docs) into links, and can color links and visited links.",
+    },
     category: "messages",
     icon: "link",
+    updatedAt: "2026-10-30",
     enabledByDefault: false,
-    dependencies: ["DomApi"],
+    dependencies: ["DomApi", "StylesApi"],
+    settings,
     start(scope) {
+        addStyle(scope, linkCss(settings.store), "better-links");
+        if (!settings.store.bare) return;
         watch(scope, `${SEL.assistantMessage}[data-is-streaming="false"] ${SEL.prose}`, prose => {
             const added: HTMLAnchorElement[] = [];
             const walker = document.createTreeWalker(prose, NodeFilter.SHOW_TEXT, {

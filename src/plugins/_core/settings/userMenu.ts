@@ -53,6 +53,10 @@ export interface UserMenuOptions {
     settingsFlyout: boolean;
     /** Keys of the shortcut that opens CC++ settings, shown like claude.ai's own hint on its Settings row. */
     shortcut: string[];
+    /** Whether a row of the Settings submenu shows: "open", "ccpp", or a native section's hash. */
+    flyoutShows(row: string): boolean;
+    /** The claude.ai settings page "Open settings" goes to. */
+    nativeHash(): string;
 }
 
 /**
@@ -290,13 +294,20 @@ function enhance(menu: HTMLElement, settingsItem: HTMLElement, options: UserMenu
         settingsItem.appendChild(mark);
         added.push(mark);
         top.attach(settingsItem, "15rem", (scroll, child) => {
-            scroll.appendChild(row(ownIcon("settings"), t(L.openNative), { run: () => (location.hash = "settings/general") }));
-            scroll.appendChild(separator());
-            scroll.appendChild(caption("CC++"));
-            fillCcpp(scroll, child);
-            scroll.appendChild(separator());
-            scroll.appendChild(caption(t(L.claude)));
-            for (const section of NATIVE_SECTIONS) scroll.appendChild(row(sectionIcon(section), t(section.label), { run: () => (location.hash = section.hash) }));
+            // Each group is separated from the one before it, whichever of them are shown.
+            const group = (title: string | null) => {
+                if (scroll.childElementCount) scroll.appendChild(separator());
+                if (title) scroll.appendChild(caption(title));
+            };
+            if (options.flyoutShows("open")) scroll.appendChild(row(ownIcon("settings"), t(L.openNative), { run: () => (location.hash = options.nativeHash()) }));
+            if (options.flyoutShows("ccpp")) {
+                group("CC++");
+                fillCcpp(scroll, child);
+            }
+            const sections = NATIVE_SECTIONS.filter(section => options.flyoutShows(section.hash));
+            if (sections.length) group(t(L.claude));
+            for (const section of sections) scroll.appendChild(row(sectionIcon(section), t(section.label), { run: () => (location.hash = section.hash) }));
+            if (!scroll.childElementCount) scroll.appendChild(row(ownIcon("settings"), t(L.openNative), { run: () => (location.hash = options.nativeHash()) }));
         });
     }
 

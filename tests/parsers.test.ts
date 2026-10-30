@@ -655,3 +655,35 @@ test("every claude.ai theme colour CC++ names exists in claude.ai's theme", asyn
         for (const name of missing) expect(`${file}: ${text.includes(`var(${name}`)}`).toBe(`${file}: false`);
     }
 });
+
+import { cleanerCss, findCreditBadges } from "../src/plugins/cleaner";
+import { linkCss } from "../src/plugins/betterLinks";
+
+describe("Cleaner model menu", () => {
+    test("finds the Buy credits badge, not the Requires usage credits one", () => {
+        document.body.innerHTML = `<div role="menu" data-cds="ModelSelector"><div role="menuitem" data-model-id="claude-fable-5-1">
+            <span>Fable 5.1</span><span id="req" data-cds="Badge">Requires usage credits</span><span><span id="buy" data-cds="Badge"><span>Buy credits</span></span></span></div>
+            <div role="menuitemradio" data-model-id="claude-opus-5-5">Opus 5.5</div></div>
+            <div data-cds="Badge" id="elsewhere">Buy credits</div>`;
+        expect(findCreditBadges().map(el => el.id)).toEqual(["buy"]);
+    });
+    test("hides only rows that need credits when asked", () => {
+        const base = { plan: false, codeNudge: false, templates: false };
+        expect(cleanerCss({ ...base, lockedModels: false })).not.toContain("data-model-id");
+        document.head.innerHTML = `<style>${cleanerCss({ ...base, lockedModels: true })}</style>`;
+        document.body.innerHTML = `<div role="menu" data-cds="ModelSelector"><div id="fable" role="menuitem" data-model-id="a"></div><div id="opus" role="menuitemradio" data-model-id="b"></div><div id="effort" role="menuitem"></div></div>`;
+        const hidden = (id: string) => getComputedStyle(document.getElementById(id)!).display === "none";
+        expect([hidden("fable"), hidden("opus"), hidden("effort")]).toEqual([true, false, false]);
+        document.head.innerHTML = "";
+    });
+});
+
+describe("BetterLinks colors", () => {
+    test("off adds nothing; visited color only when chosen", () => {
+        expect(linkCss({ colors: false, linkColor: "#111111", visited: true, visitedColor: "#222222" })).toBe("");
+        const both = linkCss({ colors: true, linkColor: "#111111", visited: true, visitedColor: "#222222" });
+        expect(both).toContain("#111111");
+        expect(both).toContain(":visited");
+        expect(linkCss({ colors: true, linkColor: "#111111", visited: false, visitedColor: "#222222" })).not.toContain(":visited");
+    });
+});
