@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261108.0.3.130
+// @version      20261108.0.3.131
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -2884,6 +2884,9 @@ ${IMAGE_FIELD_CSS}`;
   }
 
   // src/plugins/_core/settings/codeGear.ts
+  var LABEL = { zh: "CC++ 设置", en: "CC++ settings" };
+  var LABEL_ATTRS = ["aria-label", "title"];
+  var TOOLTIP = '[data-cds="Tooltip"], [role="tooltip"]:not([data-ccpp-tooltip])';
   var onCodePage = () => location.pathname === "/code" || location.pathname.startsWith("/code/");
   var SKIP = '[role="dialog"], [role="menu"], [role="listbox"], [data-testid^="user-menu"], [data-ccpp-host], [data-ccpp-item], [aria-haspopup="menu"]';
   var SETTINGS_WORD = /setting|设置|設定/i;
@@ -2968,11 +2971,48 @@ ${IMAGE_FIELD_CSS}`;
           native.style.removeProperty("display");
           native.removeAttribute("data-ccpp-gear-hidden");
         }
+        for (const attr of LABEL_ATTRS) {
+          const key = `data-ccpp-gear-${attr}`;
+          if (!button.hasAttribute(key))
+            continue;
+          const old = button.getAttribute(key);
+          button.removeAttribute(key);
+          if (old)
+            button.setAttribute(attr, old);
+          else
+            button.removeAttribute(attr);
+        }
       }
       swapped.clear();
     };
+    const relabel = (button) => {
+      const label = t(LABEL);
+      for (const attr of LABEL_ATTRS) {
+        const now = button.getAttribute(attr);
+        if (now === null || now === label)
+          continue;
+        button.setAttribute(`data-ccpp-gear-${attr}`, now);
+        button.setAttribute(attr, label);
+      }
+    };
+    const retitle = () => {
+      if (!enabled() || !onCodePage())
+        return;
+      const gear = [...swapped].find((button) => button.matches(":hover, :focus-visible"));
+      if (!gear)
+        return;
+      const label = t(LABEL);
+      const originals = LABEL_ATTRS.map((attr) => gear.getAttribute(`data-ccpp-gear-${attr}`)).filter((v) => !!v);
+      for (const tip of document.querySelectorAll(TOOLTIP)) {
+        const leaves = [...tip.querySelectorAll("*"), tip].filter((el) => [...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim()));
+        const target = leaves.find((el) => originals.includes(el.textContent.trim())) ?? leaves.find((el) => SETTINGS_WORD.test(el.textContent ?? ""));
+        if (target && target.textContent !== label)
+          target.textContent = label;
+      }
+    };
     const swap = (button) => {
       swapped.add(button);
+      relabel(button);
       if (button.querySelector("[data-ccpp-gear-icon]")) {
         for (const native of button.querySelectorAll('[data-cds="Icon"]:not([data-ccpp-gear-hidden]), svg:not([data-ccpp-gear-icon]):not([data-ccpp-gear-hidden])')) {
           native.setAttribute("data-ccpp-gear-hidden", "");
@@ -3003,14 +3043,20 @@ ${IMAGE_FIELD_CSS}`;
         if (!button.closest(SKIP) && isGear(button))
           swap(button);
       }
+      retitle();
     };
+    watch(scope, TOOLTIP, () => {
+      retitle();
+      const timer = setTimeout(retitle, 50);
+      return () => clearTimeout(timer);
+    });
     onDomChange(scope, paint);
     scope.defer(restore);
     return { repaint: paint };
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.130";
+  var version = "0.3.131";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -9188,7 +9234,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.130",
+      version: "0.3.131",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -9205,7 +9251,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.130";
+    win[FLAG] = "0.3.131";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -9222,7 +9268,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.130"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.131"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();
