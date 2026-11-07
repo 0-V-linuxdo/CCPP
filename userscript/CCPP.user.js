@@ -2673,11 +2673,12 @@ select.input { padding-right: 6px; }
   // src/plugins/_core/settings/styles.ts
   var PANEL_CSS = `
 /* A page's toolbar (tabs, search, filters) stays at the top while its list scrolls under it. */
-.page-body > .sticky-top { position: sticky; top: -4px; z-index: 2; margin: -4px calc(-1 * var(--cds-pad-xl, 24px)) 0; padding: 4px var(--cds-pad-xl, 24px) 0; background: var(--bg); }
+.page-body > .sticky-top { position: sticky; top: -4px; z-index: 2; margin: -4px calc(-1 * var(--ccpp-pad-x, var(--cds-pad-xl, 24px))) 0; padding: 4px var(--ccpp-pad-x, var(--cds-pad-xl, 24px)) 0; background: var(--bg); }
 .page { display: flex; flex-direction: column; min-height: 0; height: 100%; }
-.page-head { flex: none; display: flex; align-items: center; gap: 8px; padding: 0 var(--cds-pad-xl, 24px) 8px; }
-.page-head h2 { margin: 0; flex: 1; font-size: var(--cds-font-size-heading, 18px); font-weight: 600; }
-.page-body { flex: 1; min-height: 0; overflow-y: auto; padding: 4px var(--cds-pad-xl, 24px) 24px; scrollbar-gutter: stable; }
+/* The title copies the native page title's offset and font (measured in native.ts), so it lines up with Account, Billing… */
+.page-head { flex: none; display: flex; align-items: center; gap: 8px; padding: var(--ccpp-head-top, 20px) var(--ccpp-pad-x, var(--cds-pad-xl, 24px)) var(--ccpp-head-gap, 12px); }
+.page-head h2 { margin: 0; flex: 1; font-size: var(--ccpp-head-size, var(--cds-font-size-heading, 18px)); font-weight: var(--ccpp-head-weight, 600); line-height: var(--ccpp-head-line, normal); letter-spacing: var(--ccpp-head-track, normal); font-family: var(--ccpp-head-font, inherit); }
+.page-body { flex: 1; min-height: 0; overflow-y: auto; padding: 4px var(--ccpp-pad-x, var(--cds-pad-xl, 24px)) 24px; scrollbar-gutter: stable; }
 
 .bar { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; }
 .search { position: relative; flex: 1; min-width: 0; }
@@ -3324,6 +3325,74 @@ ${IMAGE_FIELD_CSS}`;
     return h("span", { class: cls, "aria-hidden": "true", style: { display: "inline-flex", width: "1.25rem", justifyContent: "center" } }, icon(name, 18));
   }
   var sortedTabs = () => [...tabs.values()].sort((a, b) => a.order - b.order);
+  var HEAD_KEY = "settings.nativeHead";
+  var nativeHead = readJson(HEAD_KEY, null);
+  function learnNativeHead(panel) {
+    const heading = [...panel.querySelectorAll('h1, h2, h3, [role="heading"]')].find((el) => {
+      if (el.closest("[data-ccpp-host]") || !el.textContent?.trim())
+        return false;
+      const r = el.getBoundingClientRect();
+      return r.width > 10 && r.height > 10;
+    });
+    if (!heading)
+      return;
+    const box = panel.getBoundingClientRect();
+    const rect = heading.getBoundingClientRect();
+    if (!rect.height || !box.width)
+      return;
+    const style = getComputedStyle(heading);
+    let gap = 12;
+    let next = heading.nextElementSibling ?? heading.parentElement?.nextElementSibling ?? null;
+    while (next && !next.getClientRects().length)
+      next = next.nextElementSibling;
+    if (next)
+      gap = Math.round(next.getBoundingClientRect().top - rect.bottom);
+    const head = {
+      top: Math.round(rect.top - box.top),
+      left: Math.round(rect.left - box.left),
+      gap: Math.max(4, Math.min(gap, 40)),
+      size: style.fontSize,
+      weight: style.fontWeight,
+      line: style.lineHeight,
+      track: style.letterSpacing,
+      font: style.fontFamily
+    };
+    if (JSON.stringify(head) === JSON.stringify(nativeHead))
+      return;
+    nativeHead = head;
+    writeJson(HEAD_KEY, head);
+  }
+  function applyNativeHead(host, panel) {
+    if (!nativeHead)
+      return;
+    const box = panel.getBoundingClientRect();
+    const own = host.getBoundingClientRect();
+    const top = nativeHead.top - Math.round(own.top - box.top);
+    const left = nativeHead.left - Math.round(own.left - box.left);
+    const vars = {
+      "--ccpp-head-top": `${Math.max(0, top)}px`,
+      "--ccpp-head-gap": `${nativeHead.gap}px`,
+      "--ccpp-head-size": nativeHead.size,
+      "--ccpp-head-weight": nativeHead.weight,
+      "--ccpp-head-line": nativeHead.line,
+      "--ccpp-head-track": nativeHead.track,
+      "--ccpp-head-font": nativeHead.font
+    };
+    if (left >= 8)
+      vars["--ccpp-pad-x"] = `${left}px`;
+    for (const [name, value] of Object.entries(vars))
+      if (host.style.getPropertyValue(name) !== value)
+        host.style.setProperty(name, value);
+  }
+  function navDivider(root, scroller) {
+    const native = root.querySelector('[role="separator"]:not([data-ccpp-nav-divider]), hr:not([data-ccpp-nav-divider])') ?? [...scroller.children].find((el) => el.tagName !== "UL" && !el.hasAttribute("data-ccpp-nav-group") && !el.textContent?.trim() && el.getClientRects().length);
+    if (native) {
+      const copy = native.tagName === "LI" ? h("div", { class: native.className, role: "separator" }) : native.cloneNode(true);
+      copy.setAttribute("data-ccpp-nav-divider", "");
+      return copy;
+    }
+    return h("div", { role: "separator", "data-ccpp-nav-divider": "", style: { height: "1px", margin: "8px 12px", background: "var(--cds-border-line, rgba(127,127,127,.25))" } });
+  }
   function renderPage(tab, box) {
     const previous = box.querySelector(".page-body");
     const scrollTop = previous?.scrollTop ?? 0;
@@ -3409,6 +3478,15 @@ ${IMAGE_FIELD_CSS}`;
           else
             scroller.appendChild(group);
         }
+        let divider = group.querySelector(":scope > [data-ccpp-nav-divider]");
+        if (!divider)
+          divider = navDivider(root, scroller);
+        if (wantFirst ? group.lastElementChild !== divider : group.firstElementChild !== divider) {
+          if (wantFirst)
+            group.appendChild(divider);
+          else
+            group.prepend(divider);
+        }
         for (const button of group.querySelectorAll("button[data-tab]")) {
           const on = button.dataset.tab === active;
           const want = on ? c.on : c.off;
@@ -3425,13 +3503,16 @@ ${IMAGE_FIELD_CSS}`;
         const target = panel();
         if (!target)
           return;
-        target.toggleAttribute("data-ccpp-panel", !!active);
         if (!active) {
+          target.removeAttribute("data-ccpp-panel");
           shadow.host.remove();
+          learnNativeHead(target);
           return;
         }
+        target.setAttribute("data-ccpp-panel", "");
         if (shadow.host.parentNode !== target)
           target.appendChild(shadow.host);
+        applyNativeHead(shadow.host, target);
       };
       const draw = () => {
         const tab = active ? tabs.get(active) : null;
@@ -3445,6 +3526,9 @@ ${IMAGE_FIELD_CSS}`;
       function activate(id) {
         if (!tabs.has(id))
           return;
+        const target = panel();
+        if (!active && target)
+          learnNativeHead(target);
         active = id;
         if (location.hash !== HASH + id) {
           try {
