@@ -119,6 +119,30 @@ function applyNativeHead(host: HTMLElement, panel: HTMLElement) {
     for (const [name, value] of Object.entries(vars)) if (host.style.getPropertyValue(name) !== value) host.style.setProperty(name, value);
 }
 
+/** Stretches our divider edge to edge across the settings sidebar (as far as the scroller lets it show). */
+function spanDivider(divider: HTMLElement, root: HTMLElement, scroller: HTMLElement) {
+    const d = divider.getBoundingClientRect();
+    if (!d.width) return;
+    let edge = root.getBoundingClientRect();
+    let left = edge.left;
+    let right = edge.right;
+    // A scroller clips what sticks out of it, so stop at its inner edges then.
+    if (getComputedStyle(scroller).overflowX !== "visible") {
+        const box = scroller.getBoundingClientRect();
+        left = Math.max(left, box.left + scroller.clientLeft);
+        right = Math.min(right, box.left + scroller.clientLeft + scroller.clientWidth);
+    }
+    const style = getComputedStyle(divider);
+    const ml = `${Math.round(parseFloat(style.marginLeft) + left - d.left)}px`;
+    const mr = `${Math.round(parseFloat(style.marginRight) + d.right - right)}px`;
+    if (divider.style.marginLeft !== ml) divider.style.marginLeft = ml;
+    if (divider.style.marginRight !== mr) divider.style.marginRight = mr;
+    if (divider.style.width !== "auto") {
+        divider.style.width = "auto";
+        divider.style.maxWidth = "none";
+    }
+}
+
 /** A divider like the ones claude.ai draws between its nav groups. */
 function navDivider(root: HTMLElement, scroller: HTMLElement) {
     const native =
@@ -240,6 +264,7 @@ export function installNative(scope: Scope, position: () => "above" | "below") {
                 if (wantFirst) group.appendChild(divider);
                 else group.prepend(divider);
             }
+            spanDivider(divider, root, scroller);
             for (const button of group.querySelectorAll<HTMLElement>("button[data-tab]")) {
                 const on = button.dataset.tab === active;
                 const want = on ? c.on : c.off;

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261108.0.3.135
+// @version      20261108.0.3.136
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -3056,7 +3056,7 @@ ${IMAGE_FIELD_CSS}`;
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.135";
+  var version = "0.3.136";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -3499,6 +3499,30 @@ ${IMAGE_FIELD_CSS}`;
       if (host.style.getPropertyValue(name) !== value)
         host.style.setProperty(name, value);
   }
+  function spanDivider(divider, root, scroller) {
+    const d = divider.getBoundingClientRect();
+    if (!d.width)
+      return;
+    let edge = root.getBoundingClientRect();
+    let left = edge.left;
+    let right = edge.right;
+    if (getComputedStyle(scroller).overflowX !== "visible") {
+      const box = scroller.getBoundingClientRect();
+      left = Math.max(left, box.left + scroller.clientLeft);
+      right = Math.min(right, box.left + scroller.clientLeft + scroller.clientWidth);
+    }
+    const style = getComputedStyle(divider);
+    const ml = `${Math.round(parseFloat(style.marginLeft) + left - d.left)}px`;
+    const mr = `${Math.round(parseFloat(style.marginRight) + d.right - right)}px`;
+    if (divider.style.marginLeft !== ml)
+      divider.style.marginLeft = ml;
+    if (divider.style.marginRight !== mr)
+      divider.style.marginRight = mr;
+    if (divider.style.width !== "auto") {
+      divider.style.width = "auto";
+      divider.style.maxWidth = "none";
+    }
+  }
   function navDivider(root, scroller) {
     const native = root.querySelector('[role="separator"]:not([data-ccpp-nav-divider]), hr:not([data-ccpp-nav-divider])') ?? [...scroller.children].find((el) => el.tagName !== "UL" && !el.hasAttribute("data-ccpp-nav-group") && !el.textContent?.trim() && el.getClientRects().length);
     if (native) {
@@ -3602,6 +3626,7 @@ ${IMAGE_FIELD_CSS}`;
           else
             group.prepend(divider);
         }
+        spanDivider(divider, root, scroller);
         for (const button of group.querySelectorAll("button[data-tab]")) {
           const on = button.dataset.tab === active;
           const want = on ? c.on : c.off;
@@ -9323,7 +9348,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.135",
+      version: "0.3.136",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -9340,7 +9365,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.135";
+    win[FLAG] = "0.3.136";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -9357,7 +9382,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.135"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.136"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();
