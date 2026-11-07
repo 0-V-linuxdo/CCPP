@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261030.0.3.125
+// @version      20261107.0.3.126
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -2883,7 +2883,7 @@ ${IMAGE_FIELD_CSS}`;
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.125";
+  var version = "0.3.126";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -7598,10 +7598,43 @@ Write it down while the idea is fresh` })
     voice: { type: "boolean", label: { zh: "隐藏语音模式按钮", en: "Hide voice mode" }, default: true },
     readAloud: { type: "boolean", label: { zh: "隐藏回复下方的「朗读」按钮", en: "Hide Read aloud under replies" }, default: false }
   });
+  var MARK = "data-ccpp-no-dictation";
+  var MIC_GLYPH = "";
+  var MIC_TEXT = /dictat|microphone|\bmic\b|voice|speech|听写|语音|麦克风|录音/i;
+  function buttonText(button) {
+    const described = (button.getAttribute("aria-describedby") ?? "").split(/\s+/).filter(Boolean).map((id) => document.getElementById(id)?.textContent ?? "");
+    const srOnly = [...button.querySelectorAll(".sr-only")].map((el) => el.textContent ?? "");
+    return [button.getAttribute("aria-label"), button.getAttribute("title"), button.getAttribute("data-testid"), ...described, ...srOnly].filter(Boolean).join(" ");
+  }
+  function isMicButton(button) {
+    if (button.matches(SEL.sendButton) || button.closest(SEL.editor))
+      return false;
+    if (MIC_TEXT.test(buttonText(button)))
+      return true;
+    if ([...button.querySelectorAll('[data-cds="Icon"]')].some((icon) => icon.textContent?.trim() === MIC_GLYPH))
+      return true;
+    return !!button.querySelector('svg.lucide-mic, svg[class*="lucide-mic"], svg[data-icon*="mic" i], svg[data-icon*="microphone" i]');
+  }
+  function composerButtons() {
+    const out = new Set;
+    for (const editor of document.querySelectorAll(SEL.editor)) {
+      let node = editor;
+      for (let depth = 0;node && depth < 8; depth++, node = node.parentElement) {
+        if (node === document.body)
+          break;
+        for (const b of node.querySelectorAll("button"))
+          out.add(b);
+        if (node.querySelector(SEL.sendButton) && depth >= 3)
+          break;
+      }
+    }
+    return [...out];
+  }
   function noDictationCss(dictation, voice, readAloud = false) {
     const selectors = [
       ...dictation ? ['button[aria-label="Dictate"]', 'button[aria-label="Microphone"]', '[data-testid="chin-mic"]', 'button[aria-label="Dictation settings"]', 'button[aria-label^="Dictation" i]', 'button[aria-label*="dictat" i]'] : [],
       ...voice ? ['button[aria-label="Use voice mode"]', 'button[aria-label="Voice input"]', 'button[aria-label*="voice mode" i]'] : [],
+      ...dictation || voice ? [`[${MARK}]`] : [],
       ...readAloud ? ['[data-testid="action-bar-read-aloud"]', 'button[aria-label="Read aloud"]'] : []
     ];
     return selectors.length ? `${selectors.join(`,
@@ -7614,10 +7647,19 @@ Write it down while the idea is fresh` })
     category: "declutter",
     icon: "micOff",
     enabledByDefault: true,
-    dependencies: ["StylesApi"],
+    dependencies: ["StylesApi", "DomApi"],
     settings: settings16,
     start(scope) {
-      addStyle(scope, noDictationCss(settings16.store.dictation, settings16.store.voice, settings16.store.readAloud), "no-dictation");
+      const { dictation, voice, readAloud } = settings16.store;
+      addStyle(scope, noDictationCss(dictation, voice, readAloud), "no-dictation");
+      if (!dictation && !voice)
+        return;
+      onDomChange(scope, () => {
+        for (const b of composerButtons())
+          if (!b.hasAttribute(MARK) && isMicButton(b))
+            b.setAttribute(MARK, "");
+      });
+      scope.defer(() => document.querySelectorAll(`[${MARK}]`).forEach((el) => el.removeAttribute(MARK)));
     }
   });
 
@@ -8260,7 +8302,7 @@ ${links}:visited { color: ${o.visitedColor} !important; text-decoration-color: $
   var APPROACHING_RE = /\bapproaching\b|接近|即将/i;
   var MAX_TEXT = 240;
   var SKIP2 = `${SEL.userContent}, ${SEL.sidebar}, nav, [role="menu"], [role="dialog"], [data-ccpp], ul, ol, a[href], button, [role="button"], [role="list"], [role="listitem"], [role="option"]`;
-  var MARK = "data-ccpp-usage-banner";
+  var MARK2 = "data-ccpp-usage-banner";
   function barOf2(text) {
     let bar = null;
     for (let node = text;node && node !== document.body; node = node.parentElement) {
@@ -8302,17 +8344,17 @@ ${links}:visited { color: ${o.visitedColor} !important; text-decoration-color: $
       const { approaching, exhausted } = settings26.store;
       if (!approaching && !exhausted)
         return;
-      addStyle(scope, `[${MARK}] { display: none !important; }`, "usage-banner");
+      addStyle(scope, `[${MARK2}] { display: none !important; }`, "usage-banner");
       onDomChange(scope, () => {
         if (location.pathname.startsWith("/settings"))
           return;
         for (const { el, kind } of findUsageBanners()) {
-          if (el.hasAttribute(MARK) || !(kind === "approaching" ? approaching : exhausted))
+          if (el.hasAttribute(MARK2) || !(kind === "approaching" ? approaching : exhausted))
             continue;
-          el.setAttribute(MARK, kind);
+          el.setAttribute(MARK2, kind);
         }
       });
-      scope.defer(() => document.querySelectorAll(`[${MARK}]`).forEach((el) => el.removeAttribute(MARK)));
+      scope.defer(() => document.querySelectorAll(`[${MARK2}]`).forEach((el) => el.removeAttribute(MARK2)));
     }
   });
 
@@ -8895,7 +8937,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.125",
+      version: "0.3.126",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -8912,7 +8954,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.125";
+    win[FLAG] = "0.3.126";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -8929,7 +8971,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.125"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.126"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();

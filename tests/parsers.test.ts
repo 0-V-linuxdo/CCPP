@@ -341,7 +341,7 @@ describe("project outline", () => {
     });
 });
 
-import { noDictationCss } from "../src/plugins/noDictation";
+import { noDictationCss, isMicButton } from "../src/plugins/noDictation";
 import { streamerCss } from "../src/plugins/streamerMode";
 import { getText } from "../src/plugins/_api/composer";
 import { SEL } from "../src/plugins/_api/dom/selectors";
@@ -357,6 +357,18 @@ describe("declutter selectors match the current claude.ai DOM", () => {
         expect(hidden(css, `<button aria-label="Dictation settings"></button>`)).toBe(true);
         expect(hidden(css, `<button data-testid="action-bar-read-aloud" aria-label="Read aloud"></button>`)).toBe(true);
         expect(hidden(noDictationCss(true, true, false), `<button data-testid="action-bar-read-aloud"></button>`)).toBe(false);
+    });
+    test("noDictation recognises the Claude Code mic by its label or icon", () => {
+        const btn = (html: string) => {
+            document.body.innerHTML = html;
+            return document.body.querySelector("button")!;
+        };
+        expect(isMicButton(btn(`<button aria-label="Start voice input"></button>`))).toBe(true);
+        expect(isMicButton(btn(`<button><span class="sr-only">Dictate</span></button>`))).toBe(true);
+        expect(isMicButton(btn(`<button><span data-cds="Icon">\ue0ac</span></button>`))).toBe(true);
+        expect(isMicButton(btn(`<button><svg class="lucide lucide-mic"></svg></button>`))).toBe(true);
+        expect(isMicButton(btn(`<button aria-label="Add files"><span data-cds="Icon">\ue001</span></button>`))).toBe(false);
+        expect(isMicButton(btn(`<button data-testid="code-prompt-send" aria-label="Send voice"></button>`))).toBe(false);
     });
     test("streamerMode blurs the project title and device name", () => {
         const css = streamerCss({ identity: true, sidebar: false, title: true, hover: false, amount: 6 });
