@@ -68,13 +68,13 @@ export function pageVisit(path: string, search: string): { id: string; url: stri
 const currentVisit = () => pageVisit(location.pathname, location.search);
 
 /** Each Claude Code project's sidebar icon, as standalone markup (claude.ai's classes don't reach the popup). */
-const icons = persisted<Record<string, string>>("recent-chats-icons", {}, (v): v is Record<string, string> => !!v && typeof v === "object" && !Array.isArray(v) && Object.values(v).every(x => typeof x === "string"));
+const icons = persisted<Record<string, string>>("recent-chats-icons-v2", {}, (v): v is Record<string, string> => !!v && typeof v === "object" && !Array.isArray(v) && Object.values(v).every(x => typeof x === "string"));
 
 /** The project (chan_…) a visit belongs to, for Claude Code projects and their threads. */
 export const projectOf = (visit: { id: string }) => (/^chan_[A-Za-z0-9]+/.exec(visit.id)?.[0] ?? null);
 
 const ICON_TAGS = new Set(["span", "div", "img", "svg", "g", "path", "circle", "rect", "ellipse", "line", "polyline", "polygon", "defs", "lineargradient", "radialgradient", "stop", "clippath", "mask", "use", "symbol", "text", "tspan"]);
-const ICON_STYLE = ["color", "background-color", "background-image", "background-size", "background-position", "width", "height", "min-width", "border-radius", "display", "align-items", "justify-content", "font-size", "font-weight", "line-height", "fill", "stroke", "stroke-width", "opacity", "object-fit", "padding", "box-sizing", "transform"];
+const ICON_STYLE = ["color", "background-color", "background-image", "background-size", "background-position", "width", "height", "min-width", "border-radius", "display", "align-items", "justify-content", "font-family", "font-size", "font-weight", "font-style", "font-feature-settings", "font-variation-settings", "letter-spacing", "-webkit-font-smoothing", "text-align", "line-height", "fill", "stroke", "stroke-width", "opacity", "object-fit", "padding", "box-sizing"];
 
 /** Keeps only drawing tags and harmless attributes, so stored markup can't run anything. */
 export function cleanIcon(root: Element) {
@@ -167,12 +167,12 @@ const CSS = `
 .card { position: relative; display: flex; flex-direction: column; gap: 6px; min-height: 76px; padding: 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--bg2); text-align: left; }
 .card:hover, .card.sel { border-color: var(--accent); background: var(--bg); }
 .card .n { position: absolute; top: 8px; right: 10px; font-size: 11px; color: var(--fg3); }
-.card .head { display: flex; align-items: flex-start; gap: 8px; padding-right: 16px; }
-.card .ic { flex: none; display: grid; place-items: center; width: 20px; height: 20px; overflow: hidden; }
-.card .ic > * { max-width: 20px; max-height: 20px; }
+.card .s .l { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.card .s .l > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card .ic { flex: none; display: grid; place-items: center; width: 16px; height: 16px; overflow: hidden; }
+.card .ic > * { zoom: .67; }
 .card .t { font-weight: 600; padding-right: 16px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .card .s { display: flex; justify-content: space-between; gap: 8px; color: var(--fg3); font-size: 12px; margin-top: auto; }
-.card .s .l { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .card .s .a { flex: none; margin-left: auto; }
 .card.cur .s .a::before { content: "● "; color: var(--accent); }
 .empty { padding: 24px; text-align: center; color: var(--fg3); }
@@ -250,8 +250,8 @@ export default definePlugin({
                     "button",
                     { type: "button", class: `card${i === selected ? " sel" : ""}${visit.id === here ? " cur" : ""}` },
                     i < 9 ? h("span", { class: "n", text: String(i + 1) }) : null,
-                    h("span", { class: "head" }, cardIcon(visit), h("span", { class: "t", text: visit.title || visit.id.slice(0, 8) })),
-                    h("span", { class: "s" }, h("span", { class: "l", text: cardLabel(visit) }), h("span", { class: "a", text: agoText(visit.at) })),
+                    h("span", { class: "t", text: visit.title || visit.id.slice(0, 8) }),
+                    h("span", { class: "s" }, h("span", { class: "l" }, cardIcon(visit), h("span", { text: cardLabel(visit) })), h("span", { class: "a", text: agoText(visit.at) })),
                 );
                 card.addEventListener("click", () => go(visit));
                 cards.appendChild(card);

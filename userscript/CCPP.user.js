@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261108.0.3.136
+// @version      20261108.0.3.137
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -3056,7 +3056,7 @@ ${IMAGE_FIELD_CSS}`;
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.136";
+  var version = "0.3.137";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -8047,10 +8047,10 @@ ${targets.map((t) => `${t}:hover`).join(`,
     return null;
   }
   var currentVisit = () => pageVisit(location.pathname, location.search);
-  var icons = persisted("recent-chats-icons", {}, (v) => !!v && typeof v === "object" && !Array.isArray(v) && Object.values(v).every((x) => typeof x === "string"));
+  var icons = persisted("recent-chats-icons-v2", {}, (v) => !!v && typeof v === "object" && !Array.isArray(v) && Object.values(v).every((x) => typeof x === "string"));
   var projectOf = (visit) => /^chan_[A-Za-z0-9]+/.exec(visit.id)?.[0] ?? null;
   var ICON_TAGS = new Set(["span", "div", "img", "svg", "g", "path", "circle", "rect", "ellipse", "line", "polyline", "polygon", "defs", "lineargradient", "radialgradient", "stop", "clippath", "mask", "use", "symbol", "text", "tspan"]);
-  var ICON_STYLE = ["color", "background-color", "background-image", "background-size", "background-position", "width", "height", "min-width", "border-radius", "display", "align-items", "justify-content", "font-size", "font-weight", "line-height", "fill", "stroke", "stroke-width", "opacity", "object-fit", "padding", "box-sizing", "transform"];
+  var ICON_STYLE = ["color", "background-color", "background-image", "background-size", "background-position", "width", "height", "min-width", "border-radius", "display", "align-items", "justify-content", "font-family", "font-size", "font-weight", "font-style", "font-feature-settings", "font-variation-settings", "letter-spacing", "-webkit-font-smoothing", "text-align", "line-height", "fill", "stroke", "stroke-width", "opacity", "object-fit", "padding", "box-sizing"];
   function cleanIcon(root) {
     for (const el of [root, ...root.querySelectorAll("*")]) {
       if (!ICON_TAGS.has(el.tagName.toLowerCase())) {
@@ -8135,12 +8135,12 @@ ${targets.map((t) => `${t}:hover`).join(`,
 .card { position: relative; display: flex; flex-direction: column; gap: 6px; min-height: 76px; padding: 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--bg2); text-align: left; }
 .card:hover, .card.sel { border-color: var(--accent); background: var(--bg); }
 .card .n { position: absolute; top: 8px; right: 10px; font-size: 11px; color: var(--fg3); }
-.card .head { display: flex; align-items: flex-start; gap: 8px; padding-right: 16px; }
-.card .ic { flex: none; display: grid; place-items: center; width: 20px; height: 20px; overflow: hidden; }
-.card .ic > * { max-width: 20px; max-height: 20px; }
+.card .s .l { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.card .s .l > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card .ic { flex: none; display: grid; place-items: center; width: 16px; height: 16px; overflow: hidden; }
+.card .ic > * { zoom: .67; }
 .card .t { font-weight: 600; padding-right: 16px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .card .s { display: flex; justify-content: space-between; gap: 8px; color: var(--fg3); font-size: 12px; margin-top: auto; }
-.card .s .l { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .card .s .a { flex: none; margin-left: auto; }
 .card.cur .s .a::before { content: "● "; color: var(--accent); }
 .empty { padding: 24px; text-align: center; color: var(--fg3); }
@@ -8215,7 +8215,7 @@ ${targets.map((t) => `${t}:hover`).join(`,
         const here = currentVisit()?.id;
         const cards = h("div", { class: "cards" });
         list.forEach((visit, i) => {
-          const card = h("button", { type: "button", class: `card${i === selected ? " sel" : ""}${visit.id === here ? " cur" : ""}` }, i < 9 ? h("span", { class: "n", text: String(i + 1) }) : null, h("span", { class: "head" }, cardIcon(visit), h("span", { class: "t", text: visit.title || visit.id.slice(0, 8) })), h("span", { class: "s" }, h("span", { class: "l", text: cardLabel(visit) }), h("span", { class: "a", text: agoText(visit.at) })));
+          const card = h("button", { type: "button", class: `card${i === selected ? " sel" : ""}${visit.id === here ? " cur" : ""}` }, i < 9 ? h("span", { class: "n", text: String(i + 1) }) : null, h("span", { class: "t", text: visit.title || visit.id.slice(0, 8) }), h("span", { class: "s" }, h("span", { class: "l" }, cardIcon(visit), h("span", { text: cardLabel(visit) })), h("span", { class: "a", text: agoText(visit.at) })));
           card.addEventListener("click", () => go(visit));
           cards.appendChild(card);
         });
@@ -9348,7 +9348,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.136",
+      version: "0.3.137",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -9365,7 +9365,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.136";
+    win[FLAG] = "0.3.137";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -9382,7 +9382,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.136"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.137"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();
