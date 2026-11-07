@@ -16,9 +16,9 @@ const settings = definePluginSettings({
 });
 
 const MARK = "data-ccpp-no-dictation";
-/** Anthropicons' microphone glyph (the crossed-out one, micOff, is U+E0AD). */
-const MIC_GLYPH = "\ue0ac";
-const MIC_TEXT = /dictat|microphone|\bmic\b|voice|speech|听写|语音|麦克风|录音/i;
+/** Anthropicons' microphone glyph, as the Claude Code mic draws it (2026-11; micOff is U+E0AD). */
+const MIC_GLYPH = "\ue0ab";
+const MIC_TEXT = /dictat|microphone|\bmic\b|voice|speech|hold to record|听写|语音|麦克风|录音/i;
 
 /** Everything a button says about itself: its label, title, tooltip and screen-reader text. */
 function buttonText(button: Element) {
@@ -55,9 +55,9 @@ function composerButtons(): Element[] {
 
 export function noDictationCss(dictation: boolean, voice: boolean, readAloud = false) {
     const selectors = [
-        // The chevron next to the mic opens dictation settings ("Hold to record"); the Claude Code composer
+        // The Claude Code mic is "Press and hold to record" (2026-11). The chevron next to the mic opens dictation settings ("Hold to record"); the Claude Code composer
         // is not a ChatComposer, so these labels are matched anywhere.
-        ...(dictation ? ['button[aria-label="Dictate"]', 'button[aria-label="Microphone"]', '[data-testid="chin-mic"]', 'button[aria-label="Dictation settings"]', 'button[aria-label^="Dictation" i]', 'button[aria-label*="dictat" i]'] : []),
+        ...(dictation ? ['button[aria-label="Dictate"]', 'button[aria-label="Microphone"]', '[data-testid="chin-mic"]', 'button[aria-label="Dictation settings"]', 'button[aria-label^="Dictation" i]', 'button[aria-label*="dictat" i]', 'button[aria-label*="hold to record" i]'] : []),
         ...(voice ? ['button[aria-label="Use voice mode"]', 'button[aria-label="Voice input"]', 'button[aria-label*="voice mode" i]'] : []),
         // Buttons the composer scan below recognised by their text or mic icon.
         ...(dictation || voice ? [`[${MARK}]`] : []),

@@ -370,6 +370,7 @@ describe("declutter selectors match the current claude.ai DOM", () => {
     test("noDictation hides the Code dictation chevron and Read aloud", () => {
         const css = noDictationCss(true, true, true);
         expect(hidden(css, `<button aria-label="Dictation settings"></button>`)).toBe(true);
+        expect(hidden(css, `<button data-cds="Button" aria-label="Press and hold to record"></button>`)).toBe(true);
         expect(hidden(css, `<button data-testid="action-bar-read-aloud" aria-label="Read aloud"></button>`)).toBe(true);
         expect(hidden(noDictationCss(true, true, false), `<button data-testid="action-bar-read-aloud"></button>`)).toBe(false);
     });
@@ -380,7 +381,8 @@ describe("declutter selectors match the current claude.ai DOM", () => {
         };
         expect(isMicButton(btn(`<button aria-label="Start voice input"></button>`))).toBe(true);
         expect(isMicButton(btn(`<button><span class="sr-only">Dictate</span></button>`))).toBe(true);
-        expect(isMicButton(btn(`<button><span data-cds="Icon">\ue0ac</span></button>`))).toBe(true);
+        expect(isMicButton(btn(`<button><span data-cds="Icon">\ue0ab</span></button>`))).toBe(true);
+        expect(isMicButton(btn(`<button aria-label="Press and hold to record" aria-pressed="false"></button>`))).toBe(true);
         expect(isMicButton(btn(`<button><svg class="lucide lucide-mic"></svg></button>`))).toBe(true);
         expect(isMicButton(btn(`<button aria-label="Add files"><span data-cds="Icon">\ue001</span></button>`))).toBe(false);
         expect(isMicButton(btn(`<button data-testid="code-prompt-send" aria-label="Send voice"></button>`))).toBe(false);

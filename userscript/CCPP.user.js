@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261108.0.3.132
+// @version      20261108.0.3.133
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -3056,7 +3056,7 @@ ${IMAGE_FIELD_CSS}`;
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.132";
+  var version = "0.3.133";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -7868,8 +7868,8 @@ Write it down while the idea is fresh` })
     readAloud: { type: "boolean", label: { zh: "隐藏回复下方的「朗读」按钮", en: "Hide Read aloud under replies" }, default: false }
   });
   var MARK = "data-ccpp-no-dictation";
-  var MIC_GLYPH = "";
-  var MIC_TEXT = /dictat|microphone|\bmic\b|voice|speech|听写|语音|麦克风|录音/i;
+  var MIC_GLYPH = "";
+  var MIC_TEXT = /dictat|microphone|\bmic\b|voice|speech|hold to record|听写|语音|麦克风|录音/i;
   function buttonText(button) {
     const described = (button.getAttribute("aria-describedby") ?? "").split(/\s+/).filter(Boolean).map((id) => document.getElementById(id)?.textContent ?? "");
     const srOnly = [...button.querySelectorAll(".sr-only")].map((el) => el.textContent ?? "");
@@ -7901,7 +7901,7 @@ Write it down while the idea is fresh` })
   }
   function noDictationCss(dictation, voice, readAloud = false) {
     const selectors = [
-      ...dictation ? ['button[aria-label="Dictate"]', 'button[aria-label="Microphone"]', '[data-testid="chin-mic"]', 'button[aria-label="Dictation settings"]', 'button[aria-label^="Dictation" i]', 'button[aria-label*="dictat" i]'] : [],
+      ...dictation ? ['button[aria-label="Dictate"]', 'button[aria-label="Microphone"]', '[data-testid="chin-mic"]', 'button[aria-label="Dictation settings"]', 'button[aria-label^="Dictation" i]', 'button[aria-label*="dictat" i]', 'button[aria-label*="hold to record" i]'] : [],
       ...voice ? ['button[aria-label="Use voice mode"]', 'button[aria-label="Voice input"]', 'button[aria-label*="voice mode" i]'] : [],
       ...dictation || voice ? [`[${MARK}]`] : [],
       ...readAloud ? ['[data-testid="action-bar-read-aloud"]', 'button[aria-label="Read aloud"]'] : []
@@ -9249,7 +9249,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.132",
+      version: "0.3.133",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -9266,7 +9266,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.132";
+    win[FLAG] = "0.3.133";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -9283,7 +9283,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.132"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.133"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();
