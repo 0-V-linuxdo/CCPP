@@ -12,6 +12,7 @@ import { shadowBox } from "@lib/ui";
 import { tipAttrs } from "@lib/tooltip";
 import { watch } from "@api/dom";
 import { addStyle } from "@api/styles";
+import { readJson, writeJson } from "@kernel/storage";
 
 import { NATIVE_DIALOG, openModal } from "./layer";
 import { onRedraw, type SettingsTab, tabs, version } from "./state";
@@ -50,6 +51,86 @@ function nativeGlyph(name: string, cls: string) {
 }
 
 export const sortedTabs = () => [...tabs.values()].sort((a, b) => a.order - b.order);
+
+/** Where and how claude.ai draws a settings page's title, relative to the panel. Kept so CC++ pages match it. */
+interface NativeHead {
+    top: number;
+    left: number;
+    gap: number;
+    size: string;
+    weight: string;
+    line: string;
+    track: string;
+    font: string;
+}
+const HEAD_KEY = "settings.nativeHead";
+let nativeHead: NativeHead | null = readJson<NativeHead | null>(HEAD_KEY, null);
+
+/** Reads the title of the native page on show (call while it is visible). */
+function learnNativeHead(panel: HTMLElement) {
+    const heading = [...panel.querySelectorAll<HTMLElement>('h1, h2, h3, [role="heading"]')].find(el => {
+        if (el.closest("[data-ccpp-host]") || !el.textContent?.trim()) return false;
+        // Skip visually hidden (sr-only) dialog titles.
+        const r = el.getBoundingClientRect();
+        return r.width > 10 && r.height > 10;
+    });
+    if (!heading) return;
+    const box = panel.getBoundingClientRect();
+    const rect = heading.getBoundingClientRect();
+    if (!rect.height || !box.width) return;
+    const style = getComputedStyle(heading);
+    // The gap down to whatever follows the title (a description or the first row).
+    let gap = 12;
+    let next = heading.nextElementSibling ?? heading.parentElement?.nextElementSibling ?? null;
+    while (next && !next.getClientRects().length) next = next.nextElementSibling;
+    if (next) gap = Math.round(next.getBoundingClientRect().top - rect.bottom);
+    const head: NativeHead = {
+        top: Math.round(rect.top - box.top),
+        left: Math.round(rect.left - box.left),
+        gap: Math.max(4, Math.min(gap, 40)),
+        size: style.fontSize,
+        weight: style.fontWeight,
+        line: style.lineHeight,
+        track: style.letterSpacing,
+        font: style.fontFamily,
+    };
+    if (JSON.stringify(head) === JSON.stringify(nativeHead)) return;
+    nativeHead = head;
+    writeJson(HEAD_KEY, head);
+}
+
+/** Puts the learned title metrics on our host, offset by where the host itself sits in the panel. */
+function applyNativeHead(host: HTMLElement, panel: HTMLElement) {
+    if (!nativeHead) return;
+    const box = panel.getBoundingClientRect();
+    const own = host.getBoundingClientRect();
+    const top = nativeHead.top - Math.round(own.top - box.top);
+    const left = nativeHead.left - Math.round(own.left - box.left);
+    const vars: Record<string, string> = {
+        "--ccpp-head-top": `${Math.max(0, top)}px`,
+        "--ccpp-head-gap": `${nativeHead.gap}px`,
+        "--ccpp-head-size": nativeHead.size,
+        "--ccpp-head-weight": nativeHead.weight,
+        "--ccpp-head-line": nativeHead.line,
+        "--ccpp-head-track": nativeHead.track,
+        "--ccpp-head-font": nativeHead.font,
+    };
+    if (left >= 8) vars["--ccpp-pad-x"] = `${left}px`;
+    for (const [name, value] of Object.entries(vars)) if (host.style.getPropertyValue(name) !== value) host.style.setProperty(name, value);
+}
+
+/** A divider like the ones claude.ai draws between its nav groups. */
+function navDivider(root: HTMLElement, scroller: HTMLElement) {
+    const native =
+        root.querySelector<HTMLElement>('[role="separator"]:not([data-ccpp-nav-divider]), hr:not([data-ccpp-nav-divider])') ??
+        ([...scroller.children].find(el => el.tagName !== "UL" && !el.hasAttribute("data-ccpp-nav-group") && !el.textContent?.trim() && el.getClientRects().length) as HTMLElement | undefined);
+    if (native) {
+        const copy = native.tagName === "LI" ? h("div", { class: native.className, role: "separator" }) : (native.cloneNode(true) as HTMLElement);
+        copy.setAttribute("data-ccpp-nav-divider", "");
+        return copy;
+    }
+    return h("div", { role: "separator", "data-ccpp-nav-divider": "", style: { height: "1px", margin: "8px 12px", background: "var(--cds-border-line, rgba(127,127,127,.25))" } });
+}
 
 function renderPage(tab: SettingsTab, box: HTMLElement) {
     const previous = box.querySelector(".page-body");
@@ -152,6 +233,13 @@ export function installNative(scope: Scope, position: () => "above" | "below") {
                 if (wantFirst) scroller.prepend(group);
                 else scroller.appendChild(group);
             }
+            // The same divider claude.ai puts between its own groups, on the side facing them.
+            let divider = group.querySelector<HTMLElement>(":scope > [data-ccpp-nav-divider]");
+            if (!divider) divider = navDivider(root, scroller);
+            if (wantFirst ? group.lastElementChild !== divider : group.firstElementChild !== divider) {
+                if (wantFirst) group.appendChild(divider);
+                else group.prepend(divider);
+            }
             for (const button of group.querySelectorAll<HTMLElement>("button[data-tab]")) {
                 const on = button.dataset.tab === active;
                 const want = on ? c.on : c.off;
@@ -165,12 +253,15 @@ export function installNative(scope: Scope, position: () => "above" | "below") {
         const paintPanel = () => {
             const target = panel();
             if (!target) return;
-            target.toggleAttribute("data-ccpp-panel", !!active);
             if (!active) {
+                target.removeAttribute("data-ccpp-panel");
                 shadow.host.remove();
+                learnNativeHead(target);
                 return;
             }
+            target.setAttribute("data-ccpp-panel", "");
             if (shadow.host.parentNode !== target) target.appendChild(shadow.host);
+            applyNativeHead(shadow.host, target);
         };
 
         const draw = () => {
@@ -183,6 +274,9 @@ export function installNative(scope: Scope, position: () => "above" | "below") {
 
         function activate(id: string) {
             if (!tabs.has(id)) return;
+            // Last look at the native page's title while it is still showing.
+            const target = panel();
+            if (!active && target) learnNativeHead(target);
             active = id;
             if (location.hash !== HASH + id) {
                 try {

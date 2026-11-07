@@ -10,11 +10,12 @@ import { STAR_COLOR } from "@lib/themeColor";
 /** The CC++ pages (plugins, themes, Quick CSS). Mirrors claude.ai's settings panel and void++'s cards. */
 export const PANEL_CSS = `
 /* A page's toolbar (tabs, search, filters) stays at the top while its list scrolls under it. */
-.page-body > .sticky-top { position: sticky; top: -4px; z-index: 2; margin: -4px calc(-1 * var(--cds-pad-xl, 24px)) 0; padding: 4px var(--cds-pad-xl, 24px) 0; background: var(--bg); }
+.page-body > .sticky-top { position: sticky; top: -4px; z-index: 2; margin: -4px calc(-1 * var(--ccpp-pad-x, var(--cds-pad-xl, 24px))) 0; padding: 4px var(--ccpp-pad-x, var(--cds-pad-xl, 24px)) 0; background: var(--bg); }
 .page { display: flex; flex-direction: column; min-height: 0; height: 100%; }
-.page-head { flex: none; display: flex; align-items: center; gap: 8px; padding: 0 var(--cds-pad-xl, 24px) 8px; }
-.page-head h2 { margin: 0; flex: 1; font-size: var(--cds-font-size-heading, 18px); font-weight: 600; }
-.page-body { flex: 1; min-height: 0; overflow-y: auto; padding: 4px var(--cds-pad-xl, 24px) 24px; scrollbar-gutter: stable; }
+/* The title copies the native page title's offset and font (measured in native.ts), so it lines up with Account, Billing… */
+.page-head { flex: none; display: flex; align-items: center; gap: 8px; padding: var(--ccpp-head-top, 20px) var(--ccpp-pad-x, var(--cds-pad-xl, 24px)) var(--ccpp-head-gap, 12px); }
+.page-head h2 { margin: 0; flex: 1; font-size: var(--ccpp-head-size, var(--cds-font-size-heading, 18px)); font-weight: var(--ccpp-head-weight, 600); line-height: var(--ccpp-head-line, normal); letter-spacing: var(--ccpp-head-track, normal); font-family: var(--ccpp-head-font, inherit); }
+.page-body { flex: 1; min-height: 0; overflow-y: auto; padding: 4px var(--ccpp-pad-x, var(--cds-pad-xl, 24px)) 24px; scrollbar-gutter: stable; }
 
 .bar { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; }
 .search { position: relative; flex: 1; min-width: 0; }
