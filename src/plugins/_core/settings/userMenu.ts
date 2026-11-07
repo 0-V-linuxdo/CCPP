@@ -115,7 +115,7 @@ const KEY_NAMES: Record<string, string> = { "⇧": "Shift", "⌘": "Command", "�
 
 type Fill = (scroll: HTMLElement, child: Level) => void;
 interface Level {
-    attach(trigger: HTMLElement, width: string, fill: Fill, onClick?: () => void): void;
+    attach(trigger: HTMLElement, width: string, fill: Fill): void;
     close(): void;
     isOpen(trigger: HTMLElement): boolean;
 }
@@ -227,7 +227,7 @@ function enhance(menu: HTMLElement, settingsItem: HTMLElement, options: UserMenu
             open.trigger.setAttribute("aria-expanded", "false");
             open = null;
         };
-        const attach = (trigger: HTMLElement, width: string, fill: Fill, onClick?: () => void) => {
+        const attach = (trigger: HTMLElement, width: string, fill: Fill) => {
             trigger.setAttribute("aria-haspopup", "menu");
             trigger.setAttribute("aria-expanded", "false");
             const show = () => {
@@ -247,14 +247,11 @@ function enhance(menu: HTMLElement, settingsItem: HTMLElement, options: UserMenu
                 open = { trigger, el, close: child.close };
             };
             trigger.addEventListener("pointerenter", show);
-            // Our rows open their submenu on click (or run `onClick`); claude.ai's Settings row keeps its own click.
+            // Our rows open their submenu on click; claude.ai's Settings row keeps its own click.
             if (trigger.hasAttribute("data-ccpp-item")) {
                 trigger.addEventListener("click", event => {
                     event.stopPropagation();
-                    if (!onClick) return show();
-                    event.preventDefault();
-                    closeMenu(menu);
-                    setTimeout(onClick, 0);
+                    show();
                 });
             }
             trigger.addEventListener("keydown", (event: KeyboardEvent) => {
@@ -321,8 +318,7 @@ function enhance(menu: HTMLElement, settingsItem: HTMLElement, options: UserMenu
             fillCcpp(scroll, child);
             scroll.appendChild(separator());
             scroll.appendChild(row(ownIcon("settings"), t(L.openSettings), { run: () => options.openTab("plugins") }));
-            // Hover still unfolds the submenu; a click opens CC++ settings, like the Settings row above it.
-        }, () => options.openTab("plugins"));
+        });
         settingsItem.after(entry);
         added.push(entry);
     }

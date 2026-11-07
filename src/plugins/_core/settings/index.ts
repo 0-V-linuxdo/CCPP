@@ -14,6 +14,7 @@ import { bindKey, comboKeys, comboLabel } from "@api/hotkeys";
 import { addMenuCommand } from "@api/menu";
 import { addSlotItem, slotButton } from "@api/slots";
 
+import { installCodeGear } from "./codeGear";
 import { closeAllModals, initLayer } from "./layer";
 import { closeStandalone, installNative, nativeOpen, openNative, openStandalone, sortedTabs, standaloneOpen } from "./native";
 import { listedPlugins, openPluginDialog, renderPluginsTab } from "./pluginsTab";
@@ -97,6 +98,15 @@ const settings = definePluginSettings({
             { value: "configurable", label: { zh: "有设置项的", en: "Ones with settings" } },
         ],
         visible: v => v.userMenuEntry === true || inFlyout(v),
+    },
+    codeGear: {
+        type: "boolean",
+        label: { zh: "Code 页侧栏的齿轮按钮打开 CC++", en: "Code sidebar gear opens CC++" },
+        description: {
+            zh: "在同一个设置弹窗里直接打开 CC++ 的「插件」页，claude.ai 自己的设置仍在左侧导航；按住 Alt / Shift 点击照旧打开原生 Code 设置。",
+            en: "Lands on CC++ Plugins in the same settings dialog; claude.ai's own pages stay in its nav. Alt- or Shift-click keeps the original Code page.",
+        },
+        default: true,
     },
     hotkey: { type: "string", label: { zh: "打开设置的快捷键", en: "Shortcut to open settings" }, description: { zh: "如 mod+shift+.，留空关闭。", en: "e.g. mod+shift+.; empty disables." }, default: "mod+shift+." },
     composerEntry: { type: "boolean", label: { zh: "在输入框旁显示 CC++ 按钮", en: "CC++ button next to the model picker" }, default: false },
@@ -191,6 +201,7 @@ export default definePlugin({
         scope.defer(onSettingsChange((_, key) => key === "enabled" && redraw()));
         scope.defer(prefs.subscribe(redraw));
         installEntries(scope);
+        installCodeGear(scope, () => settings.store.codeGear, () => void openSettings({ tab: "plugins" }));
         const remember = () => {
             const hash = location.hash.slice(1);
             if (NATIVE_SECTIONS.some(s => s.hash === hash)) lastNative.set(hash);
