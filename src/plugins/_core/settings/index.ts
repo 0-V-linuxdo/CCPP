@@ -101,10 +101,10 @@ const settings = definePluginSettings({
     },
     codeGear: {
         type: "boolean",
-        label: { zh: "Code 页侧栏的齿轮按钮打开 CC++", en: "Code sidebar gear opens CC++" },
+        label: { zh: "Code 页侧栏的齿轮按钮换成 CC++ 入口", en: "Code sidebar gear becomes the CC++ entry" },
         description: {
-            zh: "在同一个设置弹窗里直接打开 CC++ 的「插件」页，claude.ai 自己的设置仍在左侧导航；按住 Alt / Shift 点击照旧打开原生 Code 设置。",
-            en: "Lands on CC++ Plugins in the same settings dialog; claude.ai's own pages stay in its nav. Alt- or Shift-click keeps the original Code page.",
+            zh: "图标换成滑杆，点击在同一个设置弹窗里直接打开 CC++ 的「插件」页，claude.ai 自己的设置仍在左侧导航；按住 Alt / Shift 点击照旧打开原生 Code 设置。",
+            en: "Shows a sliders icon and lands on CC++ Plugins in the same settings dialog; claude.ai's own pages stay in its nav. Alt- or Shift-click keeps the original Code page.",
         },
         default: true,
     },
@@ -178,6 +178,8 @@ function installEntries(parent: Scope) {
     if (settings.store.composerEntry) addSlotItem(scope, "composer", "settings", () => slotButton(t(L.openSettings), () => openSettings(), icon("plug", 16)), 100);
 }
 
+let codeGear: { repaint(): void } | null = null;
+
 export default definePlugin({
     name: "Settings",
     title: { zh: "设置面板", en: "Settings" },
@@ -201,7 +203,7 @@ export default definePlugin({
         scope.defer(onSettingsChange((_, key) => key === "enabled" && redraw()));
         scope.defer(prefs.subscribe(redraw));
         installEntries(scope);
-        installCodeGear(scope, () => settings.store.codeGear, () => void openSettings({ tab: "plugins" }));
+        codeGear = installCodeGear(scope, () => settings.store.codeGear, () => void openSettings({ tab: "plugins" }));
         const remember = () => {
             const hash = location.hash.slice(1);
             if (NATIVE_SECTIONS.some(s => s.hash === hash)) lastNative.set(hash);
@@ -212,6 +214,7 @@ export default definePlugin({
     onSettingsChange(key, scope) {
         if (key === "language") setLang(settings.store.language as "auto" | "zh" | "en");
         if (key === "showApiPlugins") view.showApi = settings.store.showApiPlugins;
+        if (key === "codeGear") codeGear?.repaint();
         if (key === "hotkey" || key === "composerEntry" || key === "userMenuEntry" || key === "settingsFlyout") installEntries(scope);
         redraw();
     },

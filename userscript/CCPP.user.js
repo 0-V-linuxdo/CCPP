@@ -2894,14 +2894,20 @@ ${IMAGE_FIELD_CSS}`;
     const rect = el.getBoundingClientRect();
     return rect.right < Math.min(420, innerWidth * 0.4) && rect.top > innerHeight * 0.6;
   }
-  function isGear(el) {
-    if (!inSidebar(el))
-      return false;
-    const label = [el.getAttribute("aria-label"), el.getAttribute("title"), el.getAttribute("data-testid"), el.getAttribute("data-ccpp-tip")].filter(Boolean).join(" ");
-    if (SETTINGS_WORD.test(label))
+  var LEARNED = "data-ccpp-code-gear";
+  var GEAR_GLYPH = glyph("settings");
+  function hasGearIcon(el) {
+    if (el.querySelector("[data-ccpp-gear-icon]"))
       return true;
-    const href = el.getAttribute("href") ?? "";
-    return href.includes("#settings");
+    const glyphs = el.querySelectorAll('[data-cds="Icon"]');
+    return glyphs.length === 1 && !!GEAR_GLYPH && glyphs[0].textContent === GEAR_GLYPH && !el.textContent.replace(GEAR_GLYPH, "").trim();
+  }
+  function isGear(el) {
+    if (el.hasAttribute(LEARNED))
+      return true;
+    const label = [el.getAttribute("aria-label"), el.getAttribute("title"), el.getAttribute("data-testid"), el.getAttribute("data-ccpp-tip")].filter(Boolean).join(" ");
+    const looksLike = SETTINGS_WORD.test(label) || (el.getAttribute("href") ?? "").includes("#settings") || hasGearIcon(el);
+    return looksLike && inSidebar(el);
   }
   function openedOnCode(dialog) {
     if (location.hash === "#settings/claude-code")
@@ -2912,6 +2918,7 @@ ${IMAGE_FIELD_CSS}`;
   }
   function installCodeGear(scope, enabled, open) {
     let armed = 0;
+    let armedEl = null;
     const press = (event) => {
       if (!enabled() || !onCodePage() || event.button !== 0 || event.altKey || event.shiftKey || event.ctrlKey || event.metaKey)
         return;
@@ -2936,17 +2943,78 @@ ${IMAGE_FIELD_CSS}`;
         return;
       }
       armed = Date.now();
+      armedEl = el;
     }, { capture: true });
     watch(scope, NATIVE_DIALOG, (dialog) => {
       if (!enabled() || !onCodePage() || Date.now() - armed > 1500)
         return;
       armed = 0;
+      const el = armedEl;
       const timer = setTimeout(() => {
-        if (dialog.isConnected && openedOnCode(dialog))
-          open();
+        if (!dialog.isConnected || !openedOnCode(dialog))
+          return;
+        el?.setAttribute(LEARNED, "");
+        open();
+        paint();
       }, 150);
       return () => clearTimeout(timer);
     });
+    const swapped = new Set;
+    const restore = () => {
+      for (const button of swapped) {
+        for (const mark of button.querySelectorAll("[data-ccpp-gear-icon]")) {
+          if (mark.dataset.ccppGearIcon === "svg")
+            mark.remove();
+          else if (mark.dataset.ccppGearGlyph) {
+            mark.textContent = mark.dataset.ccppGearGlyph;
+            delete mark.dataset.ccppGearGlyph;
+            mark.removeAttribute("data-ccpp-gear-icon");
+          }
+        }
+        for (const svg of button.querySelectorAll("svg[data-ccpp-gear-hidden]")) {
+          svg.style.removeProperty("display");
+          svg.removeAttribute("data-ccpp-gear-hidden");
+        }
+      }
+      swapped.clear();
+    };
+    const swap = (button) => {
+      const font = button.querySelector('[data-cds="Icon"]');
+      const sliders = glyph("sliders");
+      if (font && sliders) {
+        if (font.textContent !== sliders) {
+          font.dataset.ccppGearGlyph = font.textContent ?? "";
+          font.setAttribute("data-ccpp-gear-icon", "glyph");
+          font.textContent = sliders;
+        }
+      } else if (!button.querySelector("[data-ccpp-gear-icon]")) {
+        const native = button.querySelector("svg");
+        const size = Math.round(native?.getBoundingClientRect().width || Number(native?.getAttribute("width")) || 16);
+        const mark = icon("sliders", size);
+        mark.setAttribute("data-ccpp-gear-icon", "svg");
+        if (native) {
+          native.setAttribute("data-ccpp-gear-hidden", "");
+          native.style.display = "none";
+          native.after(mark);
+        } else
+          button.prepend(mark);
+      }
+      swapped.add(button);
+    };
+    const paint = () => {
+      if (!enabled() || !onCodePage())
+        return restore();
+      for (const button of swapped)
+        if (!button.isConnected)
+          swapped.delete(button);
+      for (const button of document.querySelectorAll("button, a, [role='button']")) {
+        if (!button.closest(SKIP) && isGear(button))
+          swap(button);
+      }
+    };
+    onDomChange(scope, paint);
+    scope.defer(restore);
+    return { repaint: paint };
   }
 
   // src/plugins/_core/settings/state.ts
@@ -4056,10 +4124,10 @@ ${IMAGE_FIELD_CSS}`;
     },
     codeGear: {
       type: "boolean",
-      label: { zh: "Code 页侧栏的齿轮按钮打开 CC++", en: "Code sidebar gear opens CC++" },
+      label: { zh: "Code 页侧栏的齿轮按钮换成 CC++ 入口", en: "Code sidebar gear becomes the CC++ entry" },
       description: {
-        zh: "在同一个设置弹窗里直接打开 CC++ 的「插件」页，claude.ai 自己的设置仍在左侧导航；按住 Alt / Shift 点击照旧打开原生 Code 设置。",
-        en: "Lands on CC++ Plugins in the same settings dialog; claude.ai's own pages stay in its nav. Alt- or Shift-click keeps the original Code page."
+        zh: "图标换成滑杆，点击在同一个设置弹窗里直接打开 CC++ 的「插件」页，claude.ai 自己的设置仍在左侧导航；按住 Alt / Shift 点击照旧打开原生 Code 设置。",
+        en: "Shows a sliders icon and lands on CC++ Plugins in the same settings dialog; claude.ai's own pages stay in its nav. Alt- or Shift-click keeps the original Code page."
       },
       default: true
     },
@@ -4128,6 +4196,7 @@ ${IMAGE_FIELD_CSS}`;
     if (settings.store.composerEntry)
       addSlotItem(scope, "composer", "settings", () => slotButton(t(L6.openSettings), () => openSettings(), icon("plug", 16)), 100);
   }
+  var codeGear = null;
   var settings_default = definePlugin({
     name: "Settings",
     title: { zh: "设置面板", en: "Settings" },
@@ -4151,7 +4220,7 @@ ${IMAGE_FIELD_CSS}`;
       scope.defer(onSettingsChange((_, key) => key === "enabled" && redraw()));
       scope.defer(prefs.subscribe(redraw));
       installEntries(scope);
-      installCodeGear(scope, () => settings.store.codeGear, () => void openSettings({ tab: "plugins" }));
+      codeGear = installCodeGear(scope, () => settings.store.codeGear, () => void openSettings({ tab: "plugins" }));
       const remember = () => {
         const hash = location.hash.slice(1);
         if (NATIVE_SECTIONS.some((s) => s.hash === hash))
@@ -4165,6 +4234,8 @@ ${IMAGE_FIELD_CSS}`;
         setLang(settings.store.language);
       if (key === "showApiPlugins")
         view.showApi = settings.store.showApiPlugins;
+      if (key === "codeGear")
+        codeGear?.repaint();
       if (key === "hotkey" || key === "composerEntry" || key === "userMenuEntry" || key === "settingsFlyout")
         installEntries(scope);
       redraw();

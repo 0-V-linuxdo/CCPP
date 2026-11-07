@@ -37,5 +37,26 @@ describe("Code sidebar gear", () => {
         enabled = false;
         gear.click();
         expect([opened, native]).toEqual([1, 4]);
+        enabled = true;
+        scope.dispose();
+    });
+
+    test("swaps the gear glyph for the sliders glyph, found by the glyph alone, and restores it", async () => {
+        const gearChar = String.fromCodePoint(0xe0d6);
+        const slidersChar = String.fromCodePoint(0xe070);
+        document.body.innerHTML = `<div aria-label="Sidebar"><button id="g2"><span data-cds="Icon">${gearChar}</span></button></div>`;
+        history.replaceState(null, "", "/code");
+        const local = new Scope();
+        let hits = 0;
+        const api = installCodeGear(local, () => enabled, () => hits++);
+        await new Promise(r => setTimeout(r, 300));
+        const glyphEl = document.querySelector("#g2 [data-cds]")!;
+        expect(glyphEl.textContent).toBe(slidersChar);
+        (document.getElementById("g2") as HTMLElement).click();
+        expect(hits).toBe(1);
+        enabled = false;
+        api.repaint();
+        expect(glyphEl.textContent).toBe(gearChar);
+        local.dispose();
     });
 });
