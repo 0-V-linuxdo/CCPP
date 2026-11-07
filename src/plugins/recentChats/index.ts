@@ -32,12 +32,14 @@ export interface Visit {
     at: number;
     /** Where to open it. Older entries (chats only) have none: they live at /chat/:id. */
     url?: string;
+    /** The project a Claude Code thread belongs to. */
+    project?: string;
 }
 
 const visits = persisted<Visit[]>(
     "recent-chats",
     [],
-    (v): v is Visit[] => Array.isArray(v) && v.every(x => x && typeof x.id === "string" && typeof x.title === "string" && typeof x.at === "number" && (x.url === undefined || typeof x.url === "string")),
+    (v): v is Visit[] => Array.isArray(v) && v.every(x => x && typeof x.id === "string" && typeof x.title === "string" && typeof x.at === "number" && (x.url === undefined || typeof x.url === "string") && (x.project === undefined || typeof x.project === "string")),
 );
 
 export const visitUrl = (visit: Visit) => visit.url ?? `/chat/${visit.id}`;
@@ -64,6 +66,24 @@ export function pageVisit(path: string, search: string): { id: string; url: stri
 }
 
 const currentVisit = () => pageVisit(location.pathname, location.search);
+
+/** A thread open in the side pane: its title in the pane header. */
+const THREAD_TITLE = '[data-perf-region="side_pane"] [data-top-right] [data-cds="OverflowTooltip"]';
+const textOf = (selector: string) => document.querySelector(selector)?.textContent?.replace(/\s+/g, " ").trim() ?? "";
+
+/** The open page's name. The tab title of a Claude Code project shows the project, so a thread is read from its pane or its link. */
+function pageTitle(id: string) {
+    const thread = id.split(":")[1];
+    if (!thread) return chatTitle();
+    const link = [...document.querySelectorAll<HTMLAnchorElement>('a[href*="thread="]')].find(a => new URLSearchParams(a.search).get("thread") === thread);
+    return textOf(THREAD_TITLE) || link?.textContent?.replace(/\s+/g, " ").trim() || "";
+}
+
+/** Second line of a card: the project for a thread, "Claude Code" for other Code pages, then when. */
+export function cardSubtitle(visit: Visit, ago: string) {
+    if (visit.project && visit.id.includes(":")) return `${visit.project} · ${ago}`;
+    return visitUrl(visit).startsWith("/code/") ? `Claude Code · ${ago}` : ago;
+}
 
 export function recordVisit(list: Visit[], visit: Visit, max = 50) {
     const previous = list.find(v => v.id === visit.id);
@@ -117,7 +137,8 @@ export default definePlugin({
             // The title updates a moment after navigation.
             scope.timeout(() => {
                 if (currentVisit()?.id !== page.id) return;
-                visits.set(recordVisit(visits.get(), { ...page, title: chatTitle(), at: Date.now() }));
+                const thread = page.id.includes(":");
+                visits.set(recordVisit(visits.get(), { ...page, title: pageTitle(page.id), at: Date.now(), ...(thread ? { project: chatTitle() } : {}) }));
             }, 1500);
         };
         onRoute(scope, record);
@@ -128,7 +149,7 @@ export default definePlugin({
             const id = currentVisit()?.id;
             if (!id) return;
             const list = visits.get();
-            const next = renameVisit(list, id, chatTitle());
+            const next = renameVisit(list, id, pageTitle(id));
             if (next !== list) visits.set(next);
         }, 3000);
 
@@ -160,7 +181,7 @@ export default definePlugin({
                     { type: "button", class: `card${i === selected ? " sel" : ""}${visit.id === here ? " cur" : ""}` },
                     i < 9 ? h("span", { class: "n", text: String(i + 1) }) : null,
                     h("span", { class: "t", text: visit.title || visit.id.slice(0, 8) }),
-                    h("span", { class: "s", text: visitUrl(visit).startsWith("/code/") ? `Claude Code · ${agoText(visit.at)}` : agoText(visit.at) }),
+                    h("span", { class: "s", text: cardSubtitle(visit, agoText(visit.at)) }),
                 );
                 card.addEventListener("click", () => go(visit));
                 cards.appendChild(card);

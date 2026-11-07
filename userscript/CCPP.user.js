@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261108.0.3.131
+// @version      20261108.0.3.132
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -3056,7 +3056,7 @@ ${IMAGE_FIELD_CSS}`;
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.131";
+  var version = "0.3.132";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -8001,7 +8001,7 @@ ${targets.map((t) => `${t}:hover`).join(`,
     empty: { zh: "还没有记录。打开过的对话会出现在这里。", en: "Nothing yet. Chats you open show up here." },
     hint: { zh: "↑↓←→ 选择 · Enter 打开 · 1–9 直达 · Esc 关闭", en: "Arrows to pick · Enter to open · 1–9 to jump · Esc to close" }
   };
-  var visits = persisted("recent-chats", [], (v) => Array.isArray(v) && v.every((x) => x && typeof x.id === "string" && typeof x.title === "string" && typeof x.at === "number" && (x.url === undefined || typeof x.url === "string")));
+  var visits = persisted("recent-chats", [], (v) => Array.isArray(v) && v.every((x) => x && typeof x.id === "string" && typeof x.title === "string" && typeof x.at === "number" && (x.url === undefined || typeof x.url === "string") && (x.project === undefined || typeof x.project === "string")));
   var visitUrl = (visit) => visit.url ?? `/chat/${visit.id}`;
   function pageVisit(path, search) {
     const chat = /^\/chat\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i.exec(path);
@@ -8022,6 +8022,20 @@ ${targets.map((t) => `${t}:hover`).join(`,
     return null;
   }
   var currentVisit = () => pageVisit(location.pathname, location.search);
+  var THREAD_TITLE = '[data-perf-region="side_pane"] [data-top-right] [data-cds="OverflowTooltip"]';
+  var textOf = (selector) => document.querySelector(selector)?.textContent?.replace(/\s+/g, " ").trim() ?? "";
+  function pageTitle(id) {
+    const thread = id.split(":")[1];
+    if (!thread)
+      return chatTitle();
+    const link = [...document.querySelectorAll('a[href*="thread="]')].find((a) => new URLSearchParams(a.search).get("thread") === thread);
+    return textOf(THREAD_TITLE) || link?.textContent?.replace(/\s+/g, " ").trim() || "";
+  }
+  function cardSubtitle(visit, ago) {
+    if (visit.project && visit.id.includes(":"))
+      return `${visit.project} · ${ago}`;
+    return visitUrl(visit).startsWith("/code/") ? `Claude Code · ${ago}` : ago;
+  }
   function recordVisit(list, visit, max = 50) {
     const previous = list.find((v) => v.id === visit.id);
     const title = visit.title || previous?.title || "";
@@ -8072,7 +8086,8 @@ ${targets.map((t) => `${t}:hover`).join(`,
         scope.timeout(() => {
           if (currentVisit()?.id !== page.id)
             return;
-          visits.set(recordVisit(visits.get(), { ...page, title: chatTitle(), at: Date.now() }));
+          const thread = page.id.includes(":");
+          visits.set(recordVisit(visits.get(), { ...page, title: pageTitle(page.id), at: Date.now(), ...thread ? { project: chatTitle() } : {} }));
         }, 1500);
       };
       onRoute(scope, record);
@@ -8082,7 +8097,7 @@ ${targets.map((t) => `${t}:hover`).join(`,
         if (!id)
           return;
         const list = visits.get();
-        const next = renameVisit(list, id, chatTitle());
+        const next = renameVisit(list, id, pageTitle(id));
         if (next !== list)
           visits.set(next);
       }, 3000);
@@ -8110,7 +8125,7 @@ ${targets.map((t) => `${t}:hover`).join(`,
         const here = currentVisit()?.id;
         const cards = h("div", { class: "cards" });
         list.forEach((visit, i) => {
-          const card = h("button", { type: "button", class: `card${i === selected ? " sel" : ""}${visit.id === here ? " cur" : ""}` }, i < 9 ? h("span", { class: "n", text: String(i + 1) }) : null, h("span", { class: "t", text: visit.title || visit.id.slice(0, 8) }), h("span", { class: "s", text: visitUrl(visit).startsWith("/code/") ? `Claude Code · ${agoText(visit.at)}` : agoText(visit.at) }));
+          const card = h("button", { type: "button", class: `card${i === selected ? " sel" : ""}${visit.id === here ? " cur" : ""}` }, i < 9 ? h("span", { class: "n", text: String(i + 1) }) : null, h("span", { class: "t", text: visit.title || visit.id.slice(0, 8) }), h("span", { class: "s", text: cardSubtitle(visit, agoText(visit.at)) }));
           card.addEventListener("click", () => go(visit));
           cards.appendChild(card);
         });
@@ -9234,7 +9249,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.131",
+      version: "0.3.132",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -9251,7 +9266,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.131";
+    win[FLAG] = "0.3.132";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -9268,7 +9283,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.131"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.132"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();
