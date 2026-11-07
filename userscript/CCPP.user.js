@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261108.0.4.0
+// @version      20261108.0.4.1
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @license      GPL-3.0-or-later
@@ -939,7 +939,7 @@
     ["unsafeWindow", typeof unsafeWindow !== "undefined"]
   ].filter(([, ok]) => !ok).map(([k4]) => k4);
   var FRAMEWORK_VERSION = true ? "0.1.0" : "0.0.0";
-  var VERSION = true ? "20261108.0.4.0" : "0.0.0";
+  var VERSION = true ? "20261108.0.4.1" : "0.0.0";
   var IS_DEV = true ? false : false;
   var BUILD_TYPE = IS_DEV ? "development" : "production";
   var isChromium = () => !!W3.chrome;
@@ -3772,26 +3772,17 @@ ${IMAGE_FIELD_CSS}`;
     if (left >= 8) vars["--ccpp-pad-x"] = `${left}px`;
     for (const [name, value] of Object.entries(vars)) if (host4.style.getPropertyValue(name) !== value) host4.style.setProperty(name, value);
   }
-  function spanDivider(divider, root2, scroller) {
+  function spanDivider(divider, root2) {
     const d3 = divider.getBoundingClientRect();
     if (!d3.width) return;
-    let edge = root2.getBoundingClientRect();
-    let left = edge.left;
-    let right = edge.right;
-    if (getComputedStyle(scroller).overflowX !== "visible") {
-      const box = scroller.getBoundingClientRect();
-      left = Math.max(left, box.left + scroller.clientLeft);
-      right = Math.min(right, box.left + scroller.clientLeft + scroller.clientWidth);
-    }
+    const edge = root2.getBoundingClientRect();
     const style = getComputedStyle(divider);
-    const ml = `${Math.round(parseFloat(style.marginLeft) + left - d3.left)}px`;
-    const mr = `${Math.round(parseFloat(style.marginRight) + d3.right - right)}px`;
-    if (divider.style.marginLeft !== ml) divider.style.marginLeft = ml;
-    if (divider.style.marginRight !== mr) divider.style.marginRight = mr;
-    if (divider.style.width !== "auto") {
-      divider.style.width = "auto";
-      divider.style.maxWidth = "none";
-    }
+    let color = style.backgroundColor;
+    if (!color || color === "transparent" || /rgba\([^)]*,\s*0\)$/.test(color)) color = style.borderTopColor;
+    const left = Math.max(0, Math.round(d3.left - edge.left - root2.clientLeft));
+    const right = Math.max(0, Math.round(edge.left + root2.clientLeft + root2.clientWidth - d3.right));
+    const shadow3 = `${-left}px 0 0 0 ${color}, ${right}px 0 0 0 ${color}`;
+    if (divider.style.boxShadow !== shadow3) divider.style.boxShadow = shadow3;
   }
   function navDivider(root2, scroller) {
     const native = root2.querySelector('[role="separator"]:not([data-ccpp-nav-divider]), hr:not([data-ccpp-nav-divider])') ?? [...scroller.children].find((el) => el.tagName !== "UL" && !el.hasAttribute("data-ccpp-nav-group") && !el.textContent?.trim() && el.getClientRects().length);
@@ -3896,7 +3887,7 @@ ${IMAGE_FIELD_CSS}`;
           if (wantFirst) group.appendChild(divider);
           else group.prepend(divider);
         }
-        spanDivider(divider, root2, scroller);
+        spanDivider(divider, root2);
         for (const button of group.querySelectorAll("button[data-tab]")) {
           const on3 = button.dataset.tab === active2;
           const want = on3 ? c4.on : c4.off;
