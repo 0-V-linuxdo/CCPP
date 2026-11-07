@@ -16,7 +16,7 @@ export interface Combo {
     meta: boolean;
 }
 
-const isMac = () => /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+export const isMac = () => /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 
 /** "mod+shift+k", "ctrl+`", "alt+arrowup" — "mod" is Cmd on macOS and Ctrl elsewhere. */
 export function parseCombo(spec: string): Combo {

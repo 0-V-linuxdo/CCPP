@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261108.0.3.137
+// @version      20261108.0.3.138
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -3056,7 +3056,7 @@ ${IMAGE_FIELD_CSS}`;
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.137";
+  var version = "0.3.138";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -8024,8 +8024,15 @@ ${targets.map((t) => `${t}:hover`).join(`,
   var L17 = {
     title: { zh: "最近打开的对话", en: "Recently opened chats" },
     empty: { zh: "还没有记录。打开过的对话会出现在这里。", en: "Nothing yet. Chats you open show up here." },
-    hint: { zh: "↑↓←→ 选择 · Enter 打开 · 1–9 直达 · Esc 关闭", en: "Arrows to pick · Enter to open · 1–9 to jump · Esc to close" }
+    hint: { zh: "按住 {mod} 连按 {key} 往后选 · 加 Shift 往回 · 松开打开 · Esc 取消", en: "Hold {mod}, press {key} to move · Shift goes back · Release to open · Esc to cancel" },
+    hintPlain: { zh: "再按 {key} 或方向键选择 · Enter 打开 · 1–9 直达 · Esc 关闭", en: "{key} or arrows to pick · Enter to open · 1–9 to jump · Esc to close" }
   };
+  var SHOW_DELAY_MS = 180;
+  function heldModifiers(event, combo) {
+    if (!combo.ctrl && !combo.alt && !combo.meta)
+      return false;
+    return (!combo.ctrl || event.ctrlKey) && (!combo.alt || event.altKey) && (!combo.meta || event.metaKey);
+  }
   var visits = persisted("recent-chats", [], (v) => Array.isArray(v) && v.every((x) => x && typeof x.id === "string" && typeof x.title === "string" && typeof x.at === "number" && (x.url === undefined || typeof x.url === "string") && (x.project === undefined || typeof x.project === "string")));
   var visitUrl = (visit) => visit.url ?? `/chat/${visit.id}`;
   function pageVisit(path, search) {
@@ -8149,8 +8156,8 @@ ${targets.map((t) => `${t}:hover`).join(`,
     name: "RecentChats",
     title: { zh: "最近对话切换", en: "Recent chats switcher" },
     description: {
-      zh: "按 Ctrl+` 弹出最近打开过的对话卡片（包括 Claude Code 项目、线程和会话），方向键 / 数字键快速切换。",
-      en: "Press Ctrl+` for cards of recently opened chats (Claude Code projects, threads and sessions included); switch with arrows or number keys."
+      zh: "像 Arc 的标签切换器：按住 Ctrl 连按 ` 在最近打开过的对话（包括 Claude Code 项目、线程和会话）间往后选，加 Shift 往回，松开打开；快速按一下直接回到上一个对话。",
+      en: "Like Arc's tab switcher: hold Ctrl and press ` to step through recently opened chats (Claude Code projects, threads and sessions included), Shift to go back, release to open. A quick tap jumps back to the previous chat."
     },
     category: "navigation",
     icon: "grid",
@@ -8189,7 +8196,9 @@ ${targets.map((t) => `${t}:hover`).join(`,
       let selected = 0;
       let open = false;
       const close = () => {
+        clearTimeout(showTimer);
         open = false;
+        holding = false;
         clear(box);
       };
       const go = (visit) => {
@@ -8209,6 +8218,12 @@ ${targets.map((t) => `${t}:hover`).join(`,
         const node = html ? iconNode(html) : null;
         return node ? h("span", { class: "ic" }, node) : null;
       };
+      const hintText = () => {
+        const keys = comboKeys(settings18.store.hotkey.trim() || "ctrl+`");
+        const key = keys[keys.length - 1];
+        const mod = keys.slice(0, -1).filter((k) => k !== "⇧" && k !== "Shift").join(isMac() ? "" : "+");
+        return (mod ? t(L17.hint) : t(L17.hintPlain)).replace("{mod}", mod).replace("{key}", key);
+      };
       const render = () => {
         clear(box);
         const list = visits.get().slice(0, settings18.store.count);
@@ -8219,14 +8234,11 @@ ${targets.map((t) => `${t}:hover`).join(`,
           card.addEventListener("click", () => go(visit));
           cards.appendChild(card);
         });
-        const overlay = h("div", { class: "overlay", role: "dialog", "aria-label": t(L17.title) }, h("div", { class: "box" }, h("h3", {}, t(L17.title), h("span", { text: t(L17.hint) })), list.length ? cards : h("div", { class: "empty", text: t(L17.empty) })));
+        const overlay = h("div", { class: "overlay", role: "dialog", "aria-label": t(L17.title) }, h("div", { class: "box" }, h("h3", {}, t(L17.title), h("span", { text: hintText() })), list.length ? cards : h("div", { class: "empty", text: t(L17.empty) })));
         overlay.addEventListener("mousedown", (event) => event.target === overlay && close());
         box.appendChild(overlay);
       };
-      const toggle = () => {
-        if (open)
-          return close();
-        open = true;
+      const refreshIcons = () => {
         const known = icons.get();
         const fresh = { ...known };
         for (const channel of new Set(visits.get().slice(0, settings18.store.count).map(projectOf))) {
@@ -8236,19 +8248,52 @@ ${targets.map((t) => `${t}:hover`).join(`,
         }
         if (Object.keys(fresh).some((k) => fresh[k] !== known[k]))
           icons.set(fresh);
-        selected = visits.get()[0]?.id === currentVisit()?.id ? 1 : 0;
+      };
+      let holding = false;
+      let showTimer = 0;
+      const show = () => {
+        clearTimeout(showTimer);
+        if (!open)
+          return;
         render();
       };
-      if (settings18.store.hotkey.trim())
-        bindKey(scope, settings18.store.hotkey, toggle, { inInputs: true });
+      const begin = (event, combo) => {
+        open = true;
+        refreshIcons();
+        selected = visits.get()[0]?.id === currentVisit()?.id ? 1 : 0;
+        holding = heldModifiers(event, combo);
+        if (holding)
+          showTimer = window.setTimeout(show, SHOW_DELAY_MS);
+        else
+          show();
+      };
+      const step = (by) => {
+        const count = Math.min(visits.get().length, settings18.store.count);
+        selected = (selected + by + count) % Math.max(1, count);
+        show();
+      };
+      scope.defer(() => clearTimeout(showTimer));
       scope.listen(window, "keydown", (event) => {
+        const spec = settings18.store.hotkey.trim();
+        const combo = spec ? parseCombo(spec) : null;
+        if (combo && !event.isComposing && matches(event, combo.shift ? combo : { ...combo, shift: event.shiftKey })) {
+          event.preventDefault();
+          event.stopPropagation();
+          if (event.repeat && !open)
+            return;
+          if (!open)
+            begin(event, combo);
+          else
+            step(event.shiftKey && !combo.shift ? -1 : 1);
+          return;
+        }
         if (!open)
           return;
         const list = visits.get().slice(0, settings18.store.count);
         const cols = Math.max(1, Math.floor((box.querySelector(".cards")?.clientWidth ?? 720) / 250));
         const moves = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: cols, ArrowUp: -cols, Tab: event.shiftKey ? -1 : 1 };
         if (event.key in moves)
-          selected = (selected + moves[event.key] + list.length) % Math.max(1, list.length);
+          step(moves[event.key]);
         else if (event.key === "Enter")
           go(list[selected]);
         else if (event.key === "Escape")
@@ -8259,9 +8304,22 @@ ${targets.map((t) => `${t}:hover`).join(`,
           return;
         event.preventDefault();
         event.stopPropagation();
-        if (open)
-          render();
       }, { capture: true });
+      scope.listen(window, "keyup", (event) => {
+        if (!open || !holding)
+          return;
+        const combo = parseCombo(settings18.store.hotkey.trim());
+        if (heldModifiers(event, combo))
+          return;
+        holding = false;
+        go(visits.get().slice(0, settings18.store.count)[selected]);
+      }, { capture: true });
+      scope.listen(window, "blur", () => {
+        if (!open || !holding)
+          return;
+        holding = false;
+        show();
+      });
     }
   });
 
@@ -9348,7 +9406,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.137",
+      version: "0.3.138",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -9365,7 +9423,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.137";
+    win[FLAG] = "0.3.138";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -9382,7 +9440,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.137"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.138"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();

@@ -35,7 +35,7 @@ AdGuard 不支持 `GM_registerMenuCommand`，所以没有脚本管理器菜单�
 | 回复完成提醒 ReplyNotification | 开 | 后台回复完成时提示音 / 系统通知 / 页面提示条 |
 | 标签页图标状态 ChatFavicon | 开 | 标签页图标随对话状态变色：回复中蓝、完成绿、草稿待发送黄、出错红；5 种样式可选；Claude Code 项目页跟随项目主对话和所有线程（任一在跑蓝、等你回复黄） |
 | 侧栏默认 Code SidebarDefaultCode | 开 | 打开首页时侧栏 Chat / Code 切换自动停在 Code，每次加载只切一次，打开具体对话时不切；可选只在 claude.ai/code 开头的页面切换 |
-| 最近对话切换 RecentChats | 开 | Ctrl+` 弹出最近对话卡片 |
+| 最近对话切换 RecentChats | 开 | 按住 Ctrl 连按 ` 切换最近对话（像 Arc），松开打开 |
 | 导出对话 ExportChat | 开 | 标题栏导出 Markdown / TXT / JSON，或复制为 Markdown |
 | 界面清理 Cleaner | 开 | 隐藏升级推销、Claude Code 推广提示等 |
 | 加宽对话 WiderChat | 关 | 调整对话与输入框最大宽度 |

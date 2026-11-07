@@ -12,7 +12,7 @@ import { clear, h } from "@lib/dom";
 import { agoText } from "@lib/format";
 import { createHost } from "@lib/ui";
 import { chatTitle } from "@api/chatState";
-import { bindKey } from "@api/hotkeys";
+import { type Combo, comboKeys, isMac, matches, parseCombo } from "@api/hotkeys";
 import { onRoute } from "@api/router";
 
 const settings = definePluginSettings({
@@ -23,8 +23,18 @@ const settings = definePluginSettings({
 const L = {
     title: { zh: "最近打开的对话", en: "Recently opened chats" },
     empty: { zh: "还没有记录。打开过的对话会出现在这里。", en: "Nothing yet. Chats you open show up here." },
-    hint: { zh: "↑↓←→ 选择 · Enter 打开 · 1–9 直达 · Esc 关闭", en: "Arrows to pick · Enter to open · 1–9 to jump · Esc to close" },
+    hint: { zh: "按住 {mod} 连按 {key} 往后选 · 加 Shift 往回 · 松开打开 · Esc 取消", en: "Hold {mod}, press {key} to move · Shift goes back · Release to open · Esc to cancel" },
+    hintPlain: { zh: "再按 {key} 或方向键选择 · Enter 打开 · 1–9 直达 · Esc 关闭", en: "{key} or arrows to pick · Enter to open · 1–9 to jump · Esc to close" },
 };
+
+/** How long the shortcut's modifier must stay down before the cards show; a quicker tap just switches back. */
+const SHOW_DELAY_MS = 180;
+
+/** Whether the shortcut's modifiers (Ctrl, Alt, ⌘) are still held. A shortcut without one never "holds". */
+export function heldModifiers(event: { ctrlKey: boolean; altKey: boolean; metaKey: boolean }, combo: Pick<Combo, "ctrl" | "alt" | "meta">) {
+    if (!combo.ctrl && !combo.alt && !combo.meta) return false;
+    return (!combo.ctrl || event.ctrlKey) && (!combo.alt || event.altKey) && (!combo.meta || event.metaKey);
+}
 
 export interface Visit {
     id: string;
@@ -182,8 +192,8 @@ export default definePlugin({
     name: "RecentChats",
     title: { zh: "最近对话切换", en: "Recent chats switcher" },
     description: {
-        zh: "按 Ctrl+` 弹出最近打开过的对话卡片（包括 Claude Code 项目、线程和会话），方向键 / 数字键快速切换。",
-        en: "Press Ctrl+` for cards of recently opened chats (Claude Code projects, threads and sessions included); switch with arrows or number keys.",
+        zh: "像 Arc 的标签切换器：按住 Ctrl 连按 ` 在最近打开过的对话（包括 Claude Code 项目、线程和会话）间往后选，加 Shift 往回，松开打开；快速按一下直接回到上一个对话。",
+        en: "Like Arc's tab switcher: hold Ctrl and press ` to step through recently opened chats (Claude Code projects, threads and sessions included), Shift to go back, release to open. A quick tap jumps back to the previous chat.",
     },
     category: "navigation",
     icon: "grid",
@@ -222,7 +232,9 @@ export default definePlugin({
         let open = false;
 
         const close = () => {
+            clearTimeout(showTimer);
             open = false;
+            holding = false;
             clear(box);
         };
         const go = (visit: Visit | undefined) => {
@@ -239,6 +251,12 @@ export default definePlugin({
             const html = channel && icons.get()[channel];
             const node = html ? iconNode(html) : null;
             return node ? h("span", { class: "ic" }, node) : null;
+        };
+        const hintText = () => {
+            const keys = comboKeys(settings.store.hotkey.trim() || "ctrl+`");
+            const key = keys[keys.length - 1];
+            const mod = keys.slice(0, -1).filter(k => k !== "⇧" && k !== "Shift").join(isMac() ? "" : "+");
+            return (mod ? t(L.hint) : t(L.hintPlain)).replace("{mod}", mod).replace("{key}", key);
         };
         const render = () => {
             clear(box);
@@ -259,15 +277,13 @@ export default definePlugin({
             const overlay = h(
                 "div",
                 { class: "overlay", role: "dialog", "aria-label": t(L.title) },
-                h("div", { class: "box" }, h("h3", {}, t(L.title), h("span", { text: t(L.hint) })), list.length ? cards : h("div", { class: "empty", text: t(L.empty) })),
+                h("div", { class: "box" }, h("h3", {}, t(L.title), h("span", { text: hintText() })), list.length ? cards : h("div", { class: "empty", text: t(L.empty) })),
             );
             overlay.addEventListener("mousedown", event => event.target === overlay && close());
             box.appendChild(overlay);
         };
-        const toggle = () => {
-            if (open) return close();
-            open = true;
-            // Pick up icons changed or first seen since the visit (the sidebar may have been closed then).
+        /** Pick up icons changed or first seen since the visit (the sidebar may have been closed then). */
+        const refreshIcons = () => {
             const known = icons.get();
             const fresh = { ...known };
             for (const channel of new Set(visits.get().slice(0, settings.store.count).map(projectOf))) {
@@ -275,24 +291,67 @@ export default definePlugin({
                 if (channel && icon) fresh[channel] = icon;
             }
             if (Object.keys(fresh).some(k => fresh[k] !== known[k])) icons.set(fresh);
-            // Start on the previous chat, like Alt+Tab.
-            selected = visits.get()[0]?.id === currentVisit()?.id ? 1 : 0;
+        };
+        /** Like Arc's tab switcher: while the shortcut's modifier is held, each press moves on and letting go opens. */
+        let holding = false;
+        let showTimer = 0;
+        const show = () => {
+            clearTimeout(showTimer);
+            if (!open) return;
             render();
         };
-        if (settings.store.hotkey.trim()) bindKey(scope, settings.store.hotkey, toggle, { inInputs: true });
+        const begin = (event: KeyboardEvent, combo: Combo) => {
+            open = true;
+            refreshIcons();
+            // Start on the previous chat, like Alt+Tab.
+            selected = visits.get()[0]?.id === currentVisit()?.id ? 1 : 0;
+            holding = heldModifiers(event, combo);
+            // A quick tap switches straight to the previous chat; the cards only show once the modifier stays down.
+            if (holding) showTimer = window.setTimeout(show, SHOW_DELAY_MS);
+            else show();
+        };
+        const step = (by: number) => {
+            const count = Math.min(visits.get().length, settings.store.count);
+            selected = (selected + by + count) % Math.max(1, count);
+            show();
+        };
+        scope.defer(() => clearTimeout(showTimer));
         scope.listen(window, "keydown", (event: KeyboardEvent) => {
+            const spec = settings.store.hotkey.trim();
+            const combo = spec ? parseCombo(spec) : null;
+            // Shift with the shortcut walks backwards, unless Shift is part of the shortcut itself.
+            if (combo && !event.isComposing && matches(event, combo.shift ? combo : { ...combo, shift: event.shiftKey })) {
+                event.preventDefault();
+                event.stopPropagation();
+                if (event.repeat && !open) return;
+                if (!open) begin(event, combo);
+                else step(event.shiftKey && !combo.shift ? -1 : 1);
+                return;
+            }
             if (!open) return;
             const list = visits.get().slice(0, settings.store.count);
             const cols = Math.max(1, Math.floor((box.querySelector(".cards")?.clientWidth ?? 720) / 250));
             const moves: Record<string, number> = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: cols, ArrowUp: -cols, Tab: event.shiftKey ? -1 : 1 };
-            if (event.key in moves) selected = (selected + moves[event.key] + list.length) % Math.max(1, list.length);
+            if (event.key in moves) step(moves[event.key]);
             else if (event.key === "Enter") go(list[selected]);
             else if (event.key === "Escape") close();
             else if (/^[1-9]$/.test(event.key)) go(list[Number(event.key) - 1]);
             else return;
             event.preventDefault();
             event.stopPropagation();
-            if (open) render();
         }, { capture: true });
+        scope.listen(window, "keyup", (event: KeyboardEvent) => {
+            if (!open || !holding) return;
+            const combo = parseCombo(settings.store.hotkey.trim());
+            if (heldModifiers(event, combo)) return;
+            holding = false;
+            go(visits.get().slice(0, settings.store.count)[selected]);
+        }, { capture: true });
+        // Focus left the page mid-switch (the keyup will never come): keep the cards up to pick from.
+        scope.listen(window, "blur", () => {
+            if (!open || !holding) return;
+            holding = false;
+            show();
+        });
     },
 });

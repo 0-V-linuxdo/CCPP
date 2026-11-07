@@ -4,7 +4,7 @@ import { getProjectActivity, getProjectPhases, orgFromCookie, parseActivity, par
 import { parseRoute } from "../src/plugins/_api/router";
 import { matches, parseCombo } from "../src/plugins/_api/hotkeys";
 import { titleFrom } from "../src/plugins/_api/chatState";
-import { cardLabel, cleanIcon, pageVisit, projectOf, recordVisit, renameVisit, visitUrl } from "../src/plugins/recentChats";
+import { cardLabel, cleanIcon, heldModifiers, pageVisit, projectOf, recordVisit, renameVisit, visitUrl } from "../src/plugins/recentChats";
 import { level } from "../src/plugins/usageDisplay";
 import { cornerKind, dotKind, openProjectOf, projectKind, SEND_GRACE_MS, shownKind } from "../src/plugins/projectStatus";
 import { projectDotOptions } from "../src/lib/projectDot";
@@ -197,6 +197,13 @@ describe("recent chats", () => {
         expect(cardLabel({ id: uuid, title: "T", at: 1 })).toBe("");
         expect(projectOf({ id: "chan_A1:cmsg_B2" })).toBe("chan_A1");
         expect(projectOf({ id: uuid })).toBeNull();
+    });
+
+    test("the switcher holds while the shortcut's modifier is down", () => {
+        const ctrl = { ctrl: true, alt: false, meta: false };
+        expect(heldModifiers({ ctrlKey: true, altKey: false, metaKey: false }, ctrl)).toBe(true);
+        expect(heldModifiers({ ctrlKey: false, altKey: false, metaKey: false }, ctrl)).toBe(false);
+        expect(heldModifiers({ ctrlKey: true, altKey: false, metaKey: false }, { ctrl: false, alt: false, meta: false })).toBe(false);
     });
 
     test("project icons keep only drawing markup", () => {
