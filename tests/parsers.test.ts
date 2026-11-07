@@ -4,7 +4,7 @@ import { getProjectActivity, getProjectPhases, orgFromCookie, parseActivity, par
 import { parseRoute } from "../src/plugins/_api/router";
 import { matches, parseCombo } from "../src/plugins/_api/hotkeys";
 import { titleFrom } from "../src/plugins/_api/chatState";
-import { cardLabel, pageVisit, recordVisit, renameVisit, visitUrl } from "../src/plugins/recentChats";
+import { cardLabel, cleanIcon, pageVisit, projectOf, recordVisit, renameVisit, visitUrl } from "../src/plugins/recentChats";
 import { level } from "../src/plugins/usageDisplay";
 import { cornerKind, dotKind, openProjectOf, projectKind, SEND_GRACE_MS, shownKind } from "../src/plugins/projectStatus";
 import { projectDotOptions } from "../src/lib/projectDot";
@@ -195,6 +195,17 @@ describe("recent chats", () => {
         expect(cardLabel({ id: "chan_A1:cmsg_B2", title: "Fix bug", at: 1, url: "/code/project/chan_A1?thread=cmsg_B2", project: "CC++" })).toBe("CC++");
         expect(cardLabel({ id: "chan_A1", title: "CC++", at: 1, url: "/code/project/chan_A1" })).toBe("Claude Code");
         expect(cardLabel({ id: uuid, title: "T", at: 1 })).toBe("");
+        expect(projectOf({ id: "chan_A1:cmsg_B2" })).toBe("chan_A1");
+        expect(projectOf({ id: uuid })).toBeNull();
+    });
+
+    test("project icons keep only drawing markup", () => {
+        const box = document.createElement("div");
+        box.innerHTML = '<span class="x" onclick="alert(1)" style="color:red"><svg data-a="1"><path d="M0 0"/><script>1</script></svg><img src="javascript:1"><a href="https://x">x</a></span>';
+        const out = cleanIcon(box.firstElementChild!).outerHTML;
+        expect(out).toContain('style="color:red"');
+        expect(out).toContain("<path");
+        expect(out).not.toMatch(/onclick|class=|data-a|script|javascript|<a /);
     });
 });
 

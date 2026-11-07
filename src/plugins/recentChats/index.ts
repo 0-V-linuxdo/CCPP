@@ -67,6 +67,62 @@ export function pageVisit(path: string, search: string): { id: string; url: stri
 
 const currentVisit = () => pageVisit(location.pathname, location.search);
 
+/** Each Claude Code project's sidebar icon, as standalone markup (claude.ai's classes don't reach the popup). */
+const icons = persisted<Record<string, string>>("recent-chats-icons", {}, (v): v is Record<string, string> => !!v && typeof v === "object" && !Array.isArray(v) && Object.values(v).every(x => typeof x === "string"));
+
+/** The project (chan_…) a visit belongs to, for Claude Code projects and their threads. */
+export const projectOf = (visit: { id: string }) => (/^chan_[A-Za-z0-9]+/.exec(visit.id)?.[0] ?? null);
+
+const ICON_TAGS = new Set(["span", "div", "img", "svg", "g", "path", "circle", "rect", "ellipse", "line", "polyline", "polygon", "defs", "lineargradient", "radialgradient", "stop", "clippath", "mask", "use", "symbol", "text", "tspan"]);
+const ICON_STYLE = ["color", "background-color", "background-image", "background-size", "background-position", "width", "height", "min-width", "border-radius", "display", "align-items", "justify-content", "font-size", "font-weight", "line-height", "fill", "stroke", "stroke-width", "opacity", "object-fit", "padding", "box-sizing", "transform"];
+
+/** Keeps only drawing tags and harmless attributes, so stored markup can't run anything. */
+export function cleanIcon(root: Element) {
+    for (const el of [root, ...root.querySelectorAll("*")]) {
+        if (!ICON_TAGS.has(el.tagName.toLowerCase())) {
+            el.remove();
+            continue;
+        }
+        for (const attr of [...el.attributes]) {
+            const name = attr.name.toLowerCase();
+            const unsafe = name.startsWith("on") || /^\s*(javascript|data:text)/i.test(attr.value) || ((name === "href" || name === "xlink:href") && !attr.value.startsWith("#"));
+            if (unsafe || name === "class" || name === "id" || name.startsWith("data-") || name.startsWith("aria-") || name === "tabindex" || name === "role") el.removeAttribute(attr.name);
+        }
+        if (el.tagName.toLowerCase() === "img" && !/^(https:|data:image\/)/.test(el.getAttribute("src") ?? "")) el.removeAttribute("src");
+    }
+    return root;
+}
+
+/** The project's icon from a sidebar row, with its computed look inlined. */
+function snapshotIcon(channel: string) {
+    const rows = [...document.querySelectorAll<HTMLElement>(`[data-group-list="${channel}"]`)];
+    const row = rows.find(r => r.offsetParent) ?? rows[0];
+    const slot = row?.querySelector<HTMLElement>("[data-row] .df-leading-slot, [data-row] [data-leading-slot]");
+    const source = [...(slot?.children ?? [])].find(el => !el.matches("[data-ccpp-corner]")) as HTMLElement | undefined;
+    if (!source || !source.getBoundingClientRect().width) return null;
+    const copy = source.cloneNode(true) as HTMLElement;
+    copy.querySelectorAll("[data-ccpp-corner], .status-dot, [role=status]").forEach(el => el.remove());
+    const originals = [source, ...source.querySelectorAll("*")];
+    const copies = [copy, ...copy.querySelectorAll("*")];
+    // Copies line up with originals until the first removed node; status dots sit last, so the icon itself is covered.
+    copies.forEach((el, i) => {
+        const original = originals[i];
+        if (!original || original.tagName !== el.tagName) return;
+        const style = getComputedStyle(original);
+        const inline = ICON_STYLE.map(name => `${name}:${style.getPropertyValue(name)}`).join(";");
+        el.setAttribute("style", `${inline};position:static;margin:0;flex:none`);
+    });
+    const html = cleanIcon(copy).outerHTML;
+    return html.length < 8000 ? html : null;
+}
+
+function iconNode(html: string) {
+    const doc = new DOMParser().parseFromString(`<div>${html}</div>`, "text/html");
+    const root = doc.body.firstElementChild?.firstElementChild;
+    if (!root) return null;
+    return document.importNode(cleanIcon(root), true);
+}
+
 /** A thread open in the side pane: its title in the pane header. */
 const THREAD_TITLE = '[data-perf-region="side_pane"] [data-top-right] [data-cds="OverflowTooltip"]';
 const textOf = (selector: string) => document.querySelector(selector)?.textContent?.replace(/\s+/g, " ").trim() ?? "";
@@ -111,6 +167,9 @@ const CSS = `
 .card { position: relative; display: flex; flex-direction: column; gap: 6px; min-height: 76px; padding: 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--bg2); text-align: left; }
 .card:hover, .card.sel { border-color: var(--accent); background: var(--bg); }
 .card .n { position: absolute; top: 8px; right: 10px; font-size: 11px; color: var(--fg3); }
+.card .head { display: flex; align-items: flex-start; gap: 8px; padding-right: 16px; }
+.card .ic { flex: none; display: grid; place-items: center; width: 20px; height: 20px; overflow: hidden; }
+.card .ic > * { max-width: 20px; max-height: 20px; }
 .card .t { font-weight: 600; padding-right: 16px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .card .s { display: flex; justify-content: space-between; gap: 8px; color: var(--fg3); font-size: 12px; margin-top: auto; }
 .card .s .l { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -140,6 +199,9 @@ export default definePlugin({
             scope.timeout(() => {
                 if (currentVisit()?.id !== page.id) return;
                 const thread = page.id.includes(":");
+                const channel = projectOf(page);
+                const icon = channel && snapshotIcon(channel);
+                if (channel && icon && icons.get()[channel] !== icon) icons.set({ ...icons.get(), [channel]: icon });
                 visits.set(recordVisit(visits.get(), { ...page, title: pageTitle(page.id), at: Date.now(), ...(thread ? { project: chatTitle() } : {}) }));
             }, 1500);
         };
@@ -172,6 +234,12 @@ export default definePlugin({
             if (link) link.click();
             else location.assign(url);
         };
+        const cardIcon = (visit: Visit) => {
+            const channel = projectOf(visit);
+            const html = channel && icons.get()[channel];
+            const node = html ? iconNode(html) : null;
+            return node ? h("span", { class: "ic" }, node) : null;
+        };
         const render = () => {
             clear(box);
             const list = visits.get().slice(0, settings.store.count);
@@ -182,7 +250,7 @@ export default definePlugin({
                     "button",
                     { type: "button", class: `card${i === selected ? " sel" : ""}${visit.id === here ? " cur" : ""}` },
                     i < 9 ? h("span", { class: "n", text: String(i + 1) }) : null,
-                    h("span", { class: "t", text: visit.title || visit.id.slice(0, 8) }),
+                    h("span", { class: "head" }, cardIcon(visit), h("span", { class: "t", text: visit.title || visit.id.slice(0, 8) })),
                     h("span", { class: "s" }, h("span", { class: "l", text: cardLabel(visit) }), h("span", { class: "a", text: agoText(visit.at) })),
                 );
                 card.addEventListener("click", () => go(visit));
@@ -199,6 +267,14 @@ export default definePlugin({
         const toggle = () => {
             if (open) return close();
             open = true;
+            // Pick up icons changed or first seen since the visit (the sidebar may have been closed then).
+            const known = icons.get();
+            const fresh = { ...known };
+            for (const channel of new Set(visits.get().slice(0, settings.store.count).map(projectOf))) {
+                const icon = channel && snapshotIcon(channel);
+                if (channel && icon) fresh[channel] = icon;
+            }
+            if (Object.keys(fresh).some(k => fresh[k] !== known[k])) icons.set(fresh);
             // Start on the previous chat, like Alt+Tab.
             selected = visits.get()[0]?.id === currentVisit()?.id ? 1 : 0;
             render();
