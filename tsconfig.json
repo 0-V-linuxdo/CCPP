@@ -20,5 +20,5 @@
       "@plugins/*": ["src/plugins/*"]
     }
   },
-  "include": ["src", "tests", "build.ts"]
+  "include": ["src", "tests", "sites", "scripts", "build.ts"]
 }

@@ -67,7 +67,7 @@ describe("settings UI", () => {
     });
 
     test("the account menu gets a CC++ row that expands into a submenu", async () => {
-        if (!getPlugin("Settings")) {
+        if (!getPlugin("CCPPSettings")) {
             resetRegistry();
             registerPlugins(PLUGINS);
             startPhase("dom-ready");

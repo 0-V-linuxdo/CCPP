@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: MIT
  */
 
+import { host } from "./host";
 import type { Text } from "./i18n";
 import { Logger } from "./logger";
 import { Scope } from "./scope";
@@ -153,6 +154,26 @@ export const pluginInfo = (plugin: Plugin): PluginInfo => ({
 
 const bootActive = new Map<string, boolean>();
 
+/**
+ * On Userscript++: adds one plugin as its factory runs. The framework checks names and dependencies
+ * and owns the switch; boot-time state is noted once every plugin is in (see noteBoot).
+ */
+export function registerOne(plugin: Plugin) {
+    if (plugins.has(plugin.name)) return plugins.get(plugin.name)!;
+    plugins.set(plugin.name, plugin);
+    plugin.settings?.bind(plugin.name);
+    return plugin;
+}
+
+let booted = false;
+/** Notes which plugins were active at load (for pendingRestart) and which are new; once, when every plugin is registered. */
+export function noteBoot() {
+    if (booted) return;
+    booted = true;
+    for (const plugin of plugins.values()) bootActive.set(plugin.name, isActive(plugin));
+    trackSeen();
+}
+
 /** Checks names and dependencies; throws on a broken plugin list, since that is a build bug. */
 export function registerPlugins(list: Plugin[]) {
     for (const plugin of list) {
@@ -168,6 +189,7 @@ export function registerPlugins(list: Plugin[]) {
     const cycle = findCycle();
     if (cycle) throw new Error(`Dependency cycle: ${cycle.join(" → ")}`);
     for (const plugin of list) bootActive.set(plugin.name, isActive(plugin));
+    booted = true;
     trackSeen();
 }
 
@@ -228,19 +250,19 @@ export function isRecent(plugin: Plugin, now = Date.now()) {
 
 /* ---------- lifecycle ---------- */
 
+/*
+ * Two modes. On Userscript++ the framework starts and stops plugins (U.startPlugin / U.stopPlugin,
+ * at its Init and DOMContentLoaded stages), and each framework plugin's start/stop calls runStart /
+ * runStop here. Without a host (unit tests) the kernel does it all itself, as CC++ 0.3 did.
+ * Restarts after a settings change stay inside CC++ either way: the framework keeps seeing a running plugin.
+ */
+
 let phase: StartAt | null = null;
 const phaseReached = (plugin: Plugin) => phase === "dom-ready" || (phase === "document-start" && plugin.startAt === "document-start");
 
-function startOne(plugin: Plugin, chain: string[] = []) {
+/** Runs one plugin's start() in a fresh scope (dependencies must already run). Throws when `rethrow` and it fails. */
+export function runStart(plugin: Plugin, rethrow = false) {
     if (plugin.scope) return true;
-    for (const dep of plugin.dependencies ?? []) {
-        const depPlugin = plugins.get(dep)!;
-        if (!startOne(depPlugin, [...chain, plugin.name])) {
-            fail(plugin, "start", new Error(`Dependency ${dep} did not start`));
-            notify(plugin.name);
-            return false;
-        }
-    }
     const scope = new Scope();
     try {
         plugin.start(scope);
@@ -252,13 +274,14 @@ function startOne(plugin: Plugin, chain: string[] = []) {
         scope.dispose();
         fail(plugin, "start", error);
         notify(plugin.name);
+        if (rethrow) throw error;
         return false;
     }
 }
 
-function stopOne(plugin: Plugin) {
+/** Runs one plugin's stop() and disposes its scope. */
+export function runStop(plugin: Plugin) {
     if (!plugin.scope) return;
-    for (const dependent of dependentsOf(plugin.name)) stopOne(dependent);
     const scope = plugin.scope;
     plugin.scope = null;
     try {
@@ -270,25 +293,112 @@ function stopOne(plugin: Plugin) {
     notify(plugin.name);
 }
 
+/** Starts a plugin and its dependencies without the framework (tests, early start, restarts). */
+function startLocal(plugin: Plugin): boolean {
+    if (plugin.scope) return true;
+    for (const dep of plugin.dependencies ?? []) {
+        const depPlugin = plugins.get(dep);
+        if (!depPlugin || !startLocal(depPlugin)) {
+            fail(plugin, "start", new Error(`Dependency ${dep} did not start`));
+            notify(plugin.name);
+            return false;
+        }
+    }
+    return runStart(plugin);
+}
+
+function startOne(plugin: Plugin) {
+    if (plugin.scope) return true;
+    const h = host();
+    if (!h) return startLocal(plugin);
+    // The framework believes it runs (CC++ stopped it for a restart that failed): start it here.
+    if (h.plugins[plugin.name]?.started) return startLocal(plugin);
+    try {
+        h.startPlugin(plugin.name);
+    } catch (error) {
+        fail(plugin, "start", error);
+    }
+    return !!plugin.scope;
+}
+
+function stopOne(plugin: Plugin) {
+    if (!plugin.scope) return;
+    for (const dependent of dependentsOf(plugin.name)) stopOne(dependent);
+    const h = host();
+    if (h?.plugins[plugin.name]?.started) {
+        try {
+            h.stopPlugin(plugin.name);
+        } catch (error) {
+            fail(plugin, "stop", error);
+        }
+    }
+    // Not known to the framework as running (started early, before the framework's Init stage).
+    runStop(plugin);
+}
+
 export function restartPlugin(plugin: Plugin) {
     if (!plugin.scope) return;
     const running = dependentsOf(plugin.name).filter(p => p.scope);
-    stopOne(plugin);
-    startOne(plugin);
-    for (const dependent of running) startOne(dependent);
+    // Inside CC++ only: dependents first, then the plugin, then back up in order.
+    const stopTree = (p: Plugin) => {
+        for (const dependent of dependentsOf(p.name)) if (dependent.scope) stopTree(dependent);
+        runStop(p);
+    };
+    stopTree(plugin);
+    startLocal(plugin);
+    for (const dependent of running) startLocal(dependent);
 }
 
+let reconciling = false;
+let again = false;
 /** Brings the running set in line with isActive(), in dependency order. */
 export function reconcile() {
     if (!phase) return;
-    for (const plugin of plugins.values()) if (plugin.scope && !isActive(plugin)) stopOne(plugin);
-    for (const plugin of plugins.values()) if (!plugin.scope && isActive(plugin) && phaseReached(plugin) && !errors.has(plugin.name)) startOne(plugin);
+    // Starting a plugin on the framework can write `enabled` for its dependencies, which lands here again.
+    if (reconciling) {
+        again = true;
+        return;
+    }
+    reconciling = true;
+    try {
+        do {
+            again = false;
+            for (const plugin of plugins.values()) if (plugin.scope && !isActive(plugin)) stopOne(plugin);
+            for (const plugin of plugins.values()) if (!plugin.scope && isActive(plugin) && phaseReached(plugin) && !errors.has(plugin.name)) startOne(plugin);
+        } while (again);
+    } finally {
+        reconciling = false;
+    }
 }
 
 export function startPhase(next: StartAt) {
     phase = next;
     reconcile();
     if (next === "dom-ready") scheduleRetries();
+}
+
+/**
+ * On Userscript++: document-start plugins (network and route hooks, telemetry blocking) start in the
+ * same task the script was injected in, as in 0.3, not after the framework has read its async storage.
+ * The framework's Init stage later finds them running. Only plugins that are on per the settings read
+ * synchronously; safe mode starts none.
+ */
+export function startEarly() {
+    const h = host();
+    if (!h || phase) return;
+    noteBoot();
+    if (h.isSafeMode()) return;
+    phase = "document-start";
+    for (const plugin of plugins.values()) {
+        if (plugin.startAt !== "document-start" || plugin.scope || !isActive(plugin)) continue;
+        startLocal(plugin);
+    }
+}
+
+/** Marks a phase without starting anything (the framework is doing it). */
+export function enterPhase(next: StartAt) {
+    if (phase === "dom-ready") return;
+    phase = next;
 }
 
 /** claude.ai keeps building its UI after DOMContentLoaded; a plugin that threw on start gets a few more tries. */
@@ -334,4 +444,5 @@ export function resetRegistry() {
     errors.clear();
     bootActive.clear();
     phase = null;
+    booted = false;
 }

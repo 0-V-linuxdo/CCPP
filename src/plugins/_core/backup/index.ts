@@ -4,9 +4,10 @@
  * SPDX-License-Identifier: MIT
  */
 
+import { host } from "@kernel/host";
 import { t } from "@kernel/i18n";
 import { definePlugin } from "@kernel/plugins";
-import { definePluginSettings, replaceBag, SETTINGS_KEY } from "@kernel/settings";
+import { clearAll, definePluginSettings, replaceBag, SETTINGS_KEY, snapshot } from "@kernel/settings";
 import { dumpAll, PREFIX, removeKey } from "@kernel/storage";
 import { download, h } from "@lib/dom";
 import { toast } from "@api/notices";
@@ -25,8 +26,13 @@ const L = {
 
 const FORMAT = "ccpp-backup";
 
+/**
+ * Settings come from where they live now (the Userscript++ store on 0.4); everything else CC++
+ * keeps (stars, prompt history, Quick CSS…) is still in localStorage. The format is unchanged from
+ * 0.3, so either version reads the other's backups.
+ */
 export function buildBackup() {
-    return { format: FORMAT, version, exportedAt: new Date().toISOString(), data: dumpAll() };
+    return { format: FORMAT, version, exportedAt: new Date().toISOString(), data: { ...dumpAll(), [SETTINGS_KEY]: JSON.stringify(snapshot()) } };
 }
 
 /** Restores a backup object; returns false when it is not one. */
@@ -67,6 +73,16 @@ function importBackup() {
 }
 
 const settings = definePluginSettings({
+    frameworkPanel: {
+        type: "action",
+        label: { zh: "Userscript++ 面板", en: "Userscript++ panel" },
+        description: {
+            zh: "CC++ 基于 Userscript++ 框架。框架自己的面板里有检查更新、更新日志、快捷键、通知记录、诊断信息与安全模式。",
+            en: "CC++ runs on the Userscript++ framework. Its own panel has update checks, the changelog, keybinds, notification history, diagnostics and safe mode.",
+        },
+        button: { zh: "打开", en: "Open" },
+        run: () => host()?.openSettingsPanel(),
+    },
     exportData: {
         type: "action",
         label: { zh: "导出备份", en: "Export backup" },
@@ -83,7 +99,9 @@ const settings = definePluginSettings({
         confirm: L.resetConfirm,
         run: () => {
             for (const key of Object.keys(dumpAll())) removeKey(key);
-            location.reload();
+            clearAll();
+            // Give the framework's debounced save a moment before the page goes.
+            setTimeout(() => location.reload(), 400);
         },
     },
 });

@@ -332,7 +332,7 @@ export default definePlugin({
     category: "composer",
     icon: "history",
     enabledByDefault: true,
-    dependencies: ["ComposerApi", "SlotsApi", "StylesApi", "Settings"],
+    dependencies: ["ComposerApi", "SlotsApi", "StylesApi", "CCPPSettings"],
     settings,
     start(scope) {
         addStyle(scope, HUD_CSS, "input-history");

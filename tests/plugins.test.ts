@@ -25,7 +25,7 @@ describe("runtime info", () => {
         resetRegistry();
         registerPlugins(PLUGINS);
         const info = allPlugins().map(pluginInfo);
-        const settingsInfo = info.find(p => p.name === "Settings")!;
+        const settingsInfo = info.find(p => p.name === "CCPPSettings")!;
         expect(settingsInfo.required).toBe(true);
         expect(settingsInfo.enabled).toBe(true);
         expect(info.every(p => Array.isArray(p.dependencies))).toBe(true);

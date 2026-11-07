@@ -34,7 +34,7 @@ export default definePlugin({
     category: "appearance",
     icon: "braces",
     enabledByDefault: true,
-    dependencies: ["StylesApi", "Settings"],
+    dependencies: ["StylesApi", "CCPPSettings"],
     settings,
     start(scope) {
         const setCss = addStyle(scope, settings.store.apply ? css.get() : "", "quick-css");

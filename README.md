@@ -1,6 +1,8 @@
 # CC++
 
-claude.ai 的插件化用户脚本：**一切皆插件**。内核只负责插件注册、依赖解析、生命周期与设置存储；网络钩子、路由、DOM 观察、样式注入、设置面板本身也都是插件。
+claude.ai 的插件化用户脚本：**一切皆插件**。网络钩子、路由、DOM 观察、样式注入、设置面板本身也都是插件。
+
+自 0.4 起，CC++ 基于 [Userscript++](https://github.com/0-V-linuxdo/UserscriptPP) 框架构建：插件开关、依赖、启动阶段、设置存储（脚本管理器存储 + 多标签页同步）、安全模式、错误统计与诊断由框架负责，CC++ 是框架上的 claude.ai 站点脚本。
 
 [安装 / 更新](https://raw.githubusercontent.com/0-V-linuxdo/CCPP/main/userscript/CCPP.user.js)（Tampermonkey / Violentmonkey / ScriptCat 等；桌面版见下文 AdGuard 用法）
 
@@ -58,17 +60,20 @@ API 插件（被依赖时自动开启，设置里可显示）：DomApi、StylesA
 ## 隐私
 
 - 只调用 claude.ai 同源接口（用量、对话内容、Claude Code 项目时间线），沿用浏览器登录态；不读取、不保存、不外传 Cookie 或 token。
-- 不连接任何第三方服务器；设置与数据只存在 claude.ai 的 localStorage（`ccpp:` 前缀），可在「备份与关于」里导出 / 清空。
+- 设置存在脚本管理器的存储里（Userscript++ 的 `UserscriptPPSettings`，并在 claude.ai 的 IndexedDB 留一份备份）；收藏、输入历史等数据仍在 claude.ai 的 localStorage（`ccpp:` 前缀）。两者都可在「备份」里导出 / 清空。从 0.3 升级时，旧设置会自动搬过来（旧的 `ccpp:settings` 保留，退回 0.3 也不丢）。
+- 除你填写的在线主题地址外，只会每天检查一次 raw.githubusercontent.com 上的版本号（Userscript++ 的更新检查），不连接其他第三方服务器。
 
 ## 开发
 
 ```sh
 bun install
 bun run check   # tsc + 单元测试 + 构建
-bun run build   # 生成 userscript/CCPP.user.js
+bun run build   # 生成 userscript/CCPP.user.js 和 CCPP.meta.js（用 vendor/ 里的 Userscript++ 构建）
 ```
 
-- `src/kernel/`：插件注册与依赖、生命周期（Scope 自动清理）、设置存储、事件总线、i18n
+- `vendor/userscript-pp/`：Userscript++ 框架（固定版本，见 `vendor/README.md`）
+- `sites/claude/`：claude.ai 站点定义（`index.ts`）、脚本配置（`userscript.json`）；`plugins/<插件名>/` 是每个插件交给框架的入口，由 `scripts/entries.ts` 按 `src/plugins/index.ts` 自动生成，不要手改
+- `src/kernel/`：CC++ 插件模型与 Userscript++ 之间的适配（`framework.ts`、`host.ts`）、Scope 自动清理、设置读写与类型校验、事件总线、i18n
 - `src/plugins/_api/`：API 插件；`src/plugins/_core/`：核心插件；其余每个目录一个功能插件
 - claude.ai 页面结构的选择器集中在 `src/plugins/_api/dom/selectors.ts`
 - 功能规格与验收记录见 `docs/`
@@ -79,4 +84,4 @@ CC++ 参照 void++（grok.com 的插件化脚本，GPL-3.0）的**功能与行�
 
 ## 许可
 
-MIT
+CC++ 自己的源码（`src/`、`sites/`）以 MIT 发布。构建出的 `CCPP.user.js` 打包了 GPL-3.0 的 Userscript++ 核心，整条脚本按 GPL-3.0-or-later 发布。

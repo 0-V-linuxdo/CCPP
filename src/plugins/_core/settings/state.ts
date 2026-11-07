@@ -7,8 +7,14 @@
 import type { Text } from "@kernel/i18n";
 import { persisted } from "@kernel/storage";
 
-declare const VERSION: string;
-export const version = typeof VERSION === "string" ? VERSION : "dev";
+/**
+ * CC++'s version, e.g. "0.4.0". On Userscript++ it comes from the script's @version
+ * ("20261107.0.4.0": the build date keeps script managers updating), set when the site starts.
+ */
+export let version = "dev";
+export function setVersion(next: string) {
+    version = next.replace(/^\d{8}\./, "") || version;
+}
 
 /** A CC++ page in the settings nav. Plugins add theirs with registerTab(). */
 export interface SettingsTab {

@@ -1,0 +1,13 @@
+{
+    "id": "ccpp",
+    "name": "CC++",
+    "namespace": "https://github.com/0-V-linuxdo/CCPP",
+    "description": "Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.",
+    "author": "CC++ Contributors",
+    "homepage": "https://github.com/0-V-linuxdo/CCPP",
+    "supportURL": "https://github.com/0-V-linuxdo/CCPP/issues",
+    "updateBase": "https://raw.githubusercontent.com/0-V-linuxdo/CCPP/main/userscript/",
+    "fileName": "CCPP",
+    "connect": ["*"],
+    "license": "GPL-3.0-or-later"
+}

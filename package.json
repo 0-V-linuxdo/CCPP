@@ -1,6 +1,6 @@
 {
   "name": "ccpp",
-  "version": "0.3.139",
+  "version": "0.4.0",
   "private": true,
   "description": "CC++ — a clean-room, everything-is-a-plugin userscript for claude.ai.",
   "type": "module",
@@ -9,11 +9,14 @@
     "build": "bun run build.ts",
     "tsc": "tsc --noEmit",
     "test": "bun test",
-    "check": "bun run tsc && bun test && bun run build.ts"
+    "check": "bun run tsc && bun run build.ts && bun test",
+    "entries": "bun --preload ./tests/setup.ts scripts/entries.ts"
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "18.0.1",
     "@types/bun": "1.3.10",
+    "esbuild": "0.25.10",
+    "preact": "10.29.8",
     "typescript": "5.9.3"
   }
 }

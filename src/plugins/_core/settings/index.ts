@@ -181,7 +181,7 @@ function installEntries(parent: Scope) {
 let codeGear: { repaint(): void } | null = null;
 
 export default definePlugin({
-    name: "Settings",
+    name: "CCPPSettings",
     title: { zh: "设置面板", en: "Settings" },
     description: {
         zh: "CC++ 的设置界面本身也是插件：claude.ai 设置侧栏里的 CC++ 分组、头像菜单子菜单、插件卡片（收藏、置顶、单插件设置弹窗）。",

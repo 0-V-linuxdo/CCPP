@@ -4,54 +4,27 @@
  * SPDX-License-Identifier: MIT
  */
 
-import { readFileSync, writeFileSync } from "fs";
+/*
+ * Builds userscript/CCPP.user.js (and CCPP.meta.js) with Userscript++ (vendor/userscript-pp):
+ * the framework's core, the claude.ai site in sites/claude, and one plugin entry per CC++ plugin.
+ */
+
+import { spawnSync } from "child_process";
+import { readFileSync } from "fs";
 
 const pkg = JSON.parse(readFileSync("package.json", "utf-8"));
-// Build date (Beijing time), so the date part moves with every release.
-// Violentmonkey compares @version numerically part by part, so a later date always wins.
+// Build date (Beijing time) in front of the version, as since 0.1: Violentmonkey compares @version
+// part by part, so 20261107.0.4.0 stays newer than every 0.3 build (20261107.0.3.x) before it.
 const VERSION_DATE = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit" })
     .format(new Date())
     .replaceAll("-", "");
-const displayVersion = `[${VERSION_DATE}] v${pkg.version}`;
-const REPO = "https://github.com/0-V-linuxdo/CCPP";
-const RAW = "https://raw.githubusercontent.com/0-V-linuxdo/CCPP/main/userscript/CCPP.user.js";
+const version = `${VERSION_DATE}.${pkg.version}`;
 
-const HEADER = `// ==UserScript==
-// @name         CC++
-// @namespace    ${REPO}
-// @version      ${VERSION_DATE}.${pkg.version}
-// @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
-// @author       CC++ Contributors
-// @homepageURL  ${REPO}
-// @supportURL   ${REPO}/issues
-// @downloadURL  ${RAW}
-// @updateURL    ${RAW}
-// @match        https://claude.ai/*
-// @run-at       document-start
-// @inject-into  page
-// @grant        unsafeWindow
-// @grant        GM_registerMenuCommand
-// @grant        GM_unregisterMenuCommand
-// @grant        GM_xmlhttpRequest
-// @connect      *
-// @noframes
-// @license      MIT
-// ==/UserScript==
-`;
+const run = (cmd: string, args: string[], env: Record<string, string> = {}) => {
+    const result = spawnSync(cmd, args, { stdio: "inherit", env: { ...process.env, ...env } });
+    if (result.status !== 0) process.exit(result.status ?? 1);
+};
 
-const result = await Bun.build({
-    entrypoints: ["src/index.ts"],
-    target: "browser",
-    format: "iife",
-    minify: false,
-    define: { VERSION: JSON.stringify(pkg.version) },
-});
-
-if (!result.success) {
-    for (const log of result.logs) console.error(log);
-    process.exit(1);
-}
-
-const code = await result.outputs[0].text();
-writeFileSync("userscript/CCPP.user.js", `${HEADER}\n${code}`);
-console.log(`Built userscript/CCPP.user.js (${(code.length / 1024).toFixed(1)} KiB) ${displayVersion}`);
+run(process.execPath, ["--preload", "./tests/setup.ts", "scripts/entries.ts"]);
+run("node", ["vendor/userscript-pp/scripts/build.mjs", "--site-dir", "sites/claude", "--out", "userscript", "--prod"], { USPP_VERSION: version });
+console.log(`Built userscript/CCPP.user.js [${VERSION_DATE}] v${pkg.version}`);

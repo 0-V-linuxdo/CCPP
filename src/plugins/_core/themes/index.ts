@@ -343,7 +343,7 @@ export default definePlugin({
     category: "appearance",
     icon: "palette",
     enabledByDefault: true,
-    dependencies: ["StylesApi", "Settings", "NoticesApi"],
+    dependencies: ["StylesApi", "CCPPSettings", "NoticesApi"],
     start(scope) {
         const setCss = addStyle(scope, combinedCss(store.get()), "themes");
         let redrawTab = () => {};

@@ -7,7 +7,7 @@
 declare const unsafeWindow: Window | undefined;
 
 /** The page's own window (the userscript sandbox's window under Tampermonkey's isolation). */
-export const pageWindow: Window & typeof globalThis = (typeof unsafeWindow !== "undefined" && unsafeWindow ? unsafeWindow : window) as Window & typeof globalThis;
+export const pageWindow: Window & typeof globalThis = (typeof unsafeWindow !== "undefined" && unsafeWindow ? unsafeWindow : typeof window !== "undefined" ? window : globalThis) as Window & typeof globalThis;
 
 export const isClaudeHost = (host = location.hostname) => host === "claude.ai";
 

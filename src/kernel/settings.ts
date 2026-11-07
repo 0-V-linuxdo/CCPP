@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: MIT
  */
 
+import { host, onHost } from "./host";
 import type { Text } from "./i18n";
 import { Logger } from "./logger";
 import { readJson, writeJson } from "./storage";
@@ -85,10 +86,29 @@ const listeners = new Set<Listener>();
 
 const isRecord = (value: unknown): value is Record<string, any> => !!value && typeof value === "object" && !Array.isArray(value);
 
+/*
+ * Where the values live. On Userscript++ (the normal case) they are the framework's own plugin
+ * settings, `U.Settings.plugins.<Plugin>.<key>`: kept in the script manager's storage, backed up to
+ * the site's IndexedDB and synced across tabs by the framework. Without a host (unit tests) they stay
+ * in a bag here, saved to localStorage under `ccpp:settings` the way CC++ 0.3 did.
+ */
 let bag: Bag = (() => {
     const stored = readJson<unknown>(SETTINGS_KEY, {});
     return isRecord(stored) ? (stored as Bag) : {};
 })();
+
+/** The framework's own core plugin; its entry is not CC++'s and never goes into CC++ backups. */
+export const FRAMEWORK_PLUGIN = "Settings";
+/** CC++'s settings UI plugin. It was called "Settings" before 0.4, a name the framework now owns. */
+export const SETTINGS_UI_PLUGIN = "CCPPSettings";
+const LEGACY_NAMES: Record<string, string> = { Settings: SETTINGS_UI_PLUGIN };
+/** Set on the settings UI plugin once the 0.3 localStorage settings were copied into the framework. */
+const MIGRATED_KEY = "migratedFrom03";
+
+const values = (): Bag => {
+    const h = host();
+    return h ? (h.PlainSettings.plugins as Bag) : bag;
+};
 
 function announce(plugin: string, key: string) {
     for (const listener of [...listeners]) {
@@ -100,21 +120,50 @@ function announce(plugin: string, key: string) {
     }
 }
 
-export const getRaw = (plugin: string, key: string): Value | undefined => bag[plugin]?.[key];
-export const snapshot = (): Bag => structuredClone(bag);
+export const getRaw = (plugin: string, key: string): Value | undefined => {
+    const entry = values()[plugin];
+    return isRecord(entry) ? (entry[key] as Value | undefined) : undefined;
+};
+
+/** Every CC++ plugin's stored values (the framework's own entry left out). */
+export const snapshot = (): Bag => {
+    const out: Bag = {};
+    for (const [plugin, entry] of Object.entries(values())) {
+        if (plugin === FRAMEWORK_PLUGIN && host()) continue;
+        if (isRecord(entry)) out[plugin] = JSON.parse(JSON.stringify(entry));
+    }
+    return out;
+};
+
+/** The framework's settings proxy for one plugin, created when missing. Writes through it are saved and announced. */
+function hostEntry(plugin: string) {
+    const h = host()!;
+    if (!isRecord(h.PlainSettings.plugins[plugin])) h.Settings.plugins[plugin] = {};
+    return h.Settings.plugins[plugin] as Record<string, unknown>;
+}
 
 export function setRaw(plugin: string, key: string, value: Value) {
-    if (bag[plugin]?.[key] === value) return;
+    if (getRaw(plugin, key) === value && key in (values()[plugin] ?? {})) return;
+    if (host()) {
+        // The framework's change listener (installed below) announces it.
+        hostEntry(plugin)[key] = value;
+        return;
+    }
     bag = { ...bag, [plugin]: { ...bag[plugin], [key]: value } };
     if (!writeJson(SETTINGS_KEY, bag)) logger.warn("Settings could not be saved");
     announce(plugin, key);
 }
 
 export function resetRaw(plugin: string, keys: string[]) {
-    const current = bag[plugin];
-    if (!current) return;
+    const current = values()[plugin];
+    if (!isRecord(current)) return;
     const changed = keys.filter(key => key in current);
     if (!changed.length) return;
+    if (host()) {
+        const entry = hostEntry(plugin);
+        for (const key of changed) delete entry[key];
+        return;
+    }
     const next = { ...current };
     for (const key of changed) delete next[key];
     bag = { ...bag, [plugin]: next };
@@ -140,14 +189,78 @@ export function diffBags(before: Bag, after: Bag): [string, string][] {
     return out;
 }
 
-/** Replaces the whole bag (another tab saved, or a backup was restored) and announces only real changes. */
+/** Replaces every CC++ value (another tab saved, or a backup was restored) and announces only real changes. */
 export function replaceBag(next: unknown) {
     const parsed = isRecord(next) ? (next as Bag) : {};
+    if (host()) {
+        // A 0.3 backup still calls the settings UI plugin "Settings".
+        const renamed: Bag = {};
+        for (const [plugin, entry] of Object.entries(parsed)) {
+            if (!isRecord(entry)) continue;
+            const name = LEGACY_NAMES[plugin] ?? plugin;
+            renamed[name] = { ...renamed[name], ...entry };
+        }
+        for (const [plugin, key] of diffBags(snapshot(), renamed)) {
+            const entry = hostEntry(plugin);
+            if (key in (renamed[plugin] ?? {})) entry[key] = renamed[plugin][key];
+            else delete entry[key];
+        }
+        return;
+    }
     const changed = diffBags(bag, parsed);
     bag = parsed;
     writeJson(SETTINGS_KEY, bag);
     for (const [plugin, key] of changed) announce(plugin, key);
 }
+
+/** Erases every CC++ value (the framework's own entry stays). */
+export function clearAll() {
+    if (!host()) return replaceBag({});
+    const h = host()!;
+    for (const plugin of Object.keys(h.PlainSettings.plugins)) if (plugin !== FRAMEWORK_PLUGIN) delete h.Settings.plugins[plugin];
+}
+
+/**
+ * Copies CC++ 0.3's settings (localStorage `ccpp:settings`) into the framework once per browser,
+ * the first time 0.4 runs. Values the framework already holds win. The old key is left in place
+ * so going back to 0.3 still finds its settings. Returns true when anything was copied.
+ */
+export function migrateLegacy(): boolean {
+    const h = host();
+    if (!h) return false;
+    const plain = h.PlainSettings.plugins;
+    if (isRecord(plain[SETTINGS_UI_PLUGIN]) && plain[SETTINGS_UI_PLUGIN][MIGRATED_KEY]) return false;
+    const legacy = readJson<unknown>(SETTINGS_KEY, null);
+    let copied = false;
+    if (isRecord(legacy)) {
+        for (const [oldName, entry] of Object.entries(legacy)) {
+            if (!isRecord(entry)) continue;
+            const name = LEGACY_NAMES[oldName] ?? oldName;
+            for (const [key, value] of Object.entries(entry)) {
+                if (isRecord(plain[name]) && key in plain[name]) continue;
+                hostEntry(name)[key] = value;
+                copied = true;
+            }
+        }
+    }
+    hostEntry(SETTINGS_UI_PLUGIN)[MIGRATED_KEY] = Date.now();
+    if (copied) logger.info("Copied CC++ 0.3 settings into Userscript++ storage");
+    return copied;
+}
+
+// Every change to a framework plugin setting, from any source: CC++'s own UI, the framework's panel,
+// another tab, a backup import. Paths are "plugins.<Plugin>.<key>[.…]", or "plugins.<Plugin>" when a
+// whole entry arrives or goes.
+onHost(h =>
+    h.SettingsStore.addPrefixChangeListener("plugins.", (value, path) => {
+        const [, plugin, key] = path.split(".");
+        if (!plugin || plugin === FRAMEWORK_PLUGIN) return;
+        if (key) return announce(plugin, key);
+        const keys = isRecord(value) ? Object.keys(value) : [];
+        keys.sort((x, y) => Number(y === "enabled") - Number(x === "enabled"));
+        for (const k of keys.length ? keys : ["enabled"]) announce(plugin, k);
+    }),
+);
 
 /** Reads a stored value through its option definition: wrong types and out-of-range numbers fall back or clamp. */
 export function coerce(option: Option, value: Value | undefined): Value | undefined {
