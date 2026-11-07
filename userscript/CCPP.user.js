@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261108.0.3.128
+// @version      20261108.0.3.129
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -2962,44 +2962,36 @@ ${IMAGE_FIELD_CSS}`;
     const swapped = new Set;
     const restore = () => {
       for (const button of swapped) {
-        for (const mark of button.querySelectorAll("[data-ccpp-gear-icon]")) {
-          if (mark.dataset.ccppGearIcon === "svg")
-            mark.remove();
-          else if (mark.dataset.ccppGearGlyph) {
-            mark.textContent = mark.dataset.ccppGearGlyph;
-            delete mark.dataset.ccppGearGlyph;
-            mark.removeAttribute("data-ccpp-gear-icon");
-          }
-        }
-        for (const svg of button.querySelectorAll("svg[data-ccpp-gear-hidden]")) {
-          svg.style.removeProperty("display");
-          svg.removeAttribute("data-ccpp-gear-hidden");
+        for (const mark of button.querySelectorAll("[data-ccpp-gear-icon]"))
+          mark.remove();
+        for (const native of button.querySelectorAll("[data-ccpp-gear-hidden]")) {
+          native.style.removeProperty("display");
+          native.removeAttribute("data-ccpp-gear-hidden");
         }
       }
       swapped.clear();
     };
     const swap = (button) => {
-      const font = button.querySelector('[data-cds="Icon"]');
-      const sliders = glyph("sliders");
-      if (font && sliders) {
-        if (font.textContent !== sliders) {
-          font.dataset.ccppGearGlyph = font.textContent ?? "";
-          font.setAttribute("data-ccpp-gear-icon", "glyph");
-          font.textContent = sliders;
-        }
-      } else if (!button.querySelector("[data-ccpp-gear-icon]")) {
-        const native = button.querySelector("svg");
-        const size = Math.round(native?.getBoundingClientRect().width || Number(native?.getAttribute("width")) || 16);
-        const mark = icon("sliders", size);
-        mark.setAttribute("data-ccpp-gear-icon", "svg");
-        if (native) {
+      swapped.add(button);
+      if (button.querySelector("[data-ccpp-gear-icon]")) {
+        for (const native of button.querySelectorAll('[data-cds="Icon"]:not([data-ccpp-gear-hidden]), svg:not([data-ccpp-gear-icon]):not([data-ccpp-gear-hidden])')) {
           native.setAttribute("data-ccpp-gear-hidden", "");
           native.style.display = "none";
-          native.after(mark);
-        } else
-          button.prepend(mark);
+        }
+        return;
       }
-      swapped.add(button);
+      const native = button.querySelector('[data-cds="Icon"], svg');
+      const box = native?.getBoundingClientRect();
+      const size = Math.round(box?.width || box?.height || Number(native?.getAttribute("width")) || 18);
+      const mark = icon("sliders", size);
+      mark.setAttribute("data-ccpp-gear-icon", "");
+      mark.style.flexShrink = "0";
+      if (native) {
+        native.setAttribute("data-ccpp-gear-hidden", "");
+        native.style.display = "none";
+        native.after(mark);
+      } else
+        button.prepend(mark);
     };
     const paint = () => {
       if (!enabled() || !onCodePage())
@@ -3018,7 +3010,7 @@ ${IMAGE_FIELD_CSS}`;
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.128";
+  var version = "0.3.129";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -9168,7 +9160,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.128",
+      version: "0.3.129",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -9185,7 +9177,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.128";
+    win[FLAG] = "0.3.129";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -9202,7 +9194,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.128"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.129"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();

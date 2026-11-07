@@ -103,46 +103,40 @@ export function installCodeGear(scope: Scope, enabled: () => boolean, open: () =
         return () => clearTimeout(timer);
     });
 
-    // The gear's icon becomes CC++'s sliders: claude.ai's own glyph font when it can, else our svg.
+    // The gear's icon becomes CC++'s sliders, the same svg as on the plugin cards' settings button.
+    // (claude.ai's glyph font has no vertical-sliders icon: its "sliders" glyph is a filter icon.)
     const swapped = new Set<HTMLElement>();
     const restore = () => {
         for (const button of swapped) {
-            for (const mark of button.querySelectorAll<HTMLElement>("[data-ccpp-gear-icon]")) {
-                if (mark.dataset.ccppGearIcon === "svg") mark.remove();
-                else if (mark.dataset.ccppGearGlyph) {
-                    mark.textContent = mark.dataset.ccppGearGlyph;
-                    delete mark.dataset.ccppGearGlyph;
-                    mark.removeAttribute("data-ccpp-gear-icon");
-                }
-            }
-            for (const svg of button.querySelectorAll<SVGElement>("svg[data-ccpp-gear-hidden]")) {
-                svg.style.removeProperty("display");
-                svg.removeAttribute("data-ccpp-gear-hidden");
+            for (const mark of button.querySelectorAll("[data-ccpp-gear-icon]")) mark.remove();
+            for (const native of button.querySelectorAll<HTMLElement | SVGElement>("[data-ccpp-gear-hidden]")) {
+                native.style.removeProperty("display");
+                native.removeAttribute("data-ccpp-gear-hidden");
             }
         }
         swapped.clear();
     };
     const swap = (button: HTMLElement) => {
-        const font = button.querySelector<HTMLElement>('[data-cds="Icon"]');
-        const sliders = glyph("sliders");
-        if (font && sliders) {
-            if (font.textContent !== sliders) {
-                font.dataset.ccppGearGlyph = font.textContent ?? "";
-                font.setAttribute("data-ccpp-gear-icon", "glyph");
-                font.textContent = sliders;
-            }
-        } else if (!button.querySelector("[data-ccpp-gear-icon]")) {
-            const native = button.querySelector<SVGElement>("svg");
-            const size = Math.round(native?.getBoundingClientRect().width || Number(native?.getAttribute("width")) || 16);
-            const mark = icon("sliders", size);
-            mark.setAttribute("data-ccpp-gear-icon", "svg");
-            if (native) {
+        swapped.add(button);
+        if (button.querySelector("[data-ccpp-gear-icon]")) {
+            // React may have put its icon back; keep it hidden.
+            for (const native of button.querySelectorAll<HTMLElement | SVGElement>('[data-cds="Icon"]:not([data-ccpp-gear-hidden]), svg:not([data-ccpp-gear-icon]):not([data-ccpp-gear-hidden])')) {
                 native.setAttribute("data-ccpp-gear-hidden", "");
                 native.style.display = "none";
-                native.after(mark);
-            } else button.prepend(mark);
+            }
+            return;
         }
-        swapped.add(button);
+        const native = button.querySelector<HTMLElement | SVGElement>('[data-cds="Icon"], svg');
+        const box = native?.getBoundingClientRect();
+        const size = Math.round(box?.width || box?.height || Number(native?.getAttribute("width")) || 18);
+        const mark = icon("sliders", size);
+        mark.setAttribute("data-ccpp-gear-icon", "");
+        mark.style.flexShrink = "0";
+        if (native) {
+            native.setAttribute("data-ccpp-gear-hidden", "");
+            native.style.display = "none";
+            native.after(mark);
+        } else button.prepend(mark);
     };
     const paint = () => {
         if (!enabled() || !onCodePage()) return restore();
