@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261108.0.3.127
+// @version      20261108.0.3.128
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -2883,65 +2883,8 @@ ${IMAGE_FIELD_CSS}`;
     });
   }
 
-  // src/plugins/_core/settings/codeGear.ts
-  var onCodePage = () => location.pathname === "/code" || location.pathname.startsWith("/code/");
-  var SKIP = '[role="dialog"], [role="menu"], [role="listbox"], [data-testid^="user-menu"], [data-ccpp-host], [data-ccpp-item], [aria-haspopup="menu"]';
-  var SETTINGS_WORD = /setting|设置|設定/i;
-  var SIDEBAR = '[aria-label="Sidebar"], [data-testid="sidebar"], nav, aside';
-  function inSidebar(el) {
-    if (el.closest(SIDEBAR))
-      return true;
-    const rect = el.getBoundingClientRect();
-    return rect.right < Math.min(420, innerWidth * 0.4) && rect.top > innerHeight * 0.6;
-  }
-  function isGear(el) {
-    if (!inSidebar(el))
-      return false;
-    const label = [el.getAttribute("aria-label"), el.getAttribute("title"), el.getAttribute("data-testid"), el.getAttribute("data-ccpp-tip")].filter(Boolean).join(" ");
-    if (SETTINGS_WORD.test(label))
-      return true;
-    const href = el.getAttribute("href") ?? "";
-    return href.includes("#settings");
-  }
-  function openedOnCode(dialog) {
-    if (location.hash === "#settings/claude-code")
-      return true;
-    const current = dialog.querySelector('[data-perf-region="settings_nav"] li:not([data-ccpp-nav]) > button[aria-current]');
-    const text = current?.textContent?.trim() ?? "";
-    return /^(claude )?code$|^代码$/i.test(text);
-  }
-  function installCodeGear(scope, enabled, open) {
-    let armed = 0;
-    scope.listen(document, "click", (event) => {
-      if (!enabled() || !onCodePage() || event.button !== 0)
-        return;
-      if (event.altKey || event.shiftKey || event.ctrlKey || event.metaKey)
-        return;
-      const el = event.target?.closest?.("button, a, [role='button']");
-      if (!el || el.closest(SKIP) || !inSidebar(el))
-        return;
-      if (isGear(el)) {
-        event.preventDefault();
-        event.stopImmediatePropagation();
-        open();
-        return;
-      }
-      armed = Date.now();
-    }, { capture: true });
-    watch(scope, NATIVE_DIALOG, (dialog) => {
-      if (!enabled() || !onCodePage() || Date.now() - armed > 1500)
-        return;
-      armed = 0;
-      const timer = setTimeout(() => {
-        if (dialog.isConnected && openedOnCode(dialog))
-          open();
-      }, 150);
-      return () => clearTimeout(timer);
-    });
-  }
-
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.127";
+  var version = "0.3.128";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -3189,7 +3132,7 @@ ${IMAGE_FIELD_CSS}`;
         open.trigger.setAttribute("aria-expanded", "false");
         open = null;
       };
-      const attach = (trigger, width, fill) => {
+      const attach = (trigger, width, fill, onClick) => {
         trigger.setAttribute("aria-haspopup", "menu");
         trigger.setAttribute("aria-expanded", "false");
         const show = () => {
@@ -3213,7 +3156,11 @@ ${IMAGE_FIELD_CSS}`;
         if (trigger.hasAttribute("data-ccpp-item")) {
           trigger.addEventListener("click", (event) => {
             event.stopPropagation();
-            show();
+            if (!onClick)
+              return show();
+            event.preventDefault();
+            closeMenu(menu);
+            setTimeout(onClick, 0);
           });
         }
         trigger.addEventListener("keydown", (event) => {
@@ -3282,7 +3229,7 @@ ${IMAGE_FIELD_CSS}`;
         fillCcpp(scroll, child);
         scroll.appendChild(separator());
         scroll.appendChild(row(ownIcon("settings"), t(L3.openSettings), { run: () => options.openTab("plugins") }));
-      });
+      }, () => options.openTab("plugins"));
       settingsItem.after(entry);
       added.push(entry);
     }
@@ -4045,15 +3992,6 @@ ${IMAGE_FIELD_CSS}`;
       ],
       visible: (v) => v.userMenuEntry === true || inFlyout(v)
     },
-    codeGear: {
-      type: "boolean",
-      label: { zh: "Code 页侧栏的齿轮按钮打开 CC++", en: "Code sidebar gear opens CC++" },
-      description: {
-        zh: "在同一个设置弹窗里直接打开 CC++ 的「插件」页，claude.ai 自己的设置仍在左侧导航；按住 Alt / Shift 点击照旧打开原生 Code 设置。",
-        en: "Lands on CC++ Plugins in the same settings dialog; claude.ai's own pages stay in its nav. Alt- or Shift-click keeps the original Code page."
-      },
-      default: true
-    },
     hotkey: { type: "string", label: { zh: "打开设置的快捷键", en: "Shortcut to open settings" }, description: { zh: "如 mod+shift+.，留空关闭。", en: "e.g. mod+shift+.; empty disables." }, default: "mod+shift+." },
     composerEntry: { type: "boolean", label: { zh: "在输入框旁显示 CC++ 按钮", en: "CC++ button next to the model picker" }, default: false },
     showApiPlugins: { type: "boolean", label: { zh: "显示 API / 核心插件", en: "Show API and core plugins" }, default: false }
@@ -4142,7 +4080,6 @@ ${IMAGE_FIELD_CSS}`;
       scope.defer(onSettingsChange((_, key) => key === "enabled" && redraw()));
       scope.defer(prefs.subscribe(redraw));
       installEntries(scope);
-      installCodeGear(scope, () => settings.store.codeGear, () => void openSettings({ tab: "plugins" }));
       const remember = () => {
         const hash = location.hash.slice(1);
         if (NATIVE_SECTIONS.some((s) => s.hash === hash))
@@ -8229,7 +8166,7 @@ ${links}:visited { color: ${o.visitedColor} !important; text-decoration-color: $
     return out;
   }
   var HAS_DOMAIN = new RegExp(DOMAIN_RE.source, "i");
-  var SKIP2 = "a, code, pre, button, [contenteditable], .katex";
+  var SKIP = "a, code, pre, button, [contenteditable], .katex";
   var betterLinks_default = definePlugin({
     name: "BetterLinks",
     title: { zh: "更好的链接", en: "Better links" },
@@ -8250,7 +8187,7 @@ ${links}:visited { color: ${o.visitedColor} !important; text-decoration-color: $
       watch(scope, `${SEL.assistantMessage}[data-is-streaming="false"] ${SEL.prose}`, (prose) => {
         const added = [];
         const walker = document.createTreeWalker(prose, NodeFilter.SHOW_TEXT, {
-          acceptNode: (node) => node.parentElement?.closest(SKIP2) || !HAS_DOMAIN.test(node.nodeValue ?? "") ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT
+          acceptNode: (node) => node.parentElement?.closest(SKIP) || !HAS_DOMAIN.test(node.nodeValue ?? "") ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT
         });
         const nodes = [];
         for (let n = walker.nextNode();n; n = walker.nextNode())
@@ -8452,7 +8389,7 @@ ${links}:visited { color: ${o.visitedColor} !important; text-decoration-color: $
   var LIMIT_RE = /\b(usage|session|weekly|daily|message|5-hour) limits?\b|\bout of (free |extra )?(messages|usage)\b|用量(上限|限制|已用完|已耗尽)|使用(上限|限制)/i;
   var APPROACHING_RE = /\bapproaching\b|接近|即将/i;
   var MAX_TEXT = 240;
-  var SKIP3 = `${SEL.userContent}, ${SEL.sidebar}, nav, [role="menu"], [role="dialog"], [data-ccpp], ul, ol, a[href], button, [role="button"], [role="list"], [role="listitem"], [role="option"]`;
+  var SKIP2 = `${SEL.userContent}, ${SEL.sidebar}, nav, [role="menu"], [role="dialog"], [data-ccpp], ul, ol, a[href], button, [role="button"], [role="list"], [role="listitem"], [role="option"]`;
   var MARK2 = "data-ccpp-usage-banner";
   function barOf2(text) {
     let bar = null;
@@ -8467,7 +8404,7 @@ ${links}:visited { color: ${o.visitedColor} !important; text-decoration-color: $
   function findUsageBanners(root = document) {
     const found = new Map;
     for (const el of root.querySelectorAll("p, span, div, h2, h3, strong")) {
-      if (el.childElementCount > 2 || el.closest(SKIP3))
+      if (el.childElementCount > 2 || el.closest(SKIP2))
         continue;
       const text = el.textContent?.trim() ?? "";
       if (!text || text.length > MAX_TEXT || !LIMIT_RE.test(text))
@@ -9088,7 +9025,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.127",
+      version: "0.3.128",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -9105,7 +9042,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.127";
+    win[FLAG] = "0.3.128";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -9122,7 +9059,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.127"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.128"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();
