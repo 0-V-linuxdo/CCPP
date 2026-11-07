@@ -141,8 +141,13 @@ const textOf = (selector: string) => document.querySelector(selector)?.textConte
 function pageTitle(id: string) {
     const thread = id.split(":")[1];
     if (!thread) return chatTitle();
+    return textOf(THREAD_TITLE) || linkTitle(thread);
+}
+
+/** A thread's name from a link to it on the page (sidebar, threads list), or "". */
+function linkTitle(thread: string) {
     const link = [...document.querySelectorAll<HTMLAnchorElement>('a[href*="thread="]')].find(a => new URLSearchParams(a.search).get("thread") === thread);
-    return textOf(THREAD_TITLE) || link?.textContent?.replace(/\s+/g, " ").trim() || "";
+    return link?.textContent?.replace(/\s+/g, " ").trim() ?? "";
 }
 
 /** Bottom-left of a card: the project for a thread, "Claude Code" for other Code pages, nothing for a chat. */
@@ -202,30 +207,41 @@ export default definePlugin({
     dependencies: ["RouterApi", "HotkeysApi", "ChatStateApi"],
     settings,
     start(scope) {
+        /** Until then the open page's titles may still be the previous page's. */
+        let settledAt = 0;
         const record = () => {
             const page = currentVisit();
             if (!page) return;
-            // The title updates a moment after navigation.
+            const thread = page.id.split(":")[1];
+            settledAt = Date.now() + 1500;
+            // Move it to the front at once, so the switcher is right even straight after switching. The pane and tab
+            // titles still show the page we came from for a moment, so only a link's name is trusted now.
+            visits.set(recordVisit(visits.get(), { ...page, title: thread ? linkTitle(thread) : "", at: Date.now(), ...(thread ? { project: chatTitle() } : {}) }));
             scope.timeout(() => {
                 if (currentVisit()?.id !== page.id) return;
-                const thread = page.id.includes(":");
                 const channel = projectOf(page);
                 const icon = channel && snapshotIcon(channel);
                 if (channel && icon && icons.get()[channel] !== icon) icons.set({ ...icons.get(), [channel]: icon });
-                visits.set(recordVisit(visits.get(), { ...page, title: pageTitle(page.id), at: Date.now(), ...(thread ? { project: chatTitle() } : {}) }));
+                refreshTitles();
             }, 1500);
+        };
+        /** The open page's name, and any thread whose link on the page now shows another name (threads get renamed). */
+        const refreshTitles = () => {
+            const here = currentVisit()?.id;
+            let list = visits.get();
+            for (const visit of list) {
+                const thread = visit.id.split(":")[1];
+                if (visit.id === here) {
+                    if (Date.now() >= settledAt) list = renameVisit(list, visit.id, pageTitle(visit.id));
+                } else if (thread) list = renameVisit(list, visit.id, linkTitle(thread));
+            }
+            if (list !== visits.get()) visits.set(list);
         };
         onRoute(scope, record);
         // Opening or switching a Claude Code thread only changes ?thread=…
         scope.on("route:search", record);
         // New chats get their name after the first reply; refresh the stored one when it changes.
-        scope.interval(() => {
-            const id = currentVisit()?.id;
-            if (!id) return;
-            const list = visits.get();
-            const next = renameVisit(list, id, pageTitle(id));
-            if (next !== list) visits.set(next);
-        }, 3000);
+        scope.interval(refreshTitles, 2000);
 
         const { box } = createHost(scope, "recent-chats", CSS, { layer: "page" });
         let selected = 0;
@@ -303,6 +319,7 @@ export default definePlugin({
         const begin = (event: KeyboardEvent, combo: Combo) => {
             open = true;
             refreshIcons();
+            refreshTitles();
             // Start on the previous chat, like Alt+Tab.
             selected = visits.get()[0]?.id === currentVisit()?.id ? 1 : 0;
             holding = heldModifiers(event, combo);

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261108.0.3.138
+// @version      20261108.0.3.139
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -3056,7 +3056,7 @@ ${IMAGE_FIELD_CSS}`;
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.138";
+  var version = "0.3.139";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -8110,8 +8110,11 @@ ${targets.map((t) => `${t}:hover`).join(`,
     const thread = id.split(":")[1];
     if (!thread)
       return chatTitle();
+    return textOf(THREAD_TITLE) || linkTitle(thread);
+  }
+  function linkTitle(thread) {
     const link = [...document.querySelectorAll('a[href*="thread="]')].find((a) => new URLSearchParams(a.search).get("thread") === thread);
-    return textOf(THREAD_TITLE) || link?.textContent?.replace(/\s+/g, " ").trim() || "";
+    return link?.textContent?.replace(/\s+/g, " ").trim() ?? "";
   }
   function cardLabel(visit) {
     if (visit.project && visit.id.includes(":"))
@@ -8166,32 +8169,41 @@ ${targets.map((t) => `${t}:hover`).join(`,
     dependencies: ["RouterApi", "HotkeysApi", "ChatStateApi"],
     settings: settings18,
     start(scope) {
+      let settledAt = 0;
       const record = () => {
         const page = currentVisit();
         if (!page)
           return;
+        const thread = page.id.split(":")[1];
+        settledAt = Date.now() + 1500;
+        visits.set(recordVisit(visits.get(), { ...page, title: thread ? linkTitle(thread) : "", at: Date.now(), ...thread ? { project: chatTitle() } : {} }));
         scope.timeout(() => {
           if (currentVisit()?.id !== page.id)
             return;
-          const thread = page.id.includes(":");
           const channel = projectOf(page);
           const icon = channel && snapshotIcon(channel);
           if (channel && icon && icons.get()[channel] !== icon)
             icons.set({ ...icons.get(), [channel]: icon });
-          visits.set(recordVisit(visits.get(), { ...page, title: pageTitle(page.id), at: Date.now(), ...thread ? { project: chatTitle() } : {} }));
+          refreshTitles();
         }, 1500);
+      };
+      const refreshTitles = () => {
+        const here = currentVisit()?.id;
+        let list = visits.get();
+        for (const visit of list) {
+          const thread = visit.id.split(":")[1];
+          if (visit.id === here) {
+            if (Date.now() >= settledAt)
+              list = renameVisit(list, visit.id, pageTitle(visit.id));
+          } else if (thread)
+            list = renameVisit(list, visit.id, linkTitle(thread));
+        }
+        if (list !== visits.get())
+          visits.set(list);
       };
       onRoute(scope, record);
       scope.on("route:search", record);
-      scope.interval(() => {
-        const id = currentVisit()?.id;
-        if (!id)
-          return;
-        const list = visits.get();
-        const next = renameVisit(list, id, pageTitle(id));
-        if (next !== list)
-          visits.set(next);
-      }, 3000);
+      scope.interval(refreshTitles, 2000);
       const { box } = createHost(scope, "recent-chats", CSS8, { layer: "page" });
       let selected = 0;
       let open = false;
@@ -8260,6 +8272,7 @@ ${targets.map((t) => `${t}:hover`).join(`,
       const begin = (event, combo) => {
         open = true;
         refreshIcons();
+        refreshTitles();
         selected = visits.get()[0]?.id === currentVisit()?.id ? 1 : 0;
         holding = heldModifiers(event, combo);
         if (holding)
@@ -9406,7 +9419,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.138",
+      version: "0.3.139",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -9423,7 +9436,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.138";
+    win[FLAG] = "0.3.139";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -9440,7 +9453,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.138"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.139"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();
