@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261108.0.3.129
+// @version      20261108.0.3.130
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -3010,7 +3010,7 @@ ${IMAGE_FIELD_CSS}`;
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.129";
+  var version = "0.3.130";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -7955,7 +7955,27 @@ ${targets.map((t) => `${t}:hover`).join(`,
     empty: { zh: "还没有记录。打开过的对话会出现在这里。", en: "Nothing yet. Chats you open show up here." },
     hint: { zh: "↑↓←→ 选择 · Enter 打开 · 1–9 直达 · Esc 关闭", en: "Arrows to pick · Enter to open · 1–9 to jump · Esc to close" }
   };
-  var visits = persisted("recent-chats", [], (v) => Array.isArray(v) && v.every((x) => x && typeof x.id === "string" && typeof x.title === "string" && typeof x.at === "number"));
+  var visits = persisted("recent-chats", [], (v) => Array.isArray(v) && v.every((x) => x && typeof x.id === "string" && typeof x.title === "string" && typeof x.at === "number" && (x.url === undefined || typeof x.url === "string")));
+  var visitUrl = (visit) => visit.url ?? `/chat/${visit.id}`;
+  function pageVisit(path, search) {
+    const chat = /^\/chat\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i.exec(path);
+    if (chat) {
+      const id = chat[1].toLowerCase();
+      return { id, url: `/chat/${id}` };
+    }
+    const project = /^\/code\/project\/([\w-]+)/.exec(path);
+    if (project) {
+      const thread = new URLSearchParams(search).get("thread");
+      if (thread)
+        return { id: `${project[1]}:${thread}`, url: `/code/project/${project[1]}?thread=${encodeURIComponent(thread)}` };
+      return { id: project[1], url: `/code/project/${project[1]}` };
+    }
+    const code = /^\/code\/([\w-]+)\/?$/.exec(path);
+    if (code && !["project", "projects", "new", "settings"].includes(code[1]))
+      return { id: code[1], url: `/code/${code[1]}` };
+    return null;
+  }
+  var currentVisit = () => pageVisit(location.pathname, location.search);
   function recordVisit(list, visit, max = 50) {
     const previous = list.find((v) => v.id === visit.id);
     const title = visit.title || previous?.title || "";
@@ -7988,25 +8008,31 @@ ${targets.map((t) => `${t}:hover`).join(`,
   var recentChats_default = definePlugin({
     name: "RecentChats",
     title: { zh: "最近对话切换", en: "Recent chats switcher" },
-    description: { zh: "按 Ctrl+` 弹出最近打开过的对话卡片，方向键 / 数字键快速切换。", en: "Press Ctrl+` for cards of recently opened chats; switch with arrows or number keys." },
+    description: {
+      zh: "按 Ctrl+` 弹出最近打开过的对话卡片（包括 Claude Code 项目、线程和会话），方向键 / 数字键快速切换。",
+      en: "Press Ctrl+` for cards of recently opened chats (Claude Code projects, threads and sessions included); switch with arrows or number keys."
+    },
     category: "navigation",
     icon: "grid",
     enabledByDefault: true,
+    updatedAt: "2026-11-08",
     dependencies: ["RouterApi", "HotkeysApi", "ChatStateApi"],
     settings: settings18,
     start(scope) {
-      onRoute(scope, (route) => {
-        if (!route.chatId)
+      const record = () => {
+        const page = currentVisit();
+        if (!page)
           return;
-        const id = route.chatId;
         scope.timeout(() => {
-          if (currentRoute().chatId !== id)
+          if (currentVisit()?.id !== page.id)
             return;
-          visits.set(recordVisit(visits.get(), { id, title: chatTitle(), at: Date.now() }));
+          visits.set(recordVisit(visits.get(), { ...page, title: chatTitle(), at: Date.now() }));
         }, 1500);
-      });
+      };
+      onRoute(scope, record);
+      scope.on("route:search", record);
       scope.interval(() => {
-        const id = currentRoute().chatId;
+        const id = currentVisit()?.id;
         if (!id)
           return;
         const list = visits.get();
@@ -8023,20 +8049,22 @@ ${targets.map((t) => `${t}:hover`).join(`,
       };
       const go = (visit) => {
         close();
-        if (!visit || visit.id === currentRoute().chatId)
+        if (!visit || visit.id === currentVisit()?.id)
           return;
-        const link = document.querySelector(`a[href="/chat/${visit.id}"]`);
+        const url = visitUrl(visit);
+        const link = [...document.querySelectorAll("a[href]")].find((a) => a.getAttribute("href") === url);
         if (link)
           link.click();
         else
-          location.assign(`/chat/${visit.id}`);
+          location.assign(url);
       };
       const render = () => {
         clear(box);
         const list = visits.get().slice(0, settings18.store.count);
+        const here = currentVisit()?.id;
         const cards = h("div", { class: "cards" });
         list.forEach((visit, i) => {
-          const card = h("button", { type: "button", class: `card${i === selected ? " sel" : ""}${visit.id === currentRoute().chatId ? " cur" : ""}` }, i < 9 ? h("span", { class: "n", text: String(i + 1) }) : null, h("span", { class: "t", text: visit.title || visit.id.slice(0, 8) }), h("span", { class: "s", text: agoText(visit.at) }));
+          const card = h("button", { type: "button", class: `card${i === selected ? " sel" : ""}${visit.id === here ? " cur" : ""}` }, i < 9 ? h("span", { class: "n", text: String(i + 1) }) : null, h("span", { class: "t", text: visit.title || visit.id.slice(0, 8) }), h("span", { class: "s", text: visitUrl(visit).startsWith("/code/") ? `Claude Code · ${agoText(visit.at)}` : agoText(visit.at) }));
           card.addEventListener("click", () => go(visit));
           cards.appendChild(card);
         });
@@ -8048,7 +8076,7 @@ ${targets.map((t) => `${t}:hover`).join(`,
         if (open)
           return close();
         open = true;
-        selected = visits.get()[0]?.id === currentRoute().chatId ? 1 : 0;
+        selected = visits.get()[0]?.id === currentVisit()?.id ? 1 : 0;
         render();
       };
       if (settings18.store.hotkey.trim())
@@ -9160,7 +9188,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.129",
+      version: "0.3.130",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -9177,7 +9205,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.129";
+    win[FLAG] = "0.3.130";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -9194,7 +9222,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.129"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.130"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();

@@ -13,7 +13,7 @@ import { agoText } from "@lib/format";
 import { createHost } from "@lib/ui";
 import { chatTitle } from "@api/chatState";
 import { bindKey } from "@api/hotkeys";
-import { currentRoute, onRoute } from "@api/router";
+import { onRoute } from "@api/router";
 
 const settings = definePluginSettings({
     hotkey: { type: "string", label: { zh: "快捷键", en: "Shortcut" }, default: "ctrl+`" },
@@ -30,9 +30,40 @@ export interface Visit {
     id: string;
     title: string;
     at: number;
+    /** Where to open it. Older entries (chats only) have none: they live at /chat/:id. */
+    url?: string;
 }
 
-const visits = persisted<Visit[]>("recent-chats", [], (v): v is Visit[] => Array.isArray(v) && v.every(x => x && typeof x.id === "string" && typeof x.title === "string" && typeof x.at === "number"));
+const visits = persisted<Visit[]>(
+    "recent-chats",
+    [],
+    (v): v is Visit[] => Array.isArray(v) && v.every(x => x && typeof x.id === "string" && typeof x.title === "string" && typeof x.at === "number" && (x.url === undefined || typeof x.url === "string")),
+);
+
+export const visitUrl = (visit: Visit) => visit.url ?? `/chat/${visit.id}`;
+
+/**
+ * The conversation a page shows, or null when it shows none. Covers chats (/chat/:uuid) and Claude Code:
+ * a project page (/code/project/chan_…, with ?thread=cmsg_… when a thread is open) and a session (/code/session_…).
+ */
+export function pageVisit(path: string, search: string): { id: string; url: string } | null {
+    const chat = /^\/chat\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i.exec(path);
+    if (chat) {
+        const id = chat[1].toLowerCase();
+        return { id, url: `/chat/${id}` };
+    }
+    const project = /^\/code\/project\/([\w-]+)/.exec(path);
+    if (project) {
+        const thread = new URLSearchParams(search).get("thread");
+        if (thread) return { id: `${project[1]}:${thread}`, url: `/code/project/${project[1]}?thread=${encodeURIComponent(thread)}` };
+        return { id: project[1], url: `/code/project/${project[1]}` };
+    }
+    const code = /^\/code\/([\w-]+)\/?$/.exec(path);
+    if (code && !["project", "projects", "new", "settings"].includes(code[1])) return { id: code[1], url: `/code/${code[1]}` };
+    return null;
+}
+
+const currentVisit = () => pageVisit(location.pathname, location.search);
 
 export function recordVisit(list: Visit[], visit: Visit, max = 50) {
     const previous = list.find(v => v.id === visit.id);
@@ -69,25 +100,32 @@ const CSS = `
 export default definePlugin({
     name: "RecentChats",
     title: { zh: "最近对话切换", en: "Recent chats switcher" },
-    description: { zh: "按 Ctrl+` 弹出最近打开过的对话卡片，方向键 / 数字键快速切换。", en: "Press Ctrl+` for cards of recently opened chats; switch with arrows or number keys." },
+    description: {
+        zh: "按 Ctrl+` 弹出最近打开过的对话卡片（包括 Claude Code 项目、线程和会话），方向键 / 数字键快速切换。",
+        en: "Press Ctrl+` for cards of recently opened chats (Claude Code projects, threads and sessions included); switch with arrows or number keys.",
+    },
     category: "navigation",
     icon: "grid",
     enabledByDefault: true,
+    updatedAt: "2026-11-08",
     dependencies: ["RouterApi", "HotkeysApi", "ChatStateApi"],
     settings,
     start(scope) {
-        onRoute(scope, route => {
-            if (!route.chatId) return;
-            const id = route.chatId;
+        const record = () => {
+            const page = currentVisit();
+            if (!page) return;
             // The title updates a moment after navigation.
             scope.timeout(() => {
-                if (currentRoute().chatId !== id) return;
-                visits.set(recordVisit(visits.get(), { id, title: chatTitle(), at: Date.now() }));
+                if (currentVisit()?.id !== page.id) return;
+                visits.set(recordVisit(visits.get(), { ...page, title: chatTitle(), at: Date.now() }));
             }, 1500);
-        });
+        };
+        onRoute(scope, record);
+        // Opening or switching a Claude Code thread only changes ?thread=…
+        scope.on("route:search", record);
         // New chats get their name after the first reply; refresh the stored one when it changes.
         scope.interval(() => {
-            const id = currentRoute().chatId;
+            const id = currentVisit()?.id;
             if (!id) return;
             const list = visits.get();
             const next = renameVisit(list, id, chatTitle());
@@ -104,23 +142,25 @@ export default definePlugin({
         };
         const go = (visit: Visit | undefined) => {
             close();
-            if (!visit || visit.id === currentRoute().chatId) return;
+            if (!visit || visit.id === currentVisit()?.id) return;
+            const url = visitUrl(visit);
             // A real link click lets claude.ai's router navigate without a reload.
-            const link = document.querySelector<HTMLAnchorElement>(`a[href="/chat/${visit.id}"]`);
+            const link = [...document.querySelectorAll<HTMLAnchorElement>("a[href]")].find(a => a.getAttribute("href") === url);
             if (link) link.click();
-            else location.assign(`/chat/${visit.id}`);
+            else location.assign(url);
         };
         const render = () => {
             clear(box);
             const list = visits.get().slice(0, settings.store.count);
+            const here = currentVisit()?.id;
             const cards = h("div", { class: "cards" });
             list.forEach((visit, i) => {
                 const card = h(
                     "button",
-                    { type: "button", class: `card${i === selected ? " sel" : ""}${visit.id === currentRoute().chatId ? " cur" : ""}` },
+                    { type: "button", class: `card${i === selected ? " sel" : ""}${visit.id === here ? " cur" : ""}` },
                     i < 9 ? h("span", { class: "n", text: String(i + 1) }) : null,
                     h("span", { class: "t", text: visit.title || visit.id.slice(0, 8) }),
-                    h("span", { class: "s", text: agoText(visit.at) }),
+                    h("span", { class: "s", text: visitUrl(visit).startsWith("/code/") ? `Claude Code · ${agoText(visit.at)}` : agoText(visit.at) }),
                 );
                 card.addEventListener("click", () => go(visit));
                 cards.appendChild(card);
@@ -137,7 +177,7 @@ export default definePlugin({
             if (open) return close();
             open = true;
             // Start on the previous chat, like Alt+Tab.
-            selected = visits.get()[0]?.id === currentRoute().chatId ? 1 : 0;
+            selected = visits.get()[0]?.id === currentVisit()?.id ? 1 : 0;
             render();
         };
         if (settings.store.hotkey.trim()) bindKey(scope, settings.store.hotkey, toggle, { inInputs: true });

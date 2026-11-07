@@ -4,7 +4,7 @@ import { getProjectActivity, getProjectPhases, orgFromCookie, parseActivity, par
 import { parseRoute } from "../src/plugins/_api/router";
 import { matches, parseCombo } from "../src/plugins/_api/hotkeys";
 import { titleFrom } from "../src/plugins/_api/chatState";
-import { recordVisit, renameVisit } from "../src/plugins/recentChats";
+import { pageVisit, recordVisit, renameVisit, visitUrl } from "../src/plugins/recentChats";
 import { level } from "../src/plugins/usageDisplay";
 import { cornerKind, dotKind, openProjectOf, projectKind, SEND_GRACE_MS, shownKind } from "../src/plugins/projectStatus";
 import { projectDotOptions } from "../src/lib/projectDot";
@@ -180,6 +180,18 @@ describe("recent chats", () => {
         list = recordVisit(list, { id: "a", title: "", at: 2 });
         expect(list[0]).toEqual({ id: "a", title: "Trip plan", at: 2 });
         expect(renameVisit(list, "a", "")).toBe(list);
+    });
+
+    test("records chats and Claude Code pages", () => {
+        const uuid = "0f8fad5b-d9cb-469f-a165-70867728950e";
+        expect(pageVisit(`/chat/${uuid.toUpperCase()}`, "")).toEqual({ id: uuid, url: `/chat/${uuid}` });
+        expect(pageVisit("/code/project/chan_A1", "")).toEqual({ id: "chan_A1", url: "/code/project/chan_A1" });
+        expect(pageVisit("/code/project/chan_A1", "?thread=cmsg_B2")).toEqual({ id: "chan_A1:cmsg_B2", url: "/code/project/chan_A1?thread=cmsg_B2" });
+        expect(pageVisit("/code/session_01X", "")).toEqual({ id: "session_01X", url: "/code/session_01X" });
+        expect(pageVisit("/code", "")).toBeNull();
+        expect(pageVisit("/code/new", "")).toBeNull();
+        expect(pageVisit("/new", "")).toBeNull();
+        expect(visitUrl({ id: uuid, title: "", at: 1 })).toBe(`/chat/${uuid}`);
     });
 });
 
