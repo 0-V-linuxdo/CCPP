@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261108.0.3.133
+// @version      20261108.0.3.134
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @homepageURL  https://github.com/0-V-linuxdo/CCPP
@@ -3056,7 +3056,7 @@ ${IMAGE_FIELD_CSS}`;
   }
 
   // src/plugins/_core/settings/state.ts
-  var version = "0.3.133";
+  var version = "0.3.134";
   var tabs = new Map;
   var isPrefs = (v) => !!v && Array.isArray(v.favorites) && Array.isArray(v.pinned);
   var prefs = persisted("settings-ui", { favorites: [], pinned: [] }, isPrefs);
@@ -8031,10 +8031,10 @@ ${targets.map((t) => `${t}:hover`).join(`,
     const link = [...document.querySelectorAll('a[href*="thread="]')].find((a) => new URLSearchParams(a.search).get("thread") === thread);
     return textOf(THREAD_TITLE) || link?.textContent?.replace(/\s+/g, " ").trim() || "";
   }
-  function cardSubtitle(visit, ago) {
+  function cardLabel(visit) {
     if (visit.project && visit.id.includes(":"))
-      return `${visit.project} · ${ago}`;
-    return visitUrl(visit).startsWith("/code/") ? `Claude Code · ${ago}` : ago;
+      return visit.project;
+    return visitUrl(visit).startsWith("/code/") ? "Claude Code" : "";
   }
   function recordVisit(list, visit, max = 50) {
     const previous = list.find((v) => v.id === visit.id);
@@ -8061,8 +8061,10 @@ ${targets.map((t) => `${t}:hover`).join(`,
 .card:hover, .card.sel { border-color: var(--accent); background: var(--bg); }
 .card .n { position: absolute; top: 8px; right: 10px; font-size: 11px; color: var(--fg3); }
 .card .t { font-weight: 600; padding-right: 16px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.card .s { color: var(--fg3); font-size: 12px; margin-top: auto; }
-.card.cur .s::after { content: " · ●"; color: var(--accent); }
+.card .s { display: flex; justify-content: space-between; gap: 8px; color: var(--fg3); font-size: 12px; margin-top: auto; }
+.card .s .l { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card .s .a { flex: none; margin-left: auto; }
+.card.cur .s .a::before { content: "● "; color: var(--accent); }
 .empty { padding: 24px; text-align: center; color: var(--fg3); }
 `;
   var recentChats_default = definePlugin({
@@ -8125,7 +8127,7 @@ ${targets.map((t) => `${t}:hover`).join(`,
         const here = currentVisit()?.id;
         const cards = h("div", { class: "cards" });
         list.forEach((visit, i) => {
-          const card = h("button", { type: "button", class: `card${i === selected ? " sel" : ""}${visit.id === here ? " cur" : ""}` }, i < 9 ? h("span", { class: "n", text: String(i + 1) }) : null, h("span", { class: "t", text: visit.title || visit.id.slice(0, 8) }), h("span", { class: "s", text: cardSubtitle(visit, agoText(visit.at)) }));
+          const card = h("button", { type: "button", class: `card${i === selected ? " sel" : ""}${visit.id === here ? " cur" : ""}` }, i < 9 ? h("span", { class: "n", text: String(i + 1) }) : null, h("span", { class: "t", text: visit.title || visit.id.slice(0, 8) }), h("span", { class: "s" }, h("span", { class: "l", text: cardLabel(visit) }), h("span", { class: "a", text: agoText(visit.at) })));
           card.addEventListener("click", () => go(visit));
           cards.appendChild(card);
         });
@@ -9249,7 +9251,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
   var logger12 = new Logger("Kernel");
   function exposeRuntime(win) {
     const runtime = Object.freeze({
-      version: "0.3.133",
+      version: "0.3.134",
       get plugins() {
         return allPlugins().map(pluginInfo);
       },
@@ -9266,7 +9268,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
     const win = pageWindow;
     if (win[FLAG] || !isTopDocument())
       return;
-    win[FLAG] = "0.3.133";
+    win[FLAG] = "0.3.134";
     registerPlugins(PLUGINS);
     exposeRuntime(win);
     installTooltips();
@@ -9283,7 +9285,7 @@ ${button} :has(> ${SEL.avatar}) { width: max(var(--df-leading-slot, 28px), ${siz
         replaceBag(JSON.parse(event.newValue ?? "{}"));
       } catch {}
     });
-    logger12.info(`CC++ ${"0.3.133"} started with ${PLUGINS.length} plugins`);
+    logger12.info(`CC++ ${"0.3.134"} started with ${PLUGINS.length} plugins`);
   }
   boot();
 })();

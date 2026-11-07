@@ -4,7 +4,7 @@ import { getProjectActivity, getProjectPhases, orgFromCookie, parseActivity, par
 import { parseRoute } from "../src/plugins/_api/router";
 import { matches, parseCombo } from "../src/plugins/_api/hotkeys";
 import { titleFrom } from "../src/plugins/_api/chatState";
-import { cardSubtitle, pageVisit, recordVisit, renameVisit, visitUrl } from "../src/plugins/recentChats";
+import { cardLabel, pageVisit, recordVisit, renameVisit, visitUrl } from "../src/plugins/recentChats";
 import { level } from "../src/plugins/usageDisplay";
 import { cornerKind, dotKind, openProjectOf, projectKind, SEND_GRACE_MS, shownKind } from "../src/plugins/projectStatus";
 import { projectDotOptions } from "../src/lib/projectDot";
@@ -192,9 +192,9 @@ describe("recent chats", () => {
         expect(pageVisit("/code/new", "")).toBeNull();
         expect(pageVisit("/new", "")).toBeNull();
         expect(visitUrl({ id: uuid, title: "", at: 1 })).toBe(`/chat/${uuid}`);
-        expect(cardSubtitle({ id: "chan_A1:cmsg_B2", title: "Fix bug", at: 1, url: "/code/project/chan_A1?thread=cmsg_B2", project: "CC++" }, "1m ago")).toBe("CC++ · 1m ago");
-        expect(cardSubtitle({ id: "chan_A1", title: "CC++", at: 1, url: "/code/project/chan_A1" }, "1m ago")).toBe("Claude Code · 1m ago");
-        expect(cardSubtitle({ id: uuid, title: "T", at: 1 }, "1m ago")).toBe("1m ago");
+        expect(cardLabel({ id: "chan_A1:cmsg_B2", title: "Fix bug", at: 1, url: "/code/project/chan_A1?thread=cmsg_B2", project: "CC++" })).toBe("CC++");
+        expect(cardLabel({ id: "chan_A1", title: "CC++", at: 1, url: "/code/project/chan_A1" })).toBe("Claude Code");
+        expect(cardLabel({ id: uuid, title: "T", at: 1 })).toBe("");
     });
 });
 

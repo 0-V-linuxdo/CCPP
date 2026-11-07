@@ -79,10 +79,10 @@ function pageTitle(id: string) {
     return textOf(THREAD_TITLE) || link?.textContent?.replace(/\s+/g, " ").trim() || "";
 }
 
-/** Second line of a card: the project for a thread, "Claude Code" for other Code pages, then when. */
-export function cardSubtitle(visit: Visit, ago: string) {
-    if (visit.project && visit.id.includes(":")) return `${visit.project} · ${ago}`;
-    return visitUrl(visit).startsWith("/code/") ? `Claude Code · ${ago}` : ago;
+/** Bottom-left of a card: the project for a thread, "Claude Code" for other Code pages, nothing for a chat. */
+export function cardLabel(visit: Visit) {
+    if (visit.project && visit.id.includes(":")) return visit.project;
+    return visitUrl(visit).startsWith("/code/") ? "Claude Code" : "";
 }
 
 export function recordVisit(list: Visit[], visit: Visit, max = 50) {
@@ -112,8 +112,10 @@ const CSS = `
 .card:hover, .card.sel { border-color: var(--accent); background: var(--bg); }
 .card .n { position: absolute; top: 8px; right: 10px; font-size: 11px; color: var(--fg3); }
 .card .t { font-weight: 600; padding-right: 16px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.card .s { color: var(--fg3); font-size: 12px; margin-top: auto; }
-.card.cur .s::after { content: " · ●"; color: var(--accent); }
+.card .s { display: flex; justify-content: space-between; gap: 8px; color: var(--fg3); font-size: 12px; margin-top: auto; }
+.card .s .l { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card .s .a { flex: none; margin-left: auto; }
+.card.cur .s .a::before { content: "● "; color: var(--accent); }
 .empty { padding: 24px; text-align: center; color: var(--fg3); }
 `;
 
@@ -181,7 +183,7 @@ export default definePlugin({
                     { type: "button", class: `card${i === selected ? " sel" : ""}${visit.id === here ? " cur" : ""}` },
                     i < 9 ? h("span", { class: "n", text: String(i + 1) }) : null,
                     h("span", { class: "t", text: visit.title || visit.id.slice(0, 8) }),
-                    h("span", { class: "s", text: cardSubtitle(visit, agoText(visit.at)) }),
+                    h("span", { class: "s" }, h("span", { class: "l", text: cardLabel(visit) }), h("span", { class: "a", text: agoText(visit.at) })),
                 );
                 card.addEventListener("click", () => go(visit));
                 cards.appendChild(card);
