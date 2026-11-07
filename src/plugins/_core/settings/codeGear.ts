@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: MIT
  */
 
+import { t } from "@kernel/i18n";
 import type { Scope } from "@kernel/scope";
 import { glyph, icon } from "@lib/icons";
 import { onDomChange, watch } from "@api/dom";
@@ -16,6 +17,11 @@ import { NATIVE_DIALOG } from "./layer";
  * stay one click away in the nav. Alt / Shift / Ctrl / Cmd + click keeps the original behaviour.
  * Its gear icon is swapped for CC++'s sliders icon, so the button reads as the CC++ entry.
  */
+
+const LABEL = { zh: "CC++ 设置", en: "CC++ settings" };
+/** The button's own aria-label / title, put back when the option goes off. */
+const LABEL_ATTRS = ["aria-label", "title"] as const;
+const TOOLTIP = '[data-cds="Tooltip"], [role="tooltip"]:not([data-ccpp-tooltip])';
 
 const onCodePage = () => location.pathname === "/code" || location.pathname.startsWith("/code/");
 /** Places a click must not come from: menus, dialogs, the account menu button, our own UI. */
@@ -113,11 +119,44 @@ export function installCodeGear(scope: Scope, enabled: () => boolean, open: () =
                 native.style.removeProperty("display");
                 native.removeAttribute("data-ccpp-gear-hidden");
             }
+            for (const attr of LABEL_ATTRS) {
+                const key = `data-ccpp-gear-${attr}`;
+                if (!button.hasAttribute(key)) continue;
+                const old = button.getAttribute(key)!;
+                button.removeAttribute(key);
+                if (old) button.setAttribute(attr, old);
+                else button.removeAttribute(attr);
+            }
         }
         swapped.clear();
     };
+    /** aria-label and title say CC++, keeping claude.ai's own text to put back (and to spot in its tooltip). */
+    const relabel = (button: HTMLElement) => {
+        const label = t(LABEL);
+        for (const attr of LABEL_ATTRS) {
+            const now = button.getAttribute(attr);
+            if (now === null || now === label) continue;
+            button.setAttribute(`data-ccpp-gear-${attr}`, now);
+            button.setAttribute(attr, label);
+        }
+    };
+    /** claude.ai's own hover tooltip ("Code settings") on a swapped gear says CC++ too. */
+    const retitle = () => {
+        if (!enabled() || !onCodePage()) return;
+        const gear = [...swapped].find(button => button.matches(":hover, :focus-visible"));
+        if (!gear) return;
+        const label = t(LABEL);
+        const originals = LABEL_ATTRS.map(attr => gear.getAttribute(`data-ccpp-gear-${attr}`)).filter((v): v is string => !!v);
+        for (const tip of document.querySelectorAll<HTMLElement>(TOOLTIP)) {
+            // The innermost element holding claude.ai's label, else the first element with text of its own.
+            const leaves = [...tip.querySelectorAll<HTMLElement>("*"), tip].filter(el => [...el.childNodes].some(n => n.nodeType === 3 && n.textContent!.trim()));
+            const target = leaves.find(el => originals.includes(el.textContent!.trim())) ?? leaves.find(el => SETTINGS_WORD.test(el.textContent ?? ""));
+            if (target && target.textContent !== label) target.textContent = label;
+        }
+    };
     const swap = (button: HTMLElement) => {
         swapped.add(button);
+        relabel(button);
         if (button.querySelector("[data-ccpp-gear-icon]")) {
             // React may have put its icon back; keep it hidden.
             for (const native of button.querySelectorAll<HTMLElement | SVGElement>('[data-cds="Icon"]:not([data-ccpp-gear-hidden]), svg:not([data-ccpp-gear-icon]):not([data-ccpp-gear-hidden])')) {
@@ -144,7 +183,14 @@ export function installCodeGear(scope: Scope, enabled: () => boolean, open: () =
         for (const button of document.querySelectorAll<HTMLElement>("button, a, [role='button']")) {
             if (!button.closest(SKIP) && isGear(button)) swap(button);
         }
+        retitle();
     };
+    // Tooltips come up a moment after the pointer arrives; catch them as they appear.
+    watch(scope, TOOLTIP, () => {
+        retitle();
+        const timer = setTimeout(retitle, 50);
+        return () => clearTimeout(timer);
+    });
     onDomChange(scope, paint);
     scope.defer(restore);
     return { repaint: paint };
