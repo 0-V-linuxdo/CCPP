@@ -243,14 +243,28 @@ function barEl(percent: number | null) {
     return track;
 }
 
-function ring(open: (anchor: HTMLElement) => void, window: UsageWindow | null, label: string, kind: "week" | "session", bar = false) {
+function ring(open: (anchor: HTMLElement) => void, window: UsageWindow | null, label: string, kind: "week" | "session") {
     const percent = window ? Math.round(window.utilization) : null;
     // Each ring explains itself, like claude.ai's single usage ring.
     return usageButton(
         open,
         percent === null ? label : `${label} ${percent}%`,
         window ? tipAttrs(`${label}: ${percent}%`, [resetText(window), todayDetail(kind)].filter(Boolean).join(" · ")) : tipAttrs(label, error ?? t(L.loading)),
-        bar ? barEl(window ? window.utilization : null) : ringSvg(window ? window.utilization : null),
+        ringSvg(window ? window.utilization : null),
+    );
+}
+
+/** One button with the two bars stacked: 5-hour on top, weekly below. */
+function bars(open: (anchor: HTMLElement) => void, five: UsageWindow | null, week: UsageWindow | null) {
+    const line = (label: string, w: UsageWindow | null, kind: "week" | "session") =>
+        w ? [`${label} ${Math.round(w.utilization)}%`, resetText(w), todayDetail(kind)].filter(Boolean).join(" · ") : label;
+    const title = usage ? `${line(t(L.session), five, "session")}\n${line(t(L.weekly), week, "week")}` : error ?? t(L.loading);
+    const [head, ...rest] = title.split("\n");
+    return usageButton(
+        open,
+        title.replace("\n", " · "),
+        tipAttrs(head, rest.join("\n")),
+        h("span", { class: "ccpp-usage-bars" }, barEl(five ? five.utilization : null), barEl(week ? week.utilization : null)),
     );
 }
 
@@ -265,7 +279,7 @@ function chip(open: (anchor: HTMLElement) => void) {
         "span",
         { class: `ccpp-usage${error && !usage ? " err" : ""}` },
         ...(style === "rings" || style === "both" ? [ring(open, five, t(L.session), "session"), ring(open, week, t(L.weekly), "week")] : []),
-        ...(style === "bars" ? [ring(open, five, t(L.session), "session", true), ring(open, week, t(L.weekly), "week", true)] : []),
+        ...(style === "bars" ? [bars(open, five, week)] : []),
         ...(style === "text" || style === "both" ? [usageButton(open, tip, tipAttrs(tip, five ? resetText(five) : ""), h("span", { text }))] : []),
     );
 }
@@ -277,8 +291,9 @@ const SLOT_CSS = `
 .ccpp-usage-btn:has(> span) { padding: 0 6px; }
 .ccpp-usage-btn:hover, .ccpp-usage-btn[aria-expanded="true"] { color: var(--cds-text-primary, inherit); background: var(--cds-fill-ghost-hover, rgba(127,127,127,.14)); }
 .ccpp-usage-btn:focus-visible { outline: none; box-shadow: var(--cds-focus-shadow, 0 0 0 2px var(--cds-fill-accent, #257de0)); }
-.ccpp-usage-btn:has(> .ccpp-usage-bar) { padding: 0 4px; }
-.ccpp-usage-bar { display: block; width: 36px; height: 5px; border-radius: 3px; overflow: hidden; }
+.ccpp-usage-btn:has(> .ccpp-usage-bars) { padding: 0 6px; }
+.ccpp-usage-bars { display: flex; flex-direction: column; gap: 3px; }
+.ccpp-usage-bar { display: block; width: 48px; height: 4px; border-radius: 3px; overflow: hidden; }
 .ccpp-usage-bar > i { display: block; height: 100%; border-radius: 3px; }
 .ccpp-usage.err .ccpp-usage-btn { color: var(--cds-text-danger, #f17778); }
 `;

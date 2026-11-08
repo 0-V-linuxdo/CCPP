@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261108.0.4.3
+// @version      20261108.0.4.4
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @license      GPL-3.0-or-later
@@ -939,7 +939,7 @@
     ["unsafeWindow", typeof unsafeWindow !== "undefined"]
   ].filter(([, ok]) => !ok).map(([k4]) => k4);
   var FRAMEWORK_VERSION = true ? "0.1.0" : "0.0.0";
-  var VERSION = true ? "20261108.0.4.3" : "0.0.0";
+  var VERSION = true ? "20261108.0.4.4" : "0.0.0";
   var IS_DEV = true ? false : false;
   var BUILD_TYPE = IS_DEV ? "development" : "production";
   var isChromium = () => !!W3.chrome;
@@ -10236,13 +10236,25 @@ ${x4.css}`)].join("\n\n");
     track2.style.background = nativeTrack();
     return track2;
   }
-  function ring(open, window2, label, kind, bar = false) {
+  function ring(open, window2, label, kind) {
     const percent = window2 ? Math.round(window2.utilization) : null;
     return usageButton(
       open,
       percent === null ? label : `${label} ${percent}%`,
       window2 ? tipAttrs(`${label}: ${percent}%`, [resetText(window2), todayDetail(kind)].filter(Boolean).join(" · ")) : tipAttrs(label, error ?? t3(L22.loading)),
-      bar ? barEl(window2 ? window2.utilization : null) : ringSvg(window2 ? window2.utilization : null)
+      ringSvg(window2 ? window2.utilization : null)
+    );
+  }
+  function bars(open, five, week) {
+    const line = (label, w4, kind) => w4 ? [`${label} ${Math.round(w4.utilization)}%`, resetText(w4), todayDetail(kind)].filter(Boolean).join(" · ") : label;
+    const title = usage ? `${line(t3(L22.session), five, "session")}
+${line(t3(L22.weekly), week, "week")}` : error ?? t3(L22.loading);
+    const [head, ...rest] = title.split("\n");
+    return usageButton(
+      open,
+      title.replace("\n", " · "),
+      tipAttrs(head, rest.join("\n")),
+      h4("span", { class: "ccpp-usage-bars" }, barEl(five ? five.utilization : null), barEl(week ? week.utilization : null))
     );
   }
   function chip(open) {
@@ -10256,7 +10268,7 @@ ${x4.css}`)].join("\n\n");
       "span",
       { class: `ccpp-usage${error && !usage ? " err" : ""}` },
       ...style === "rings" || style === "both" ? [ring(open, five, t3(L22.session), "session"), ring(open, week, t3(L22.weekly), "week")] : [],
-      ...style === "bars" ? [ring(open, five, t3(L22.session), "session", true), ring(open, week, t3(L22.weekly), "week", true)] : [],
+      ...style === "bars" ? [bars(open, five, week)] : [],
       ...style === "text" || style === "both" ? [usageButton(open, tip, tipAttrs(tip, five ? resetText(five) : ""), h4("span", { text }))] : []
     );
   }
@@ -10266,8 +10278,9 @@ ${x4.css}`)].join("\n\n");
 .ccpp-usage-btn:has(> span) { padding: 0 6px; }
 .ccpp-usage-btn:hover, .ccpp-usage-btn[aria-expanded="true"] { color: var(--cds-text-primary, inherit); background: var(--cds-fill-ghost-hover, rgba(127,127,127,.14)); }
 .ccpp-usage-btn:focus-visible { outline: none; box-shadow: var(--cds-focus-shadow, 0 0 0 2px var(--cds-fill-accent, #257de0)); }
-.ccpp-usage-btn:has(> .ccpp-usage-bar) { padding: 0 4px; }
-.ccpp-usage-bar { display: block; width: 36px; height: 5px; border-radius: 3px; overflow: hidden; }
+.ccpp-usage-btn:has(> .ccpp-usage-bars) { padding: 0 6px; }
+.ccpp-usage-bars { display: flex; flex-direction: column; gap: 3px; }
+.ccpp-usage-bar { display: block; width: 48px; height: 4px; border-radius: 3px; overflow: hidden; }
 .ccpp-usage-bar > i { display: block; height: 100%; border-radius: 3px; }
 .ccpp-usage.err .ccpp-usage-btn { color: var(--cds-text-danger, #f17778); }
 `;
@@ -10310,12 +10323,12 @@ ${x4.css}`)].join("\n\n");
   function dailySection(redraw2) {
     const now2 = Date.now();
     const today = localDateKey(now2);
-    const bars = chartDays(days, now2);
-    const scale = chartScale(bars);
-    const active2 = bars.find((day) => day.date === picked) ?? bars[bars.length - 1];
+    const bars2 = chartDays(days, now2);
+    const scale = chartScale(bars2);
+    const active2 = bars2.find((day) => day.date === picked) ?? bars2[bars2.length - 1];
     const chart = h4("div", { class: "chart", role: "listbox", "aria-label": t3(L22.daily) });
     let activeBar = null;
-    for (const day of bars) {
+    for (const day of bars2) {
       const has = recorded(day);
       const delta = trackDelta(day.week);
       const bar = h4(
@@ -10335,8 +10348,8 @@ ${x4.css}`)].join("\n\n");
     chart.addEventListener("keydown", (event) => {
       if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
       event.preventDefault();
-      const i3 = bars.indexOf(active2) + (event.key === "ArrowRight" ? 1 : -1);
-      const next = bars[Math.max(0, Math.min(bars.length - 1, i3))];
+      const i3 = bars2.indexOf(active2) + (event.key === "ArrowRight" ? 1 : -1);
+      const next = bars2[Math.max(0, Math.min(bars2.length - 1, i3))];
       picked = next.date === today ? null : next.date;
       redraw2();
       chart.getRootNode().querySelector(".day.on")?.focus();
