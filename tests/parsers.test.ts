@@ -523,6 +523,21 @@ describe("Claude Code header slot", () => {
     });
 });
 
+describe("sidebar footer slot", () => {
+    test("goes between the account button and the gear, or after the account button alone", async () => {
+        const { sidebarFooterAnchor } = await import("../src/plugins/_api/slots");
+        document.body.innerHTML = `<div id="row"><div><span><button data-testid="user-menu-button">GG · Pro</button></span></div><div id="gear"><button aria-label="Code settings"></button></div></div>`;
+        const account = () => document.querySelector<HTMLElement>('[data-testid="user-menu-button"]')!;
+        expect(sidebarFooterAnchor(account())).toEqual({ anchor: document.getElementById("gear")!, where: "before" });
+        document.body.innerHTML = `<div><button data-testid="user-menu-button">GG</button><span>x</span><button id="g">⚙</button></div>`;
+        expect(sidebarFooterAnchor(account())).toEqual({ anchor: document.getElementById("g")!, where: "before" });
+        document.body.innerHTML = `<div id="row"><div id="w"><button data-testid="user-menu-button">GG</button></div></div>`;
+        const got = sidebarFooterAnchor(account());
+        expect(got.where).toBe("after");
+        expect(got.anchor === account()).toBe(true);
+    });
+});
+
 describe("starSpot", () => {
     const html = (s: string) => {
         document.body.innerHTML = s;

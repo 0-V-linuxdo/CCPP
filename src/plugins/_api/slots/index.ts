@@ -17,8 +17,10 @@ import { SEL, watch } from "@api/dom";
  * - "header": the chat header's action row (top right of a conversation)
  * - "codeHeader": the header of a Claude Code conversation (a project chat, the thread beside it, a session),
  *   just before its own action buttons
+ * - "sidebarFooter": the bottom row of the sidebar, between the account button ("GG · Pro") and the buttons to its
+ *   right (the settings gear on the Code page)
  */
-export type SlotName = "composer" | "header" | "codeHeader";
+export type SlotName = "composer" | "header" | "codeHeader" | "sidebarFooter";
 
 interface Item {
     id: string;
@@ -30,7 +32,7 @@ interface Item {
 }
 
 const items = new Set<Item>();
-const containers = new Map<SlotName, Set<HTMLElement>>([["composer", new Set()], ["header", new Set()], ["codeHeader", new Set()]]);
+const containers = new Map<SlotName, Set<HTMLElement>>([["composer", new Set()], ["header", new Set()], ["codeHeader", new Set()], ["sidebarFooter", new Set()]]);
 
 const CSS = `
 .ccpp-slot { display: inline-flex; align-items: center; gap: 4px; flex: none; }
@@ -38,6 +40,8 @@ const CSS = `
 .ccpp-slot-composer { margin-inline-end: 4px; }
 .ccpp-slot-header { margin-inline-end: 4px; }
 .ccpp-slot-codeHeader { margin-inline: 0; }
+/* Pushed right, next to the gear, whether the row spreads its items apart or packs them left. */
+.ccpp-slot-sidebarFooter { margin-inline: auto 4px; min-width: 0; }
 .ccpp-slot-codeHeader .ccpp-slot-btn { min-width: var(--cds-h-control, 32px); height: var(--cds-h-control, 32px); padding: 0 6px; border-radius: calc(0.375rem * var(--cds-rem-scale, 1)); }
 .ccpp-slot-btn { display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-width: 32px; height: 32px; padding: 0 8px; border-radius: 8px; border: 0; background: transparent; color: var(--cds-text-secondary, inherit); font: inherit; font-size: 12px; cursor: pointer; }
 /* Same colors and hover as claude.ai's ghost buttons next to it. */
@@ -127,10 +131,27 @@ export function codeHeaderAnchor(title: HTMLElement): { anchor: HTMLElement; whe
     return { anchor, where: "after" };
 }
 
+const FOOTER_SKIP = '[data-testid^="user-menu"], .ccpp-slot';
+
+/**
+ * Where the sidebar footer slot goes: right after the account button (lifted out of its wrappers), before the first
+ * sibling holding another button, such as the Code page's settings gear. With none, right after the account button.
+ */
+export function sidebarFooterAnchor(account: HTMLElement): { anchor: HTMLElement; where: "before" | "after" } {
+    let branch: HTMLElement = account;
+    for (let depth = 0; depth < 4 && branch.parentElement; depth++) {
+        let next = branch.nextElementSibling as HTMLElement | null;
+        while (next && (next.matches(FOOTER_SKIP) || !next.matches("button, a, [role='button']") && !next.querySelector("button, a, [role='button']"))) next = next.nextElementSibling as HTMLElement | null;
+        if (next) return { anchor: next, where: "before" };
+        branch = branch.parentElement;
+    }
+    return { anchor: account, where: "after" };
+}
+
 export default definePlugin({
     name: "SlotsApi",
     title: { zh: "界面插槽", en: "UI slots API" },
-    description: { zh: "在输入框模型选择器旁、对话标题栏右侧放置插件按钮。", en: "Puts plugin controls next to the model picker and in the chat header." },
+    description: { zh: "在输入框模型选择器旁、对话标题栏右侧、侧栏底部放置插件按钮。", en: "Puts plugin controls next to the model picker, in the chat header and at the bottom of the sidebar." },
     category: "api",
     icon: "grid",
     hidden: true,
@@ -163,6 +184,14 @@ export default definePlugin({
             // Both title selectors can match inside one header; one slot per header.
             if ((where === "prepend" ? anchor : anchor.parentElement)?.querySelector(":scope > .ccpp-slot-codeHeader")) return;
             return mountIn("codeHeader", anchor, where);
+        });
+        watch(scope, SEL.userMenuButton, el => {
+            // The sidebar's account button only, not one inside a menu or dialog.
+            if (el.closest('[role="menu"], [role="dialog"]')) return;
+            const { anchor, where } = sidebarFooterAnchor(el);
+            const row = anchor.parentElement;
+            if (row?.querySelector(":scope > .ccpp-slot-sidebarFooter")) return;
+            return mountIn("sidebarFooter", anchor, where);
         });
     },
 });

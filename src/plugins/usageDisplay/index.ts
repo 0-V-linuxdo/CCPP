@@ -21,9 +21,25 @@ import { chartDays, chartScale, clearDays, type DayRecord, loadDays, localDateKe
 const logger = new Logger("UsageDisplay");
 
 const settings = definePluginSettings({
+    position: {
+        type: "select",
+        label: { zh: "显示位置", en: "Show in" },
+        default: "sidebar",
+        options: [
+            { value: "sidebar", label: { zh: "侧栏底部（用户名右侧）", en: "Sidebar bottom (next to your name)" } },
+            { value: "composer", label: { zh: "输入框（模型选择器旁）", en: "Chat input (by the model picker)" } },
+            { value: "both", label: { zh: "两处都显示", en: "Both" } },
+        ],
+    },
+    hideNative: {
+        type: "boolean",
+        label: { zh: "隐藏原生用量按钮", en: "Hide claude.ai's usage button" },
+        description: { zh: "隐藏输入框里模型选择器右边 claude.ai 自带的用量圆环。", en: "Hides claude.ai's own usage ring next to the model picker." },
+        default: false,
+    },
     style: {
         type: "select",
-        label: { zh: "输入框里的样式", en: "Style in the chat input" },
+        label: { zh: "样式", en: "Style" },
         default: "rings",
         options: [
             { value: "rings", label: { zh: "双圆环", en: "Two rings" } },
@@ -254,6 +270,9 @@ const SLOT_CSS = `
 .ccpp-usage.err .ccpp-usage-btn { color: var(--cds-text-danger, #f17778); }
 `;
 
+/** claude.ai's own usage button: the one whose ring has a data-ring-track circle (ours don't). */
+const NATIVE_HIDE_CSS = `:is(button, a, [role="button"]):has(svg [data-ring-track]):not(.ccpp-usage-btn) { display: none !important; }`;
+
 const PANEL_CSS = `
 .metric { display: flex; flex-direction: column; gap: 4px; }
 .metric .line { display: flex; justify-content: space-between; } .metric .pct { font-weight: 600; font-variant-numeric: tabular-nums; }
@@ -383,8 +402,8 @@ export default definePlugin({
     name: "UsageDisplay",
     title: { zh: "用量显示", en: "Usage display" },
     description: {
-        zh: "在输入框模型选择器旁同时显示 5 小时会话与每周用量（双圆环 / 百分比），点开看重置时间；普通对话、Claude Code 首页和项目页都有。数据来自 claude.ai 自己的用量接口。",
-        en: "Shows the 5-hour session and weekly usage side by side next to the model picker (rings or percent), in chats, Claude Code and project pages; click for reset times. Data comes from claude.ai's own usage endpoint.",
+        zh: "在侧栏底部用户名右侧（或输入框模型选择器旁）同时显示 5 小时会话与每周用量（双圆环 / 百分比），点开看重置时间。数据来自 claude.ai 自己的用量接口。",
+        en: "Shows the 5-hour session and weekly usage side by side at the bottom of the sidebar next to your name, or by the model picker (rings or percent); click for reset times. Data comes from claude.ai's own usage endpoint.",
     },
     category: "composer",
     icon: "gauge",
@@ -393,6 +412,7 @@ export default definePlugin({
     settings,
     start(scope) {
         addStyle(scope, SLOT_CSS, "usage");
+        if (settings.store.hideNative) addStyle(scope, NATIVE_HIDE_CSS, "usage-native");
         const panel = createPopover(scope, "usage-panel", PANEL_CSS);
         const open = (anchor: HTMLElement) => {
             // Other tabs record too; start from the stored file.
@@ -401,9 +421,13 @@ export default definePlugin({
             panel.open(anchor, p => renderPanel(p, () => panel.update()));
             refresh();
         };
-        const item = addSlotItem(scope, "composer", "usage", () => chip(open), -10);
+        const where = settings.store.position;
+        const items = [
+            ...(where !== "composer" ? [addSlotItem(scope, "sidebarFooter", "usage", () => chip(open), -10)] : []),
+            ...(where !== "sidebar" ? [addSlotItem(scope, "composer", "usage", () => chip(open), -10)] : []),
+        ];
         const update = () => {
-            refreshSlotItem(item);
+            items.forEach(refreshSlotItem);
             panel.update();
         };
         listeners.add(update);

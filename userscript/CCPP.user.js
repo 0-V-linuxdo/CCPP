@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261108.0.4.1
+// @version      20261108.0.4.2
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @license      GPL-3.0-or-later
@@ -939,7 +939,7 @@
     ["unsafeWindow", typeof unsafeWindow !== "undefined"]
   ].filter(([, ok]) => !ok).map(([k4]) => k4);
   var FRAMEWORK_VERSION = true ? "0.1.0" : "0.0.0";
-  var VERSION = true ? "20261108.0.4.1" : "0.0.0";
+  var VERSION = true ? "20261108.0.4.2" : "0.0.0";
   var IS_DEV = true ? false : false;
   var BUILD_TYPE = IS_DEV ? "development" : "production";
   var isChromium = () => !!W3.chrome;
@@ -2457,13 +2457,15 @@
 
   // src/plugins/_api/slots/index.ts
   var items = /* @__PURE__ */ new Set();
-  var containers = /* @__PURE__ */ new Map([["composer", /* @__PURE__ */ new Set()], ["header", /* @__PURE__ */ new Set()], ["codeHeader", /* @__PURE__ */ new Set()]]);
+  var containers = /* @__PURE__ */ new Map([["composer", /* @__PURE__ */ new Set()], ["header", /* @__PURE__ */ new Set()], ["codeHeader", /* @__PURE__ */ new Set()], ["sidebarFooter", /* @__PURE__ */ new Set()]]);
   var CSS2 = `
 .ccpp-slot { display: inline-flex; align-items: center; gap: 4px; flex: none; }
 .ccpp-slot:empty { display: none; }
 .ccpp-slot-composer { margin-inline-end: 4px; }
 .ccpp-slot-header { margin-inline-end: 4px; }
 .ccpp-slot-codeHeader { margin-inline: 0; }
+/* Pushed right, next to the gear, whether the row spreads its items apart or packs them left. */
+.ccpp-slot-sidebarFooter { margin-inline: auto 4px; min-width: 0; }
 .ccpp-slot-codeHeader .ccpp-slot-btn { min-width: var(--cds-h-control, 32px); height: var(--cds-h-control, 32px); padding: 0 6px; border-radius: calc(0.375rem * var(--cds-rem-scale, 1)); }
 .ccpp-slot-btn { display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-width: 32px; height: 32px; padding: 0 8px; border-radius: 8px; border: 0; background: transparent; color: var(--cds-text-secondary, inherit); font: inherit; font-size: 12px; cursor: pointer; }
 /* Same colors and hover as claude.ai's ghost buttons next to it. */
@@ -2534,10 +2536,21 @@
     while (anchor.parentElement && anchor.parentElement.children.length === 1) anchor = anchor.parentElement;
     return { anchor, where: "after" };
   }
+  var FOOTER_SKIP = '[data-testid^="user-menu"], .ccpp-slot';
+  function sidebarFooterAnchor(account) {
+    let branch = account;
+    for (let depth = 0; depth < 4 && branch.parentElement; depth++) {
+      let next = branch.nextElementSibling;
+      while (next && (next.matches(FOOTER_SKIP) || !next.matches("button, a, [role='button']") && !next.querySelector("button, a, [role='button']"))) next = next.nextElementSibling;
+      if (next) return { anchor: next, where: "before" };
+      branch = branch.parentElement;
+    }
+    return { anchor: account, where: "after" };
+  }
   var slots_default = definePlugin({
     name: "SlotsApi",
     title: { zh: "界面插槽", en: "UI slots API" },
-    description: { zh: "在输入框模型选择器旁、对话标题栏右侧放置插件按钮。", en: "Puts plugin controls next to the model picker and in the chat header." },
+    description: { zh: "在输入框模型选择器旁、对话标题栏右侧、侧栏底部放置插件按钮。", en: "Puts plugin controls next to the model picker, in the chat header and at the bottom of the sidebar." },
     category: "api",
     icon: "grid",
     hidden: true,
@@ -2567,6 +2580,13 @@
         const { anchor, where } = codeHeaderAnchor(el);
         if ((where === "prepend" ? anchor : anchor.parentElement)?.querySelector(":scope > .ccpp-slot-codeHeader")) return;
         return mountIn("codeHeader", anchor, where);
+      });
+      watch(scope, SEL.userMenuButton, (el) => {
+        if (el.closest('[role="menu"], [role="dialog"]')) return;
+        const { anchor, where } = sidebarFooterAnchor(el);
+        const row = anchor.parentElement;
+        if (row?.querySelector(":scope > .ccpp-slot-sidebarFooter")) return;
+        return mountIn("sidebarFooter", anchor, where);
       });
     }
   });
@@ -10032,9 +10052,25 @@ ${x4.css}`)].join("\n\n");
   // src/plugins/usageDisplay/index.ts
   var logger13 = new Logger2("UsageDisplay");
   var settings30 = definePluginSettings({
+    position: {
+      type: "select",
+      label: { zh: "显示位置", en: "Show in" },
+      default: "sidebar",
+      options: [
+        { value: "sidebar", label: { zh: "侧栏底部（用户名右侧）", en: "Sidebar bottom (next to your name)" } },
+        { value: "composer", label: { zh: "输入框（模型选择器旁）", en: "Chat input (by the model picker)" } },
+        { value: "both", label: { zh: "两处都显示", en: "Both" } }
+      ]
+    },
+    hideNative: {
+      type: "boolean",
+      label: { zh: "隐藏原生用量按钮", en: "Hide claude.ai's usage button" },
+      description: { zh: "隐藏输入框里模型选择器右边 claude.ai 自带的用量圆环。", en: "Hides claude.ai's own usage ring next to the model picker." },
+      default: false
+    },
     style: {
       type: "select",
-      label: { zh: "输入框里的样式", en: "Style in the chat input" },
+      label: { zh: "样式", en: "Style" },
       default: "rings",
       options: [
         { value: "rings", label: { zh: "双圆环", en: "Two rings" } },
@@ -10224,6 +10260,7 @@ ${x4.css}`)].join("\n\n");
 .ccpp-usage-btn:focus-visible { outline: none; box-shadow: var(--cds-focus-shadow, 0 0 0 2px var(--cds-fill-accent, #257de0)); }
 .ccpp-usage.err .ccpp-usage-btn { color: var(--cds-text-danger, #f17778); }
 `;
+  var NATIVE_HIDE_CSS = `:is(button, a, [role="button"]):has(svg [data-ring-track]):not(.ccpp-usage-btn) { display: none !important; }`;
   var PANEL_CSS2 = `
 .metric { display: flex; flex-direction: column; gap: 4px; }
 .metric .line { display: flex; justify-content: space-between; } .metric .pct { font-weight: 600; font-variant-numeric: tabular-nums; }
@@ -10339,8 +10376,8 @@ ${x4.css}`)].join("\n\n");
     name: "UsageDisplay",
     title: { zh: "用量显示", en: "Usage display" },
     description: {
-      zh: "在输入框模型选择器旁同时显示 5 小时会话与每周用量（双圆环 / 百分比），点开看重置时间；普通对话、Claude Code 首页和项目页都有。数据来自 claude.ai 自己的用量接口。",
-      en: "Shows the 5-hour session and weekly usage side by side next to the model picker (rings or percent), in chats, Claude Code and project pages; click for reset times. Data comes from claude.ai's own usage endpoint."
+      zh: "在侧栏底部用户名右侧（或输入框模型选择器旁）同时显示 5 小时会话与每周用量（双圆环 / 百分比），点开看重置时间。数据来自 claude.ai 自己的用量接口。",
+      en: "Shows the 5-hour session and weekly usage side by side at the bottom of the sidebar next to your name, or by the model picker (rings or percent); click for reset times. Data comes from claude.ai's own usage endpoint."
     },
     category: "composer",
     icon: "gauge",
@@ -10349,6 +10386,7 @@ ${x4.css}`)].join("\n\n");
     settings: settings30,
     start(scope) {
       addStyle(scope, SLOT_CSS, "usage");
+      if (settings30.store.hideNative) addStyle(scope, NATIVE_HIDE_CSS, "usage-native");
       const panel = createPopover(scope, "usage-panel", PANEL_CSS2);
       const open = (anchor) => {
         if (org) days = loadDays(org);
@@ -10356,9 +10394,13 @@ ${x4.css}`)].join("\n\n");
         panel.open(anchor, (p4) => renderPanel(p4, () => panel.update()));
         refresh2();
       };
-      const item = addSlotItem(scope, "composer", "usage", () => chip(open), -10);
+      const where = settings30.store.position;
+      const items2 = [
+        ...where !== "composer" ? [addSlotItem(scope, "sidebarFooter", "usage", () => chip(open), -10)] : [],
+        ...where !== "sidebar" ? [addSlotItem(scope, "composer", "usage", () => chip(open), -10)] : []
+      ];
       const update = () => {
-        refreshSlotItem(item);
+        items2.forEach(refreshSlotItem);
         panel.update();
       };
       listeners2.add(update);
