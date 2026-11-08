@@ -8,6 +8,7 @@ import { t } from "@kernel/i18n";
 import type { Scope } from "@kernel/scope";
 import { glyph, icon } from "@lib/icons";
 import { onDomChange, watch } from "@api/dom";
+import { addStyle } from "@api/styles";
 
 import { NATIVE_DIALOG } from "./layer";
 
@@ -141,10 +142,11 @@ export function installCodeGear(scope: Scope, enabled: () => boolean, open: () =
         }
     };
     /** claude.ai's own hover tooltip ("Code settings") on a swapped gear says CC++ too. */
+    /** The swapped gear under the pointer (or focused), while there is one. */
+    let hovered: HTMLElement | null = null;
     const retitle = () => {
-        if (!enabled() || !onCodePage()) return;
-        const gear = [...swapped].find(button => button.matches(":hover, :focus-visible"));
-        if (!gear) return;
+        const gear = hovered;
+        if (!gear || !enabled() || !onCodePage()) return;
         const label = t(LABEL);
         const originals = LABEL_ATTRS.map(attr => gear.getAttribute(`data-ccpp-gear-${attr}`)).filter((v): v is string => !!v);
         for (const tip of document.querySelectorAll<HTMLElement>(TOOLTIP)) {
@@ -152,8 +154,32 @@ export function installCodeGear(scope: Scope, enabled: () => boolean, open: () =
             const leaves = [...tip.querySelectorAll<HTMLElement>("*"), tip].filter(el => [...el.childNodes].some(n => n.nodeType === 3 && n.textContent!.trim()));
             const target = leaves.find(el => originals.includes(el.textContent!.trim())) ?? leaves.find(el => SETTINGS_WORD.test(el.textContent ?? ""));
             if (target && target.textContent !== label) target.textContent = label;
+            // Hidden by the style below until now, so claude.ai's own text never shows.
+            if (target || tip.textContent?.trim()) tip.setAttribute("data-ccpp-gear-tip", "");
         }
     };
+    // While the gear is hovered, rewrite its tooltip in the same task it appears in (a MutationObserver
+    // runs before the next paint), and keep tooltips hidden until they have been rewritten.
+    addStyle(scope, `html[data-ccpp-gear-hover] :is(${TOOLTIP}):not([data-ccpp-gear-tip]) { visibility: hidden !important; }`, "code-gear-tip");
+    const tipObserver = new MutationObserver(retitle);
+    const setHovered = (gear: HTMLElement | null) => {
+        if (gear === hovered) return;
+        hovered = gear;
+        document.documentElement.toggleAttribute("data-ccpp-gear-hover", !!gear);
+        tipObserver.disconnect();
+        if (!gear) return;
+        tipObserver.observe(document.body, { childList: true, subtree: true, characterData: true });
+        retitle();
+    };
+    const gearOf = (node: EventTarget | null) => {
+        const el = node instanceof Element ? node.closest<HTMLElement>("button, a, [role='button']") : null;
+        return el && swapped.has(el) ? el : null;
+    };
+    scope.listen(document, "pointerover", (event: PointerEvent) => setHovered(gearOf(event.target)), { capture: true });
+    scope.listen(document, "focusin", (event: FocusEvent) => setHovered(gearOf(event.target)), { capture: true });
+    scope.listen(document, "focusout", () => setHovered(null), { capture: true });
+    scope.listen(document, "pointerout", (event: PointerEvent) => !event.relatedTarget && setHovered(null), { capture: true });
+    scope.defer(() => setHovered(null));
     const swap = (button: HTMLElement) => {
         swapped.add(button);
         relabel(button);
@@ -185,12 +211,6 @@ export function installCodeGear(scope: Scope, enabled: () => boolean, open: () =
         }
         retitle();
     };
-    // Tooltips come up a moment after the pointer arrives; catch them as they appear.
-    watch(scope, TOOLTIP, () => {
-        retitle();
-        const timer = setTimeout(retitle, 50);
-        return () => clearTimeout(timer);
-    });
     onDomChange(scope, paint);
     scope.defer(restore);
     return { repaint: paint };

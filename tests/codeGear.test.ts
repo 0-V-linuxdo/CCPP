@@ -53,6 +53,18 @@ describe("Code sidebar gear", () => {
         expect(glyphEl.style.display).toBe("none");
         expect(document.querySelector("#g2 svg[data-ccpp-gear-icon]")).not.toBeNull();
         expect(document.getElementById("g2")!.getAttribute("aria-label")).toBe("CC++ settings");
+        // claude.ai's tooltip is rewritten before it is ever painted, and hidden until then.
+        document.querySelector("#g2 [data-cds]")!.dispatchEvent(new PointerEvent("pointerover", { bubbles: true }));
+        expect(document.documentElement.hasAttribute("data-ccpp-gear-hover")).toBe(true);
+        const tip = document.createElement("div");
+        tip.setAttribute("data-cds", "Tooltip");
+        tip.innerHTML = "<span>Code settings</span>";
+        document.body.appendChild(tip);
+        // A MutationObserver: a microtask in browsers, a macrotask in happy-dom.
+        await new Promise(r => setTimeout(r, 0));
+        expect(tip.textContent).toBe("CC++ settings");
+        expect(tip.hasAttribute("data-ccpp-gear-tip")).toBe(true);
+        tip.remove();
         (document.getElementById("g2") as HTMLElement).click();
         expect(hits).toBe(1);
         enabled = false;

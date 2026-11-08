@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261108.0.4.4
+// @version      20261108.0.4.5
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @license      GPL-3.0-or-later
@@ -939,7 +939,7 @@
     ["unsafeWindow", typeof unsafeWindow !== "undefined"]
   ].filter(([, ok]) => !ok).map(([k4]) => k4);
   var FRAMEWORK_VERSION = true ? "0.1.0" : "0.0.0";
-  var VERSION = true ? "20261108.0.4.4" : "0.0.0";
+  var VERSION = true ? "20261108.0.4.5" : "0.0.0";
   var IS_DEV = true ? false : false;
   var BUILD_TYPE = IS_DEV ? "development" : "production";
   var isChromium = () => !!W3.chrome;
@@ -3328,18 +3328,39 @@ ${IMAGE_FIELD_CSS}`;
         button.setAttribute(attr, label);
       }
     };
+    let hovered = null;
     const retitle = () => {
-      if (!enabled() || !onCodePage()) return;
-      const gear = [...swapped].find((button) => button.matches(":hover, :focus-visible"));
-      if (!gear) return;
+      const gear = hovered;
+      if (!gear || !enabled() || !onCodePage()) return;
       const label = t3(LABEL);
       const originals = LABEL_ATTRS.map((attr) => gear.getAttribute(`data-ccpp-gear-${attr}`)).filter((v3) => !!v3);
       for (const tip of document.querySelectorAll(TOOLTIP)) {
         const leaves = [...tip.querySelectorAll("*"), tip].filter((el) => [...el.childNodes].some((n2) => n2.nodeType === 3 && n2.textContent.trim()));
         const target2 = leaves.find((el) => originals.includes(el.textContent.trim())) ?? leaves.find((el) => SETTINGS_WORD.test(el.textContent ?? ""));
         if (target2 && target2.textContent !== label) target2.textContent = label;
+        if (target2 || tip.textContent?.trim()) tip.setAttribute("data-ccpp-gear-tip", "");
       }
     };
+    addStyle(scope, `html[data-ccpp-gear-hover] :is(${TOOLTIP}):not([data-ccpp-gear-tip]) { visibility: hidden !important; }`, "code-gear-tip");
+    const tipObserver = new MutationObserver(retitle);
+    const setHovered = (gear) => {
+      if (gear === hovered) return;
+      hovered = gear;
+      document.documentElement.toggleAttribute("data-ccpp-gear-hover", !!gear);
+      tipObserver.disconnect();
+      if (!gear) return;
+      tipObserver.observe(document.body, { childList: true, subtree: true, characterData: true });
+      retitle();
+    };
+    const gearOf = (node) => {
+      const el = node instanceof Element ? node.closest("button, a, [role='button']") : null;
+      return el && swapped.has(el) ? el : null;
+    };
+    scope.listen(document, "pointerover", (event) => setHovered(gearOf(event.target)), { capture: true });
+    scope.listen(document, "focusin", (event) => setHovered(gearOf(event.target)), { capture: true });
+    scope.listen(document, "focusout", () => setHovered(null), { capture: true });
+    scope.listen(document, "pointerout", (event) => !event.relatedTarget && setHovered(null), { capture: true });
+    scope.defer(() => setHovered(null));
     const swap = (button) => {
       swapped.add(button);
       relabel(button);
@@ -3370,11 +3391,6 @@ ${IMAGE_FIELD_CSS}`;
       }
       retitle();
     };
-    watch(scope, TOOLTIP, () => {
-      retitle();
-      const timer2 = setTimeout(retitle, 50);
-      return () => clearTimeout(timer2);
-    });
     onDomChange(scope, paint);
     scope.defer(restore);
     return { repaint: paint };
