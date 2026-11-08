@@ -43,6 +43,7 @@ const settings = definePluginSettings({
         default: "rings",
         options: [
             { value: "rings", label: { zh: "双圆环", en: "Two rings" } },
+            { value: "bars", label: { zh: "横向进度条", en: "Horizontal bars" } },
             { value: "text", label: { zh: "百分比文字", en: "Percent text" } },
             { value: "both", label: { zh: "圆环 + 文字", en: "Rings + text" } },
         ],
@@ -234,14 +235,22 @@ function usageButton(open: (anchor: HTMLElement) => void, label: string, tip: Re
     return button;
 }
 
-function ring(open: (anchor: HTMLElement) => void, window: UsageWindow | null, label: string, kind: "week" | "session") {
+/** A short horizontal bar: faint track, filled by the percent in the level colour. */
+function barEl(percent: number | null) {
+    const fill = percent === null ? null : h("i", { style: { width: `${Math.max(0, Math.min(100, percent))}%`, background: COLORS[level(percent, settings.store.warnAt, settings.store.dangerAt)] } });
+    const track = h("span", { class: "ccpp-usage-bar", "aria-hidden": "true" }, fill);
+    track.style.background = nativeTrack();
+    return track;
+}
+
+function ring(open: (anchor: HTMLElement) => void, window: UsageWindow | null, label: string, kind: "week" | "session", bar = false) {
     const percent = window ? Math.round(window.utilization) : null;
     // Each ring explains itself, like claude.ai's single usage ring.
     return usageButton(
         open,
         percent === null ? label : `${label} ${percent}%`,
         window ? tipAttrs(`${label}: ${percent}%`, [resetText(window), todayDetail(kind)].filter(Boolean).join(" · ")) : tipAttrs(label, error ?? t(L.loading)),
-        ringSvg(window ? window.utilization : null),
+        bar ? barEl(window ? window.utilization : null) : ringSvg(window ? window.utilization : null),
     );
 }
 
@@ -255,8 +264,9 @@ function chip(open: (anchor: HTMLElement) => void) {
     return h(
         "span",
         { class: `ccpp-usage${error && !usage ? " err" : ""}` },
-        ...(style !== "text" ? [ring(open, five, t(L.session), "session"), ring(open, week, t(L.weekly), "week")] : []),
-        ...(style !== "rings" ? [usageButton(open, tip, tipAttrs(tip, five ? resetText(five) : ""), h("span", { text }))] : []),
+        ...(style === "rings" || style === "both" ? [ring(open, five, t(L.session), "session"), ring(open, week, t(L.weekly), "week")] : []),
+        ...(style === "bars" ? [ring(open, five, t(L.session), "session", true), ring(open, week, t(L.weekly), "week", true)] : []),
+        ...(style === "text" || style === "both" ? [usageButton(open, tip, tipAttrs(tip, five ? resetText(five) : ""), h("span", { text }))] : []),
     );
 }
 
@@ -267,6 +277,9 @@ const SLOT_CSS = `
 .ccpp-usage-btn:has(> span) { padding: 0 6px; }
 .ccpp-usage-btn:hover, .ccpp-usage-btn[aria-expanded="true"] { color: var(--cds-text-primary, inherit); background: var(--cds-fill-ghost-hover, rgba(127,127,127,.14)); }
 .ccpp-usage-btn:focus-visible { outline: none; box-shadow: var(--cds-focus-shadow, 0 0 0 2px var(--cds-fill-accent, #257de0)); }
+.ccpp-usage-btn:has(> .ccpp-usage-bar) { padding: 0 4px; }
+.ccpp-usage-bar { display: block; width: 36px; height: 5px; border-radius: 3px; overflow: hidden; }
+.ccpp-usage-bar > i { display: block; height: 100%; border-radius: 3px; }
 .ccpp-usage.err .ccpp-usage-btn { color: var(--cds-text-danger, #f17778); }
 `;
 

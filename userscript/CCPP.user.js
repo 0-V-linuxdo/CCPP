@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CC++
 // @namespace    https://github.com/0-V-linuxdo/CCPP
-// @version      20261108.0.4.2
+// @version      20261108.0.4.3
 // @description  Everything-is-a-plugin enhancements for claude.ai: usage meter, chat outline, starred messages, prompt history, notifications and more.
 // @author       CC++ Contributors
 // @license      GPL-3.0-or-later
@@ -939,7 +939,7 @@
     ["unsafeWindow", typeof unsafeWindow !== "undefined"]
   ].filter(([, ok]) => !ok).map(([k4]) => k4);
   var FRAMEWORK_VERSION = true ? "0.1.0" : "0.0.0";
-  var VERSION = true ? "20261108.0.4.2" : "0.0.0";
+  var VERSION = true ? "20261108.0.4.3" : "0.0.0";
   var IS_DEV = true ? false : false;
   var BUILD_TYPE = IS_DEV ? "development" : "production";
   var isChromium = () => !!W3.chrome;
@@ -10074,6 +10074,7 @@ ${x4.css}`)].join("\n\n");
       default: "rings",
       options: [
         { value: "rings", label: { zh: "双圆环", en: "Two rings" } },
+        { value: "bars", label: { zh: "横向进度条", en: "Horizontal bars" } },
         { value: "text", label: { zh: "百分比文字", en: "Percent text" } },
         { value: "both", label: { zh: "圆环 + 文字", en: "Rings + text" } }
       ]
@@ -10229,13 +10230,19 @@ ${x4.css}`)].join("\n\n");
     });
     return button;
   }
-  function ring(open, window2, label, kind) {
+  function barEl(percent) {
+    const fill5 = percent === null ? null : h4("i", { style: { width: `${Math.max(0, Math.min(100, percent))}%`, background: COLORS2[level(percent, settings30.store.warnAt, settings30.store.dangerAt)] } });
+    const track2 = h4("span", { class: "ccpp-usage-bar", "aria-hidden": "true" }, fill5);
+    track2.style.background = nativeTrack();
+    return track2;
+  }
+  function ring(open, window2, label, kind, bar = false) {
     const percent = window2 ? Math.round(window2.utilization) : null;
     return usageButton(
       open,
       percent === null ? label : `${label} ${percent}%`,
       window2 ? tipAttrs(`${label}: ${percent}%`, [resetText(window2), todayDetail(kind)].filter(Boolean).join(" · ")) : tipAttrs(label, error ?? t3(L22.loading)),
-      ringSvg(window2 ? window2.utilization : null)
+      bar ? barEl(window2 ? window2.utilization : null) : ringSvg(window2 ? window2.utilization : null)
     );
   }
   function chip(open) {
@@ -10248,8 +10255,9 @@ ${x4.css}`)].join("\n\n");
     return h4(
       "span",
       { class: `ccpp-usage${error && !usage ? " err" : ""}` },
-      ...style !== "text" ? [ring(open, five, t3(L22.session), "session"), ring(open, week, t3(L22.weekly), "week")] : [],
-      ...style !== "rings" ? [usageButton(open, tip, tipAttrs(tip, five ? resetText(five) : ""), h4("span", { text }))] : []
+      ...style === "rings" || style === "both" ? [ring(open, five, t3(L22.session), "session"), ring(open, week, t3(L22.weekly), "week")] : [],
+      ...style === "bars" ? [ring(open, five, t3(L22.session), "session", true), ring(open, week, t3(L22.weekly), "week", true)] : [],
+      ...style === "text" || style === "both" ? [usageButton(open, tip, tipAttrs(tip, five ? resetText(five) : ""), h4("span", { text }))] : []
     );
   }
   var SLOT_CSS = `
@@ -10258,6 +10266,9 @@ ${x4.css}`)].join("\n\n");
 .ccpp-usage-btn:has(> span) { padding: 0 6px; }
 .ccpp-usage-btn:hover, .ccpp-usage-btn[aria-expanded="true"] { color: var(--cds-text-primary, inherit); background: var(--cds-fill-ghost-hover, rgba(127,127,127,.14)); }
 .ccpp-usage-btn:focus-visible { outline: none; box-shadow: var(--cds-focus-shadow, 0 0 0 2px var(--cds-fill-accent, #257de0)); }
+.ccpp-usage-btn:has(> .ccpp-usage-bar) { padding: 0 4px; }
+.ccpp-usage-bar { display: block; width: 36px; height: 5px; border-radius: 3px; overflow: hidden; }
+.ccpp-usage-bar > i { display: block; height: 100%; border-radius: 3px; }
 .ccpp-usage.err .ccpp-usage-btn { color: var(--cds-text-danger, #f17778); }
 `;
   var NATIVE_HIDE_CSS = `:is(button, a, [role="button"]):has(svg [data-ring-track]):not(.ccpp-usage-btn) { display: none !important; }`;
